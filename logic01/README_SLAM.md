@@ -8,8 +8,22 @@ CyCle03(메인 로직01)이 담당하는 SLAM 및 맵 생성을 위한 절차입
 export TURTLEBOT3_MODEL=burger  # 또는 waffle_pi
 ```
 
-## 2. SLAM 노드 실행
-로봇 환경(네임스페이스 사용 여부)에 따라 선택하세요.
+## 2. 로봇 기체 실행 (Bringup)
+로봇 본체(라즈베리 파이) 터미널에서 실행합니다. 센서와 모터를 활성화하는 필수 단계입니다.
+
+### A. 기본 방식 (No Namespace)
+```bash
+ros2 launch turtlebot3_bringup robot.launch.py
+```
+
+### B. 네임스페이스 방식 (TB3_2)
+로봇 내부 노드들도 네임스페이스를 가지도록 실행합니다.
+```bash
+ros2 launch turtlebot3_bringup robot.launch.py __ns:=/TB3_2
+```
+
+## 3. SLAM 노드 실행
+PC(Remote PC)에서 실행합니다. 로봇 환경(네임스페이스 사용 여부)에 따라 선택하세요.
 
 ### A. 기본 방식 (Single Robot / No Namespace)
 가장 표준적인 방법입니다.
