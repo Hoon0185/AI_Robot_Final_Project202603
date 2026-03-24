@@ -15,7 +15,12 @@ class PatrolNode(Node):
         # 1. Nav2 Action Client 설정
         self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         
-        # 2. 좌표 데이터 로드
+        # 2. 파라미터 및 프레임 설정
+        # 네임스페이스가 있으면 'NS/map', 없으면 'map'을 기본으로 사용
+        ns = self.get_namespace().strip('/')
+        default_frame = f'{ns}/map' if ns else 'map'
+        self.declare_parameter('map_frame', default_frame)
+        self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.load_shelves()
         
         # 3. 순찰 상태 관리
@@ -55,7 +60,7 @@ class PatrolNode(Node):
         self.get_logger().info(f'Navigating to {shelf_name}...')
         
         goal_msg = NavigateToPose.Goal()
-        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.frame_id = self.map_frame
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
         goal_msg.pose.pose.position.x = float(coords['x'])
         goal_msg.pose.pose.position.y = float(coords['y'])
