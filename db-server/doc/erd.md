@@ -15,13 +15,16 @@
 | 테이블 | 역할 |
 |---|---|
 | `product_master` | 외부 재고관리 DB에서 필요한 필드만 **동기화 캐시** (직접 접근 불가 대응) |
-| `shelf` | 매대/진열대 위치 좌표 (로봇 waypoint와 연결) |
-| `shelf_product` | 매대-제품 배치 매핑 (어느 매대에 어떤 제품이 있어야 하는가) |
-| `inventory_status` | 로봇 인식 결과 기반 **실시간 재고 현황** (최신화 방식) |
-| `detection_log` | 매 인식마다 쌓이는 이력 로그 (inventory_status와 분리) |
+| `shelf` | 매대 번호 및 위치 좌표 (로봇 순찰 웨이포인트 기준) |
+| `shelf_product` | 매대-제품 포괄 관리 (어느 매대에 어떤 제품이 있어야 하는가) |
+| `inventory_status` | 실시간 재고 현황 + **odom_x/y** (바코드 괐 시점의 로봇 실제 위치) |
+| `detection_log` | 매 인식마다 쌓이는 이력 + **odom_x/y** (인식 시점 위치) |
 | `waypoint` | 순찰 경로상 각 매대 로봇 정지 위치 |
 | `patrol_log` | 순찰 회차 기록 (시작/종료/완료 웨이포인트 수) |
 | `alert` | 재고 부족 / 품절 / 이상 감지 알림 |
+
+> ⚠️ **v2.1 개정:** 행/열(row/col) 슬롯 방식 폐기 → **바코드 + odom 좌표** 방식으로 위치 판단
+> Odom drift 문제 및 군집 상품 슬롯 할당 불가 문제로 인해 개선
 
 ---
 
@@ -53,8 +56,6 @@ erDiagram
         INT id PK
         INT shelf_id FK
         INT product_id FK
-        INT row_num "행 번호"
-        INT col_num "열 번호"
         INT expected_qty
     }
 
@@ -64,6 +65,8 @@ erDiagram
         INT product_id FK
         INT current_qty
         ENUM status
+        FLOAT odom_x "바코드 괐 X 위치"
+        FLOAT odom_y "바코드 괐 Y 위치"
         DATETIME last_updated_at
     }
 
@@ -75,6 +78,8 @@ erDiagram
         VARCHAR detected_product
         FLOAT confidence
         ENUM result
+        FLOAT odom_x "바코드 괐 X 위치"
+        FLOAT odom_y "바코드 괐 Y 위치"
         DATETIME created_at
     }
 

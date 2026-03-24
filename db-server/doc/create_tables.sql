@@ -30,32 +30,34 @@ CREATE TABLE IF NOT EXISTS shelf (
     UNIQUE KEY uq_shelf_no (shelf_no)
 ) CHARACTER SET utf8mb4;
 
--- 3. shelf_product (매대-제품 배치 매핑 - 행/열 위치 포함)
+-- 3. shelf_product (매대-제품 매핑 - 어떤 매대에 어떤 제품이 있어야 하는지 포괄적 관리)
+-- ⚠️  개정: 행/열(row/col) 슬롯 방식 폐기 → 바코드+odom 방식으로 위치 판단
 CREATE TABLE IF NOT EXISTS shelf_product (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     shelf_id     INT NOT NULL,
     product_id   INT NOT NULL,
-    row_num      INT NOT NULL COMMENT '행 번호 (위에서 아래, 1부터 시작)',
-    col_num      INT NOT NULL COMMENT '열 번호 (왼쪽에서 오른쪽, 1부터 시작)',
     expected_qty INT DEFAULT 0 COMMENT '기대 진열 수량',
     FOREIGN KEY (shelf_id)   REFERENCES shelf(shelf_id)            ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES product_master(product_id) ON DELETE CASCADE,
-    UNIQUE KEY uq_shelf_position (shelf_id, row_num, col_num)
+    FOREIGN KEY (product_id) REFERENCES product_master(product_id) ON DELETE CASCADE
 ) CHARACTER SET utf8mb4;
 
 -- 4. inventory_status (실시간 재고 현황 - 최신화 방식)
+-- 핵심: odom_x, odom_y = 바코드 괐 시점의 로봇 실제 위치 저장
 CREATE TABLE IF NOT EXISTS inventory_status (
     status_id       INT AUTO_INCREMENT PRIMARY KEY,
     shelf_id        INT NOT NULL,
     product_id      INT NOT NULL,
     current_qty     INT DEFAULT 0 COMMENT '현재 인식된 수량',
     status          ENUM('있다','없다','다른제품') NOT NULL,
+    odom_x          FLOAT COMMENT '바코드 괐 시점 로봇 X 위치 (odom)',
+    odom_y          FLOAT COMMENT '바코드 괐 시점 로봇 Y 위치 (odom)',
     last_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (shelf_id)   REFERENCES shelf(shelf_id),
     FOREIGN KEY (product_id) REFERENCES product_master(product_id)
 ) CHARACTER SET utf8mb4;
 
 -- 5. detection_log (영상 인식 이력 로그 - 누적 방식)
+-- 핵심: odom_x, odom_y = 바코드 괐 시점의 로봇 실제 위치
 CREATE TABLE IF NOT EXISTS detection_log (
     log_id            INT AUTO_INCREMENT PRIMARY KEY,
     shelf_id          INT  NOT NULL,
@@ -64,6 +66,8 @@ CREATE TABLE IF NOT EXISTS detection_log (
     detected_product  VARCHAR(100) COMMENT 'Keras 2차 식별 결과',
     confidence        FLOAT        COMMENT '인식 신뢰도 (0.0 ~ 1.0)',
     result            ENUM('있다','없다','다른제품') NOT NULL,
+    odom_x            FLOAT COMMENT '바코드 괐 시점 로봇 X 위치 (odom)',
+    odom_y            FLOAT COMMENT '바코드 괐 시점 로봇 Y 위치 (odom)',
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (shelf_id) REFERENCES shelf(shelf_id)
 ) CHARACTER SET utf8mb4;
