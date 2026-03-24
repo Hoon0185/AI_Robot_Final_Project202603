@@ -6,6 +6,8 @@
 > **작성일:** 2026-03-24  
 > **작성자:** DB/WEB 파트  
 
+> 📖 ERD 보는 법: [`how_to_view_erd.md`](./how_to_view_erd.md) 참조
+
 ---
 
 ## 설계 원칙
