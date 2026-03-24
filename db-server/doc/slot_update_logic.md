@@ -14,57 +14,36 @@
 
 ## 전체 흐름도
 
-```
-[순찰 시작]
-    │
-    ▼
-patrol_log INSERT  →  patrol_id 발급
-    │
-    ▼ (각 waypoint 순회)
-┌──────────────────────────────────────────┐
-│  바코드 감지 (YOLO + 바코드 리더)         │
-│                                          │
-│  [바코드 값으로 slot 테이블 조회]         │
-│                                          │
-│  ┌── 케이스 A: 같은 위치에 동일 바코드   │
-│  │   → slot.status = 'active' 유지       │
-│  │   → slot.odom_x/y 갱신               │
-│  │                                       │
-│  ├── 케이스 B: 다른 위치에서 동일 바코드  │
-│  │   → slot.status = 'moved'            │
-│  │   → slot.odom_x/y 새 위치로 갱신     │
-│  │   → slot_history INSERT (moved)      │
-│  │   → alert INSERT (슬롯변경)          │
-│  │                                       │
-│  └── 케이스 C: 바코드가 DB에 없음        │
-│      → slot INSERT (신규)               │
-│      → slot_history INSERT (created)   │
-│                                          │
-│  detection_log INSERT (patrol_id 포함)   │
-└──────────────────────────────────────────┘
-    │
-    ▼ (순찰 완료)
-[이번 순찰에서 감지 안 된 slot 탐색]
-    │
-    │  SQL:
-    │  SELECT s.slot_id FROM slot s
-    │  WHERE s.status = 'active'
-    │    AND s.slot_id NOT IN (
-    │      SELECT DISTINCT slot_id FROM detection_log
-    │      WHERE patrol_id = [현재 patrol_id]
-    │      AND   slot_id IS NOT NULL
-    │    )
-    │
-    ▼
-[미감지 슬롯 처리]
-    │
-    ├── 1회 연속 미감지 → status = 'empty' + alert(재고부족)
-    └── 2회 이상 연속 미감지 → status = 'deleted' + alert(품절)
-         + slot_history INSERT (deleted)
+```mermaid
+flowchart TD
+    A(["&#x1F6E1; 순찰 시작"]) --> B["patrol_log INSERT\npatrol_id 발급"]
+    B --> C{"각 waypoint 순회"}
 
-[patrol_log UPDATE]
-    → end_time, status='완료'
-    → new_slots, moved_slots, missing_slots 집계
+    C --> D["바코드 감지\nYOLO + 바코드 리더"]
+    D --> E["slot 테이블에서\n바코드 조회"]
+
+    E --> F{"DB에 있는가?"}
+
+    F -- "없음 (신규)" --> G["케이스 C\nslot INSERT\nslot_history: created"]
+    F -- "있음" --> H{"위치가 다른가?"}
+
+    H -- "같은 위치" --> I["케이스 A\nslot.status = active\nodom_x/y 갱신"]
+    H -- "다른 위치" --> J["케이스 B\nslot.status = moved\nodom 갱신\nslot_history: moved\nalert: 슬롯변경"]
+
+    G --> K["detection_log INSERT\npatrol_id 포함"]
+    I --> K
+    J --> K
+    K --> C
+
+    C -- "순찰 완료" --> L["미감지 슬롯 탐색\nactive AND NOT IN 이번 patrol detection"]
+    L --> M{"미감지 횟수?"}
+
+    M -- "1회" --> N["slot.status = empty\nalert: 재고부족"]
+    M -- "2회 이상" --> O["slot.status = deleted\nslot_history: deleted\nalert: 품절"]
+
+    N --> P["patrol_log UPDATE\nend_time, status=완료\nnew/moved/missing 집계"]
+    O --> P
+    P --> Q(["&#x2705; 순찰 완료"])
 ```
 
 ---
@@ -145,25 +124,18 @@ def process_barcode_detection(patrol_id, barcode, odom_x, odom_y, shelf_id):
 
 ## 슬롯 상태 전이 다이어그램
 
-```
-                 [신제품 입고]
-                      │
-                      ▼
-                  [ created ]
-                      │
-                      ▼
-                  [ active ]  ◀────────────────────┐
-                 /    │    \                        │
-                /     │     \                       │
-          [이동]   [감지안됨]  [위치변동]           [재감지]
-           /           │           \                │
-          ▼            ▼            ▼               │
-       [moved]      [empty]      [moved]            │
-          │            │                            │
-          │        [또 안보임]                      │
-          │            │                            │
-          └──────▶ [deleted] ──────────────────────┘
-                                               (재입고시)
+```mermaid
+stateDiagram-v2
+    [*] --> active : 신제품 입고 (created)
+    active --> active : 순찰 중 정상 감지 (케이스 A)
+    active --> moved : 다른 위치에서 감지 (케이스 B)
+    active --> empty : 1회 순찰 미감지
+    empty --> active : 다음 순찰에서 재감지
+    empty --> deleted : 2회 이상 연속 미감지
+    moved --> active : 새 위치에서 정상 감지
+    moved --> deleted : 계속 미감지
+    deleted --> active : 재입고 (새 바코드 감지)
+    deleted --> [*]
 ```
 
 ---
