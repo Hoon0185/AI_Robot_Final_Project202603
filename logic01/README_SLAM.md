@@ -9,24 +9,38 @@ export TURTLEBOT3_MODEL=burger  # 또는 waffle_pi
 ```
 
 ## 2. SLAM 노드 실행
-PC(Remote PC)에서 실행합니다.
+로봇 환경(네임스페이스 사용 여부)에 따라 선택하세요.
+
+### A. 기본 방식 (Single Robot / No Namespace)
+가장 표준적인 방법입니다.
 ```bash
 ros2 launch turtlebot3_cartographer cartographer.launch.py
 ```
 
-## 3. 수동 조작 (Teleop)
-다른 터미널에서 로봇을 움직여 맵을 그립니다.
+### B. 네임스페이스 방식 (Multi Robot / `TB3_2` 전용)
+여러 대의 로봇을 운용하거나 특정 이름표가 붙은 경우 사용합니다.
 ```bash
-ros2 run turtlebot3_teleop teleop_keyboard
+ros2 launch patrol_main tb3_2_cartographer.launch.py
 ```
-* 맵을 그릴 때 너무 빨리 움직이지 않도록 주의하세요. 특히 회전할 때 천천히 해야 맵이 뒤틀리지 않습니다.
+* **주의**: 이 방식은 RViz에서 `Fixed Frame`을 **`TB3_2/map`**으로, `Map`의 `Durability Policy`를 **`Transient Local`**로 설정해야 지도가 나타납니다.
+
+## 3. 수동 조작 (Teleop)
+로봇을 움직여 맵을 그립니다.
+```bash
+# A. 기본 방식
+ros2 run turtlebot3_teleop teleop_keyboard
+
+# B. 네임스페이스 방식 (부드러운 주행 옵션 포함)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/TB3_2/cmd_vel -p repeat_rate:=10.0
+```
 
 ## 4. 맵 저장
-맵이 완성되면 워크스페이스 내의 `maps` 폴더에 저장합니다. (현재 위치: `logic01/maps`)
 ```bash
-# logic01 폴더로 이동 후 실행하거나 적절한 상대 경로를 지정하세요.
-cd logic01/maps
+# A. 기본 방식 (maps 폴더에서 실행)
 ros2 run nav2_map_server map_saver_cli -f map
+
+# B. 네임스페이스 방식 (maps 폴더에서 실행)
+ros2 run nav2_map_server map_saver_cli -f my_map --ros-args -r map:=/TB3_2/map
 ```
 * 저장 후 `map.yaml`과 `map.pgm` 파일이 생성되었는지 확인하세요.
 
