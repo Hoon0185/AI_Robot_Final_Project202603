@@ -1,18 +1,16 @@
 # 진열대 좌표 설정 (shelf_coords.yaml)
-# 각 진열대의 위치와 로봇의 방향을 정의합니다.
+# [주의] SLAM 완료 후 Rviz에서 좌표를 측정하여 아래 값을 실제 위치로 수정하세요.
 
 shelves:
   shelf_1:
-    x: 1.0
-    y: 0.5
-    yaw: 0.0  # radians
+    x: 1.0     # Rviz에서 확인한 x 좌표
+    y: 0.5     # Rviz에서 확인한 y 좌표
+    yaw: 0.0   # 로봇이 바라볼 방향 (radians)
   shelf_2:
     x: 2.5
     y: -1.2
-    yaw: 1.57 # 90 degrees
+    yaw: 1.57  # 90도
   shelf_3:
     x: -0.5
     y: 2.0
-    yaw: 3.14 # 180 degrees
-
-patrol_interval: 60 # 순찰 간격 (초 단위)
+    yaw: 3.14  # 180도
