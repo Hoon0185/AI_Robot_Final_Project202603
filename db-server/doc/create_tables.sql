@@ -6,8 +6,8 @@
 -- ============================================================
 -- 테이블 생성 순서 (외래키 의존 순):
 --   1. product_master → 2. shelf → 3. slot → 4. slot_history
---   → 5. shelf_product → 6. inventory_status → 7. detection_log
---   → 8. waypoint → 9. patrol_log → 10. alert
+--   → 5. shelf_product → 6. inventory_status → 7. patrol_log
+--   → 8. detection_log → 9. waypoint → 10. alert
 -- ============================================================
 
 USE gilbot;
@@ -113,7 +113,23 @@ CREATE TABLE IF NOT EXISTS inventory_status (
 ) CHARACTER SET utf8mb4;
 
 -- ------------------------------------------------------------
--- 7. detection_log (영상 인식 이력 - 누적, slot + patrol 기반)
+-- 7. patrol_log (순찰 회차 기록) - detection_log의 FK 대상이므로 먼저 생성
+-- 순찰 완료 시 웹서버가 미감지 슬롯을 자동으로 empty/deleted 처리
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patrol_log (
+    patrol_id           INT AUTO_INCREMENT PRIMARY KEY,
+    start_time          DATETIME NOT NULL,
+    end_time            DATETIME     COMMENT '완료 전 NULL',
+    status              ENUM('진행중','완료','중단') DEFAULT '진행중',
+    total_waypoints     INT DEFAULT 0,
+    completed_waypoints INT DEFAULT 0,
+    new_slots           INT DEFAULT 0 COMMENT '이번 순찰에서 새로 추가된 슬롯 수',
+    moved_slots         INT DEFAULT 0 COMMENT '이번 순찰에서 이동 감지된 슬롯 수',
+    missing_slots       INT DEFAULT 0 COMMENT '이번 순찰에서 사라진 슬롯 수 (empty/deleted)'
+) CHARACTER SET utf8mb4;
+
+-- ------------------------------------------------------------
+-- 8. detection_log (영상 인식 이력 - 누적, slot + patrol 기반)
 -- patrol_id 포함 → 순찰 완료 후 '이번 순찰에서 안 보인 슬롯' 자동 탐지 가능
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS detection_log (
@@ -136,7 +152,7 @@ CREATE TABLE IF NOT EXISTS detection_log (
 ) CHARACTER SET utf8mb4;
 
 -- ------------------------------------------------------------
--- 8. waypoint (순찰 정지 지점)
+-- 9. waypoint (순찰 정지 지점)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS waypoint (
     waypoint_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -146,22 +162,6 @@ CREATE TABLE IF NOT EXISTS waypoint (
     robot_y     FLOAT   NOT NULL COMMENT '로봇 정지 Y 좌표',
     is_active   BOOLEAN DEFAULT TRUE,
     FOREIGN KEY (shelf_id) REFERENCES shelf(shelf_id)
-) CHARACTER SET utf8mb4;
-
--- ------------------------------------------------------------
--- 9. patrol_log (순찰 회차 기록)
--- 순찰 완료 시 웹서버가 미감지 슬롯을 자동으로 empty/deleted 처리
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS patrol_log (
-    patrol_id           INT AUTO_INCREMENT PRIMARY KEY,
-    start_time          DATETIME NOT NULL,
-    end_time            DATETIME     COMMENT '완료 전 NULL',
-    status              ENUM('진행중','완료','중단') DEFAULT '진행중',
-    total_waypoints     INT DEFAULT 0,
-    completed_waypoints INT DEFAULT 0,
-    new_slots           INT DEFAULT 0 COMMENT '이번 순찰에서 새로 추가된 슬롯 수',
-    moved_slots         INT DEFAULT 0 COMMENT '이번 순찰에서 이동 감지된 슬롯 수',
-    missing_slots       INT DEFAULT 0 COMMENT '이번 순찰에서 사라진 슬롯 수 (empty/deleted)'
 ) CHARACTER SET utf8mb4;
 
 -- ------------------------------------------------------------
