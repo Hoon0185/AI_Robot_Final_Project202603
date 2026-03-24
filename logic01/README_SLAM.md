@@ -40,10 +40,28 @@ source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
 
-## 6. 순찰 주기 변경 (Dynamic Parameter)
-실시간으로 순찰 주기를 변경하려면 다른 터미널에서 다음 명령어를 실행하세요:
+## 6. 순찰 스케줄링 모드 설정 (Dynamic Parameter)
+순찰 스케줄러는 두 가지 모드를 지원하며, 실시간으로 파라미터를 변경하여 적용할 수 있습니다.
+
+### 모드 1: 기준 시점 기반 주기 순찰 (Periodic)
+특정 시각을 기준으로 일정 간격마다 순찰합니다.
+- `patrol_mode`: `"periodic"` (기본값)
+- `reference_time`: `"HH:MM"` (기준 시점, 기본 `"00:00"`)
+- `patrol_interval_min`: `분단위` (주기, 기본 `60.0`)
+
 ```bash
-# 주기를 30초로 변경 예시
-ros2 param set /patrol_scheduler patrol_interval 30.0
+# 예시: 09:10분부터 30분 간격으로 순찰 설정
+ros2 param set /patrol_scheduler reference_time "09:10"
+ros2 param set /patrol_scheduler patrol_interval_min 30.0
 ```
-이후 UI(웹 서버 등)가 완성되면 이 파라미터를 조작하여 주기를 관리할 수 있습니다.
+
+### 모드 2: 특정 시각 목록 순찰 (Scheduled)
+지정된 시각들에만 순찰합니다.
+- `patrol_mode`: `"scheduled"`
+- `scheduled_times`: `["HH:MM", ...]` (시간 목록)
+
+```bash
+# 예시: 오전 9시, 오후 1시, 오후 6시에만 순찰하도록 설정
+ros2 param set /patrol_scheduler patrol_mode "scheduled"
+ros2 param set /patrol_scheduler scheduled_times '["09:00", "13:00", "18:00"]'
+```
