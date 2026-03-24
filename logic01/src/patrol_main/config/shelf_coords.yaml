@@ -1,0 +1,18 @@
+# 진열대 좌표 설정 (shelf_coords.yaml)
+# 각 진열대의 위치와 로봇의 방향을 정의합니다.
+
+shelves:
+  shelf_1:
+    x: 1.0
+    y: 0.5
+    yaw: 0.0  # radians
+  shelf_2:
+    x: 2.5
+    y: -1.2
+    yaw: 1.57 # 90 degrees
+  shelf_3:
+    x: -0.5
+    y: 2.0
+    yaw: 3.14 # 180 degrees
+
+patrol_interval: 60 # 순찰 간격 (초 단위)
