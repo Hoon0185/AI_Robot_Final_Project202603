@@ -38,10 +38,12 @@ erDiagram
 
     shelf {
         INT shelf_id PK
-        VARCHAR shelf_name
-        FLOAT loc_x
-        FLOAT loc_y
-        INT capacity
+        INT shelf_no "매대 번호"
+        VARCHAR shelf_name "매대 이름"
+        INT total_rows "총 행 수"
+        INT total_cols "총 열 수"
+        FLOAT loc_x "X 좌표"
+        FLOAT loc_y "Y 좌표"
         DATETIME created_at
     }
 
@@ -49,6 +51,8 @@ erDiagram
         INT id PK
         INT shelf_id FK
         INT product_id FK
+        INT row_num "행 번호"
+        INT col_num "열 번호"
         INT expected_qty
     }
 

@@ -20,21 +20,27 @@ CREATE TABLE IF NOT EXISTS product_master (
 -- 2. shelf (진열대/매대 위치)
 CREATE TABLE IF NOT EXISTS shelf (
     shelf_id   INT AUTO_INCREMENT PRIMARY KEY,
-    shelf_name VARCHAR(20)  NOT NULL COMMENT '예: A-1, B-2',
-    loc_x      FLOAT        NOT NULL COMMENT 'X 좌표 (미터)',
-    loc_y      FLOAT        NOT NULL COMMENT 'Y 좌표 (미터)',
-    capacity   INT DEFAULT 0         COMMENT '최대 수용 수량',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    shelf_no   INT          NOT NULL COMMENT '매대 번호 (예: 1, 2, 3)',
+    shelf_name VARCHAR(20)  NOT NULL COMMENT '매대 이름 (예: A, B, C)',
+    total_rows INT DEFAULT 0         COMMENT '총 행 수',
+    total_cols INT DEFAULT 0         COMMENT '총 열 수',
+    loc_x      FLOAT        NOT NULL COMMENT 'X 좌표 (미터, 로봇 기준)',
+    loc_y      FLOAT        NOT NULL COMMENT 'Y 좌표 (미터, 로봇 기준)',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_shelf_no (shelf_no)
 ) CHARACTER SET utf8mb4;
 
--- 3. shelf_product (매대-제품 배치 매핑)
+-- 3. shelf_product (매대-제품 배치 매핑 - 행/열 위치 포함)
 CREATE TABLE IF NOT EXISTS shelf_product (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     shelf_id     INT NOT NULL,
     product_id   INT NOT NULL,
+    row_num      INT NOT NULL COMMENT '행 번호 (위에서 아래, 1부터 시작)',
+    col_num      INT NOT NULL COMMENT '열 번호 (왼쪽에서 오른쪽, 1부터 시작)',
     expected_qty INT DEFAULT 0 COMMENT '기대 진열 수량',
     FOREIGN KEY (shelf_id)   REFERENCES shelf(shelf_id)            ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES product_master(product_id) ON DELETE CASCADE
+    FOREIGN KEY (product_id) REFERENCES product_master(product_id) ON DELETE CASCADE,
+    UNIQUE KEY uq_shelf_position (shelf_id, row_num, col_num)
 ) CHARACTER SET utf8mb4;
 
 -- 4. inventory_status (실시간 재고 현황 - 최신화 방식)
