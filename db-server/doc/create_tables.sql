@@ -113,23 +113,26 @@ CREATE TABLE IF NOT EXISTS inventory_status (
 ) CHARACTER SET utf8mb4;
 
 -- ------------------------------------------------------------
--- 7. detection_log (영상 인식 이력 - 누적, slot 기반)
+-- 7. detection_log (영상 인식 이력 - 누적, slot + patrol 기반)
+-- patrol_id 포함 → 순찰 완료 후 '이번 순찰에서 안 보인 슬롯' 자동 탐지 가능
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS detection_log (
     log_id            INT AUTO_INCREMENT PRIMARY KEY,
-    slot_id           INT  COMMENT '인식된 슬롯 (신규 슬롯이면 NULL 후 생성)',
+    patrol_id         INT  NOT NULL    COMMENT '소속 순찰 회차 → 순찰별 스캔 목록 추적',
+    slot_id           INT              COMMENT '인식된 슬롯 (신규면 NULL → 생성 후 UPDATE)',
     shelf_id          INT  NOT NULL,
-    product_id        INT  COMMENT '인식 실패 시 NULL',
-    detected_category VARCHAR(50)  COMMENT 'YOLO 1차 분류 결과',
-    detected_product  VARCHAR(100) COMMENT 'Keras 2차 식별 결과',
-    barcode_value     VARCHAR(50)  COMMENT '감지된 바코드 원본 값',
-    confidence        FLOAT        COMMENT '인식 신뢰도 (0.0 ~ 1.0)',
+    product_id        INT              COMMENT '인식 실패 시 NULL',
+    detected_category VARCHAR(50)      COMMENT 'YOLO 1차 분류 결과',
+    detected_product  VARCHAR(100)     COMMENT 'Keras 2차 식별 결과',
+    barcode_value     VARCHAR(50)      COMMENT '감지된 바코드 원본 값',
+    confidence        FLOAT            COMMENT '인식 신뢰도 (0.0 ~ 1.0)',
     result            ENUM('있다','없다','다른제품') NOT NULL,
-    odom_x            FLOAT        COMMENT '감지 시점 로봇 X 위치 (raw odom)',
-    odom_y            FLOAT        COMMENT '감지 시점 로봇 Y 위치 (raw odom)',
+    odom_x            FLOAT            COMMENT '감지 시점 로봇 X 위치 (raw odom)',
+    odom_y            FLOAT            COMMENT '감지 시점 로봇 Y 위치 (raw odom)',
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (slot_id)  REFERENCES slot(slot_id),
-    FOREIGN KEY (shelf_id) REFERENCES shelf(shelf_id)
+    FOREIGN KEY (patrol_id) REFERENCES patrol_log(patrol_id),
+    FOREIGN KEY (slot_id)   REFERENCES slot(slot_id),
+    FOREIGN KEY (shelf_id)  REFERENCES shelf(shelf_id)
 ) CHARACTER SET utf8mb4;
 
 -- ------------------------------------------------------------
@@ -147,14 +150,18 @@ CREATE TABLE IF NOT EXISTS waypoint (
 
 -- ------------------------------------------------------------
 -- 9. patrol_log (순찰 회차 기록)
+-- 순찰 완료 시 웹서버가 미감지 슬롯을 자동으로 empty/deleted 처리
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS patrol_log (
     patrol_id           INT AUTO_INCREMENT PRIMARY KEY,
     start_time          DATETIME NOT NULL,
-    end_time            DATETIME              COMMENT '완료 전 NULL',
+    end_time            DATETIME     COMMENT '완료 전 NULL',
     status              ENUM('진행중','완료','중단') DEFAULT '진행중',
     total_waypoints     INT DEFAULT 0,
-    completed_waypoints INT DEFAULT 0
+    completed_waypoints INT DEFAULT 0,
+    new_slots           INT DEFAULT 0 COMMENT '이번 순찰에서 새로 추가된 슬롯 수',
+    moved_slots         INT DEFAULT 0 COMMENT '이번 순찰에서 이동 감지된 슬롯 수',
+    missing_slots       INT DEFAULT 0 COMMENT '이번 순찰에서 사라진 슬롯 수 (empty/deleted)'
 ) CHARACTER SET utf8mb4;
 
 -- ------------------------------------------------------------
