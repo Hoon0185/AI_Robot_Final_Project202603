@@ -45,7 +45,7 @@ def generate_launch_description():
         namespace='TB3_2',
         output='screen',
         parameters=[{'use_sim_time': True}],
-        arguments=['-resolution', '0.05', '-publish_period_sec', '1.0']
+        arguments=['-resolution', '0.03', '-publish_period_sec', '1.0']
     )
 
     # 4. RViz2 노드 추가 (시각화용)
