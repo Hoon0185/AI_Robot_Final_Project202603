@@ -177,3 +177,11 @@ CREATE TABLE IF NOT EXISTS alert (
     is_resolved BOOLEAN  DEFAULT FALSE,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (slot_id)    REFERENCES slot(slot_id),
+    FOREIGN KEY (shelf_id)   REFERENCES shelf(shelf_id),
+    FOREIGN KEY (product_id) REFERENCES product_master(product_id)
+) CHARACTER SET utf8mb4;
+
+-- ============================================================
+-- 확인
+-- ============================================================
+SHOW TABLES;
