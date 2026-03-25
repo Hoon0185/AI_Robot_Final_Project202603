@@ -100,6 +100,18 @@ ros2 param set /patrol_scheduler scheduled_times '["09:00", "13:00", "18:00"]'
 - 서비스 타입: `std_srvs/srv/Trigger`
 
 ```bash
-# 터미널에서 즉시 순찰 시작 명령
-ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 ```
+
+## 7. 문제 해결 (Troubleshooting)
+
+### A. `tf2` 프레임 에러 (`/base_scan` 관련)
+ROS 2 Humble 이상에서는 프레임 ID 처음에 슬래시(`/`)가 있으면 오류가 발생합니다.
+- **증상**: `slam_toolbox`에서 `Invalid argument "/base_scan"` 에러 발생
+- **해결**: 로봇의 `robot.launch.py`에서 `frame_id` 설정 시 슬래시를 제거했습니다. (`base_scan`으로 사용)
+
+### B. 시간 동기화 에러 (`TF_OLD_DATA` 관련)
+로봇과 PC의 시간이 맞지 않으면 데이터가 무시됩니다.
+- **증상**: `Warning: TF_OLD_DATA ignoring data from the past`
+- **해결**: 
+  1. 로봇에서 자동 시간 동기화 일시 중지: `sudo systemctl stop systemd-timesyncd`
+  2. PC 시간으로 로봇 시간 설정: `ssh penguin@192.168.1.201 "sudo date -s @$(date +%s)"` (PC 터미널에서 실행)
