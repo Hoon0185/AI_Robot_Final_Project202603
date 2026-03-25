@@ -4,31 +4,46 @@ import './App.css'
 function App() {
   const [status, setStatus] = useState({ status: 'offline', database: 'unknown' });
   const [patrolList, setPatrolList] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // 백엔드(FastAPI)에서 데이터를 가져오는 함수
   const fetchGilbotData = async () => {
     try {
       setLoading(true);
-      // 1. 서버 상태 가져오기 (FastAPI 8000 포트로 전화 걸기!)
+      // 1. 서버 상태 가져오기
       const statusRes = await fetch('/api/status');
-      const statusData = await statusRes.json();
-      setStatus(statusData);
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        // 데이터 구조가 올바른지 확인 후 업데이트
+        setStatus({
+          status: statusData.status || 'offline',
+          database: statusData.database || 'unknown'
+        });
+      }
 
       // 2. 최근 순찰 로그 가져오기
       const patrolRes = await fetch('/api/patrol/list');
-      const patrolData = await patrolRes.json();
-      setPatrolList(patrolData);
+      if (patrolRes.ok) {
+        const patrolData = await patrolRes.json();
+        // 응답이 배열인지 확인 후 업데이트
+        if (Array.isArray(patrolData)) {
+          setPatrolList(patrolData);
+        }
+      }
     } catch (error) {
-      console.error("데이터를 가져오는데 실패했습니다:", error);
+      console.error("연결 확인 실패 (서버가 아직 꺼져있을 수 있습니다):", error);
+      // 에러 시 상태 초기화
+      setStatus({ status: 'offline', database: 'unknown' });
     } finally {
       setLoading(false);
     }
   };
 
-  // 컴포넌트가 처음 나타날 때 실행!
   useEffect(() => {
     fetchGilbotData();
+    // 10초마다 자동으로 새로고침 (선택 사항)
+    const timer = setInterval(fetchGilbotData, 10000);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -42,22 +57,22 @@ function App() {
         <div className="card">
           <h3>서버 상태</h3>
           <p className={status.status === 'running' ? 'online' : 'offline'}>
-            {status.status.toUpperCase()}
+            {(status.status || 'OFFLINE').toUpperCase()}
           </p>
         </div>
         <div className="card">
           <h3>DB 연결</h3>
           <p className={status.database === 'connected' ? 'online' : 'offline'}>
-            {status.database.toUpperCase()}
+            {(status.database || 'UNKNOWN').toUpperCase()}
           </p>
         </div>
       </section>
 
       <section className="patrol-log">
         <h2>📋 최근 순찰 기록 (TOP 10)</h2>
-        {loading ? (
+        {loading && patrolList.length === 0 ? (
           <p>데이터 로딩 중...</p>
-        ) : (
+        ) : Array.isArray(patrolList) && patrolList.length > 0 ? (
           <table>
             <thead>
               <tr>
@@ -78,11 +93,17 @@ function App() {
               ))}
             </tbody>
           </table>
+        ) : (
+          <div className="no-data">
+            <p>데이터가 없거나 서버와 연결되지 않았습니다.</p>
+            <p className="hint">(FastAPI 서버가 실행 중인지 확인하세요)</p>
+          </div>
         )}
       </section>
 
-      <button className="refresh-btn" onClick={fetchGilbotData}>
-        데이터 갱신
+      <p className="last-update">최지막 갱신: {new Date().toLocaleTimeString()}</p>
+      <button className="refresh-btn" onClick={fetchGilbotData} disabled={loading}>
+        {loading ? '갱신 중...' : '데이터 갱신'}
       </button>
     </div>
   )
