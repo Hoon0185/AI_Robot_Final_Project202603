@@ -40,14 +40,14 @@ ros2 topic echo /clicked_point
 ## 5. 맵 저장 및 내비게이션 전환
 ### A. 맵 저장
 ```bash
-# maps 폴더에서 실행 (파일명: my_map_02)
-ros2 run nav2_map_server map_saver_cli -f ~/my_map_02
+# maps 폴더에서 실행 (파일명: my_map_03)
+ros2 run nav2_map_server map_saver_cli -f ~/my_map_03
 ```
 
 ### B. 내비게이션 실행 (순찰 모드)
 **주의**: SLAM을 종료(`Ctrl+C`)한 후 실행해야 프레임 충돌이 없습니다.
 ```bash
-ros2 launch turtlebot3_navigation2 navigation2.launch.py use_sim_time:=false autostart:=true map:=/절대경로/my_map_02.yaml
+ros2 launch turtlebot3_navigation2 navigation2.launch.py use_sim_time:=false autostart:=true map:=/절대경로/my_map_03.yaml
 ```
 * **Tip**: 실행 후 RViz에서 **[2D Pose Estimate]**로 로봇의 초기 위치를 반드시 찍어주세요.
 
@@ -101,7 +101,7 @@ ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 * **초기 위치**: RViz에서 `2D Pose Estimate`를 다시 찍어주세요.
 
 ### B. 맵 로딩 실패 (map_server)
-* `my_map_02.yaml` 파일 내부의 `image: ...` 경로가 실제 `.pgm` 파일명과 일치하는지 확인하세요.
+* `my_map_03.yaml` 파일 내부의 `image: ...` 경로가 실제 `.pgm` 파일명과 일치하는지 확인하세요.
 
 ### C. 순찰 노드 에러
 * `shelf_coords.yaml` 파일이 `/**: ros__parameters:` 중첩 구조를 유지하고 있는지 확인하세요.
