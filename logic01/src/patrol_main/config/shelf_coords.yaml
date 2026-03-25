@@ -1,18 +1,6 @@
-# 진열대 좌표 설정 (shelf_coords.yaml)
-# [주의] SLAM 완료 후 Rviz에서 좌표를 측정하여 아래 값을 실제 위치로 수정하세요.
-
 /**:
   ros__parameters:
     shelves:
-      shelf_1:
-        x: 0.5
-        y: 0.0
-        yaw: 0.0
-      shelf_2:
-        x: 2.5
-        y: 0.1
-        yaw: 0.0
-      shelf_3:
-        x: 5.0
-        y: 0.2
-        yaw: 0.0
+      shelf_1: {x: -0.645, y: 0.316, yaw: 0.0}
+      shelf_2: {x: 0.473, y: 0.034, yaw: 0.0}
+      shelf_3: {x: 1.673, y: -0.038, yaw: 0.0}

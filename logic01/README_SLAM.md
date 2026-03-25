@@ -3,108 +3,81 @@
 CyCle03(메인 로직01)이 담당하는 SLAM 및 맵 생성을 위한 절차입니다. 터틀봇3 기준 명령어입니다.
 
 ## 1. 터틀봇3 기기 연결 및 환경 변수 설정
-터틀봇과 PC에서 모두 설정되어 있어야 합니다.
+터틀봇과 PC에서 모두 설정되어 있어야 합니다. (워크스페이스 소스 필수)
 ```bash
-export TURTLEBOT3_MODEL=burger  # 또는 waffle_pi
+export TURTLEBOT3_MODEL=burger
+source ~/turtlebot3_ws/install/setup.bash
 ```
 
-## 2. 로봇 기체 실행 (Bringup)
-로봇 본체(라즈베리 파이) 터미널에서 실행합니다. 센서와 모터를 활성화하는 필수 단계입니다.
+## 2. 시간 동기화 (필수)
+로봇과 PC의 시간이 맞지 않으면 TF 에러로 지도가 그려지지 않거나 로봇 위치가 사라집니다.
+```bash
+# 1. 로봇(SSH)에서 자동 동기화 중지
+ssh penguin@192.168.1.201 "echo robot123 | sudo -S systemctl stop systemd-timesyncd"
 
-### A. 기본 방식 (No Namespace)
+# 2. PC 시간을 로봇에 강제 주입 (PC 터미널에서 실행)
+ssh penguin@192.168.1.201 "echo robot123 | sudo -S date -s '@$(date +%s)'"
+```
+
+## 3. 로봇 기체 실행 (Bringup)
+로봇 본체(라즈베리 파이) 터미널에서 실행합니다.
 ```bash
 ros2 launch turtlebot3_bringup robot.launch.py
 ```
 
-### B. 네임스페이스 방식 (TB3_2)
-로봇 내부 노드들도 네임스페이스를 가지도록 실행합니다.
-```bash
-ros2 launch turtlebot3_bringup robot.launch.py __ns:=/TB3_2
-```
-
-## 3. SLAM 노드 실행
-PC(Remote PC)에서 실행합니다.
-
-### A. SLAM Toolbox 방식 (추천)
-Cartographer보다 설정이 간편하고 지도가 더 정밀하게 생성되는 경향이 있습니다.
+## 4. SLAM 및 좌표 추출
+### A. SLAM 실행 (PC)
 ```bash
 ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false
 ```
 
-### B. Cartographer 방식 (TB3_2 네임스페이스)
-네임스페이스(`TB3_2`) 환경에서 작업 시 사용합니다.
+### B. 선반 좌표 추출 (Publish Point)
+RViz 상단의 **[Publish Point]** 도구를 클릭하고 지도 위 선반 위치를 찍으세요. 터미널(PC)에서 아래 명령어로 좌표를 확인합니다.
 ```bash
-ros2 launch patrol_main tb3_2_cartographer.launch.py
-```
-* **주의**: 이 방식은 RViz에서 `Fixed Frame`을 **`TB3_2/map`**으로, `Map`의 `Durability Policy`를 **`Transient Local`**로 설정해야 지도가 나타납니다.
-
-## 4. 수동 조작 (Teleop)
-로봇을 움직여 맵을 그립니다.
-```bash
-# 기본 조작
-ros2 run turtlebot3_teleop teleop_keyboard
-
-# 네임스페이스/속도 조절 필요 시
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/cmd_vel -p repeat_rate:=10.0
+ros2 topic echo /clicked_point
 ```
 
-## 5. 맵 저장
+## 5. 맵 저장 및 내비게이션 전환
+### A. 맵 저장
 ```bash
-# maps 폴더에서 실행 (파일명: map_final)
-ros2 run nav2_map_server map_saver_cli -f ~/map_final
+# maps 폴더에서 실행 (파일명: my_map_02)
+ros2 run nav2_map_server map_saver_cli -f ~/my_map_02
 ```
-* 저장 후 `map_final.yaml`과 `map_final.pgm` 파일이 생성되었는지 확인하세요.
 
-## 6. 빌드 및 설정 (패키지)
-
-### A. 빌드 및 실행
+### B. 내비게이션 실행 (순찰 모드)
+**주의**: SLAM을 종료(`Ctrl+C`)한 후 실행해야 프레임 충돌이 없습니다.
 ```bash
-# 워크스페이스 루트에서 실행
+ros2 launch turtlebot3_navigation2 navigation2.launch.py use_sim_time:=false autostart:=true map:=/절대경로/my_map_02.yaml
+```
+* **Tip**: 실행 후 RViz에서 **[2D Pose Estimate]**로 로봇의 초기 위치를 반드시 찍어주세요.
+
+## 6. 순찰 시스템 실행
+```bash
+# 워크스페이스 빌드 및 실행
 colcon build --packages-select patrol_main
 source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
 
-### B. 진열대 좌표 설정 (YAML)
-`src/patrol_main/config/shelf_coords.yaml` 파일은 반드시 다음과 같은 **중첩 구조(ros__parameters)**를 가져야 합니다.
-```yaml
-/**:
-  ros__parameters:
-    shelves:
-      shelf_1: {x: 0.5, y: 0.0, yaw: 0.0}
-```
+### RViz 시각화 (선반 위치 확인)
+1. RViz에서 **[Add]** -> **'By topic'** -> `/shelf_markers` (**MarkerArray**) 추가
+2. 지도 위에 설정된 선반 위치(초록색 구체)와 이름이 노출됩니다.
 
-## 7. 순찰 스케줄링 모드 설정 (Dynamic Parameter)
-순찰 스케줄러는 두 가지 모드를 지원하며, 실시간으로 파라미터를 변경하여 적용할 수 있습니다.
-
-### 모드 1: 기준 시점 기반 주기 순찰 (Periodic)
-... (생략) ...
-# (기존 내용 유지)
-
-### 모드 3: 수동 순찰 실행 (Manual Trigger)
-스케줄과 상관없이 UI 또는 터미널에서 즉시 순찰을 시작합니다.
-- 서비스명: `/trigger_manual_patrol`
-- 서비스 타입: `std_srvs/srv/Trigger`
-
+## 7. 순찰 실행 (Manual Trigger)
 ```bash
-# 터미널에서 즉시 순찰 시작 명령
+# 즉시 순찰 시작 명령
 ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 ```
 
 ## 8. 문제 해결 (Troubleshooting)
 
-### A. `tf2` 프레임 에러 (`/base_scan` 관련)
-ROS 2 Humble 이상에서는 프레임 ID 처음에 슬래시(`/`)가 있으면 오류가 발생합니다.
-- **증상**: `slam_toolbox`에서 `Invalid argument "/base_scan"` 에러 발생
-- **해결**: 로봇의 `robot.launch.py`에서 `frame_id` 설정 시 슬래시를 제거했습니다. (`base_scan`으로 사용)
+### A. 로봇 위치가 안 나타날 때
+* **시간 동기화**: 2번 항목을 다시 수행하세요.
+* **노드 충돌**: `SLAM`과 `Navigation`이 동시에 켜져 있는지 확인하고 하나만 켜세요.
+* **초기 위치**: RViz에서 `2D Pose Estimate`를 다시 찍어주세요.
 
-### B. 시간 동기화 에러 (`TF_OLD_DATA` 관련)
-로봇과 PC의 시간이 맞지 않으면 데이터가 무시됩니다.
-- **증상**: `Warning: TF_OLD_DATA` 또는 `Message Filter dropping message`
-- **해결**: 
-  1. 로봇에서 자동 시간 동기화 일시 중지: `sudo systemctl stop systemd-timesyncd`
-  2. PC 시간으로 로봇 시간 설정: `ssh penguin@192.168.1.201 "sudo date -s @$(date +%s)"` (PC 터미널에서 실행)
+### B. 맵 로딩 실패 (map_server)
+* `my_map_02.yaml` 파일 내부의 `image: ...` 경로가 실제 `.pgm` 파일명과 일치하는지 확인하세요.
 
-### C. 노드 크래시 (Import Error)
-- **증상**: `NameError: name 'time' is not defined`
-- **해결**: `patrol_node.py` 상단에 `import time`이 누락되었던 문제를 수정하였습니다.
+### C. 순찰 노드 에러
+* `shelf_coords.yaml` 파일이 `/**: ros__parameters:` 중첩 구조를 유지하고 있는지 확인하세요.

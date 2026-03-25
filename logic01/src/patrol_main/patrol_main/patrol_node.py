@@ -4,6 +4,7 @@ from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
+from action_msgs.msg import GoalStatus
 import yaml
 import os
 import time
@@ -64,7 +65,8 @@ class PatrolNode(Node):
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
         
-        self.get_logger().info(f'Navigating to {shelf_name}...')
+        
+        self.get_logger().info(f'Navigating to {shelf_name} (x: {coords["x"]}, y: {coords["y"]})...')
         
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
@@ -93,13 +95,17 @@ class PatrolNode(Node):
         self._get_result_future.add_done_callback(self.get_result_callback)
 
     def get_result_callback(self, future):
-        result = future.result().result
-        self.get_logger().info(f'Arrival at shelf {self.shelf_list[self.current_shelf_idx]} confirmed.')
-        
-        # 여기서 영상 인식을 위한 대기 로직 등을 추가할 수 있습니다.
-        time.sleep(2) 
-        
-        self.current_shelf_idx += 1
+        status = future.result().status
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info(f'Arrival at shelf {self.shelf_list[self.current_shelf_idx]} confirmed.')
+            time.sleep(2) 
+            self.current_shelf_idx += 1
+        else:
+            self.get_logger().error(f'Failed to reach {self.shelf_list[self.current_shelf_idx]}. Status: {status}')
+            # Optional: Stop patrol or retry
+            self.is_patrolling = False
+            return
+            
         self.send_next_goal()
 
 def main(args=None):

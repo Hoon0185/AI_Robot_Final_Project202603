@@ -23,5 +23,12 @@ def generate_launch_description():
             name='patrol_node',
             parameters=[config_file],
             output='screen'
+        ),
+        Node(
+            package='patrol_main',
+            executable='patrol_visualizer',
+            name='patrol_visualizer',
+            parameters=[config_file],
+            output='screen'
         )
     ])
