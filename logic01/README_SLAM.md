@@ -63,9 +63,33 @@ ros2 launch patrol_main patrol.launch.py
 1. RViz에서 **[Add]** -> **'By topic'** -> `/shelf_markers` (**MarkerArray**) 추가
 2. 지도 위에 설정된 선반 위치(초록색 구체)와 이름이 노출됩니다.
 
-## 7. 순찰 실행 (Manual Trigger)
+## 7. 순찰 스케줄링 및 모드 설정 (Dynamic Parameter)
+순찰 스케줄러는 실시간으로 파라미터를 변경하여 즉시 적용할 수 있습니다.
+
+### 모드 1: 주기 순찰 (Periodic)
+특정 기준 시점부터 일정한 간격(분 단위)으로 순찰을 반복합니다.
 ```bash
-# 즉시 순찰 시작 명령
+# 모드 설정
+ros2 param set /patrol_scheduler patrol_mode "periodic"
+# 간격 설정 (예: 60분 간격)
+ros2 param set /patrol_scheduler patrol_interval_min 60.0
+# 기준 시점 설정 (HH:MM 형식)
+ros2 param set /patrol_scheduler reference_time "00:00"
+```
+
+### 모드 2: 특정 시각 목록 순찰 (Scheduled)
+미리 정의된 시간 목록에 무조건 순찰을 시작합니다.
+```bash
+# 모드 설정
+ros2 param set /patrol_scheduler patrol_mode "scheduled"
+# 순찰 시각 목록 설정
+ros2 param set /patrol_scheduler scheduled_times ["09:00", "13:00", "18:00"]
+```
+
+### 모드 3: 수동 순찰 실행 (Manual Trigger)
+스케줄과 상관없이 UI 또는 터미널에서 즉시 순찰을 시작합니다.
+```bash
+# 터미널에서 즉시 순찰 시작 명령
 ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 ```
 
