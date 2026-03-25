@@ -105,3 +105,11 @@ ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 
 ### C. 순찰 노드 에러
 * `shelf_coords.yaml` 파일이 `/**: ros__parameters:` 중첩 구조를 유지하고 있는지 확인하세요.
+
+### D. 로봇이 움직이지 않고 복구(Recovery)만 반복할 때
+주변에 장애물이 없는데도 로봇이 멈춘 경우, 코스트맵에 "유령 장애물"이 남아있을 수 있습니다.
+- **해결**: 아래 명령어로 코스트맵을 강제 초기화하세요.
+  ```bash
+  ros2 service call /local_costmap/clear_entirely_local_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
+  ros2 service call /global_costmap/clear_entirely_global_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
+  ```
