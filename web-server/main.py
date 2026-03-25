@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
@@ -10,7 +11,16 @@ load_dotenv()
 app = FastAPI(
     title="Gilbot API Server",
     description="편의점 매대 관리 로봇(Gilbot) 제어를 위한 백엔드 서버",
-    version="0.2.0"
+    version="0.2.2"
+)
+
+# CORS 설정: 프론트엔드(React 등)의 접속을 허용합니다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 실무에서는 ["http://localhost:3000"] 처럼 특정 주소만 넣는 것을 권장합니다.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 데이터베이스 연결 함수
@@ -43,7 +53,7 @@ async def get_status():
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
     if conn:
         conn.close()
-        
+
     return {
         "status": "running",
         "database": db_status,
@@ -55,7 +65,7 @@ async def list_patrols():
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=500, detail="Database connection failed")
-        
+
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM patrol_log ORDER BY patrol_id DESC LIMIT 10")

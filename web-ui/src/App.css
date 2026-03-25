@@ -1,0 +1,99 @@
+:root {
+  --bg-color: #0f172a;
+  --card-color: #1e293b;
+  --accent-color: #38bdf8;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dashboard {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+header h1 {
+  font-size: 3rem;
+  background: linear-gradient(to right, #38bdf8, #818cf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+
+header p {
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  letter-spacing: 0.2rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 2rem;
+  margin: 3rem 0;
+}
+
+.card {
+  background: var(--card-color);
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease;
+}
+
+.card:hover { rotate: 1deg; scale: 1.05; }
+
+.card h3 { color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; margin-bottom: 1rem; }
+.card p { font-size: 1.5rem; font-weight: 800; margin: 0; }
+
+.online { color: var(--success); text-shadow: 0 0 10px rgba(34, 197, 94, 0.5); }
+.offline { color: var(--danger); }
+
+.patrol-log { margin-top: 4rem; text-align: left; }
+.patrol-log h2 { border-left: 5px solid var(--accent-color); padding-left: 1rem; margin-bottom: 1.5rem; }
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+th { color: var(--text-muted); padding: 1rem; text-transform: uppercase; font-size: 0.8rem; }
+td {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1rem;
+  text-align: center;
+}
+td:first-child { border-radius: 10px 0 0 10px; }
+td:last-child { border-radius: 0 10px 10px 0; }
+
+.refresh-btn {
+  margin-top: 3rem;
+  background: var(--accent-color);
+  color: var(--bg-color);
+  border: none;
+  padding: 1rem 3rem;
+  border-radius: 50px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover {
+  transform: scale(0.95);
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.6);
+}
