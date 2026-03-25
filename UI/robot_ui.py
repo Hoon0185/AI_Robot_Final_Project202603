@@ -9,21 +9,32 @@ os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 
 class RobotControlPanel(QWidget):
     # --- [LOGIC SIGNALS] ---
+
+    # 순찰 시간 설정(분)
     patrolTimeConfirmed = pyqtSignal(int)
+    # 장애물 인식 시간(초)
     obstacleConfirmed = pyqtSignal(int)
+    # 상/하/좌/우/정지 명령 전달
     moveCommand = pyqtSignal(str)
+    # 부저 울리기 버튼 클릭
     buzzerClicked = pyqtSignal()
+    # 순찰 복귀 버튼 클릭
     returnClicked = pyqtSignal()
+    # 비상 정지 버튼 클릭
     emergencyClicked = pyqtSignal()
+    # 초기 위치 복귀 팝업에서 "예" 클릭 시 발생
     resetConfirmed = pyqtSignal()
+
+    # --------------------------------
 
     def __init__(self):
         super().__init__()
-        self._init_styles()
-        self.initUI()
-        self._init_timers()
-        self._connect_internal_events()
+        self._init_styles() # QSS 스타일 정의 로드
+        self.initUI() # 전체 레이아웃 구성
+        self._init_timers() # 카메라 영상 갱신을 위한 타이머 설정
+        self._connect_internal_events() # UI 내부 버튼 클릭 시 시그널 발생
 
+    # UI에 적용할 CSS 스타일 Init
     def _init_styles(self):
         self.main_qss = "background-color: #F0F4F8; font-family: 'Malgun Gothic';"
         # 기본 버튼 스타일 (호버 배경색 + 클릭 시 텍스트 이동 효과 포함)
@@ -38,6 +49,7 @@ class RobotControlPanel(QWidget):
             QSlider::handle:horizontal { background: #E86464; width: 18px; height: 18px; margin: -5px 0; border-radius: 9px; }
         """
 
+    # 메인 레이아웃 및 구성 요소 배치
     def initUI(self):
         self.setWindowTitle("Robot Management System")
         self.setGeometry(100, 100, 1200, 850)
@@ -58,6 +70,7 @@ class RobotControlPanel(QWidget):
         self.container_layout.addWidget(self.overlay, 0, 0)
         self.container_layout.addWidget(self.map_overlay, 0, 0)
 
+    # 왼쪽 패널 구성 : 캠 영상, 로그 시간, 슬라이더들
     def _setup_left_panel(self):
         left_container = QVBoxLayout()
         self.cam_label = QLabel("캠 영상 송출")
@@ -69,7 +82,7 @@ class RobotControlPanel(QWidget):
         logs_frame = QFrame()
         logs_frame.setStyleSheet("background-color: white; border-radius: 10px; border: 1px solid #D1D9E6;")
         logs_layout = QHBoxLayout(logs_frame)
-        logs_layout.addWidget(QLabel("🗓 LOGS  마지막 순찰 시간"))
+        logs_layout.addWidget(QLabel("  🗓  마지막 순찰 시간  "))
         self.logs_time = QLabel("2026:03:24:11:20:00")
         self.logs_time.setStyleSheet("background-color: #F0F4F8; padding: 8px; border-radius: 5px;")
         logs_layout.addStretch(); logs_layout.addWidget(self.logs_time)
@@ -87,6 +100,7 @@ class RobotControlPanel(QWidget):
         left_container.addWidget(settings_frame)
         self.main_layout.addLayout(left_container, 1)
 
+    # 왼쪽 패널의 슬라이더 구성(슬라이더+라벨+버튼)
     def _create_slider_row(self, label_text, default_val, unit):
         row_frame = QFrame()
         row_frame.setStyleSheet("QFrame { border: 1px solid #DDE4ED; border-radius: 15px; background: white; }")
@@ -104,6 +118,7 @@ class RobotControlPanel(QWidget):
         slider.valueChanged.connect(lambda v: val_lbl.setText(f"{v}{unit}"))
         return {'frame': row_frame, 'slider': slider, 'btn': btn}
 
+    # 오른쪽 패널 구성: 핵심 기능 버튼 5개와 로고용 레이아웃 공간 배치
     def _setup_right_panel(self):
         self.right_stack = QStackedWidget()
         self.page_main = QWidget()
