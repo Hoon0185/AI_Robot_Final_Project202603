@@ -47,9 +47,9 @@ class PatrolScheduler(Node):
             # 실시간 파라미터 업데이트 반영
             self.get_logger().info(f'Parameter {param.name} changing to {param.value}')
         
-        # 콜백이 끝난 후 값을 다시 읽어오도록 지연 업데이트 (간단한 구현을 위해)
-        self.create_timer(0.1, self.update_config, timer_period_callback=None) 
-        # rclpy Timer의 한계로 인해 여기서 직접 update_config를 부르는 것이 안전함 (아래 수정)
+        # 콜백이 끝난 후 값을 즉시 업데이트
+        # (주의: SetParametersResult가 True여야 실제 값이 바뀜)
+        self.update_config()
         return rclpy.node.SetParametersResult(successful=True)
 
     def clock_check_callback(self):

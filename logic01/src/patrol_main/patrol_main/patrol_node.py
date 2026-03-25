@@ -39,7 +39,13 @@ class PatrolNode(Node):
         yaml_path = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
         with open(yaml_path, 'r') as f:
             config = yaml.safe_load(f)
-            self.shelves = config['shelves']
+            # ROS 2 파라미터 형식 (/** -> ros__parameters -> shelves)에 맞춰 읽어옵니다.
+            if '/**' in config:
+                self.shelves = config['/**']['ros__parameters']['shelves']
+            elif 'patrol_node' in config:
+                self.shelves = config['patrol_node']['ros__parameters']['shelves']
+            else:
+                self.shelves = config['shelves']
 
     def cmd_callback(self, msg):
         if msg.data == 'START_PATROL' and not self.is_patrolling:
