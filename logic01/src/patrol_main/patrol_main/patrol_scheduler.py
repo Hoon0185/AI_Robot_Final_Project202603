@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 import time
 
 class PatrolScheduler(Node):
@@ -17,6 +18,10 @@ class PatrolScheduler(Node):
         self.update_config()
         
         self.publisher_ = self.create_publisher(String, 'patrol_cmd', 10)
+        
+        # 2. 서비스 서버 추가 (UI 수동 트리거용)
+        self.srv = self.create_service(Trigger, 'trigger_manual_patrol', self.manual_trigger_callback)
+        
         self.timer = self.create_timer(1.0, self.clock_check_callback)
         self.add_on_set_parameters_callback(self.parameter_callback)
         
@@ -77,6 +82,13 @@ class PatrolScheduler(Node):
         msg.data = 'START_PATROL'
         self.publisher_.publish(msg)
         self.get_logger().info(f'[{reason}] Starting Patrol at {time.strftime("%H:%M:%S", time.localtime())}')
+
+    def manual_trigger_callback(self, request, response):
+        self.get_logger().info('Manual patrol trigger received via Service.')
+        self.trigger_patrol('Manual trigger via UI')
+        response.success = True
+        response.message = "Patrol started manually."
+        return response
 
 def main(args=None):
     rclpy.init(args=args)

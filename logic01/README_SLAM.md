@@ -93,3 +93,13 @@ ros2 param set /patrol_scheduler patrol_interval_min 30.0
 ros2 param set /patrol_scheduler patrol_mode "scheduled"
 ros2 param set /patrol_scheduler scheduled_times '["09:00", "13:00", "18:00"]'
 ```
+
+### 모드 3: 수동 순찰 실행 (Manual Trigger)
+스케줄과 상관없이 UI 또는 터미널에서 즉시 순찰을 시작합니다.
+- 서비스명: `/trigger_manual_patrol`
+- 서비스 타입: `std_srvs/srv/Trigger`
+
+```bash
+# 터미널에서 즉시 순찰 시작 명령
+ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
+```
