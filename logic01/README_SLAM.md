@@ -100,6 +100,8 @@ ros2 param set /patrol_scheduler scheduled_times '["09:00", "13:00", "18:00"]'
 - 서비스 타입: `std_srvs/srv/Trigger`
 
 ```bash
+# 터미널에서 즉시 순찰 시작 명령
+ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 ```
 
 ## 7. 문제 해결 (Troubleshooting)
