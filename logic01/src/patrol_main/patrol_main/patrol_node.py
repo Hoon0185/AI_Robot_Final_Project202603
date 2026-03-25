@@ -6,6 +6,7 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 import yaml
 import os
+import time
 from ament_index_python.packages import get_package_share_directory
 
 class PatrolNode(Node):
@@ -103,7 +104,6 @@ class PatrolNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    import time # Result callback에서 사용
     node = PatrolNode()
     rclpy.spin(node)
     node.destroy_node()

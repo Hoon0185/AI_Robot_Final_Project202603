@@ -5,14 +5,14 @@
   ros__parameters:
     shelves:
       shelf_1:
-        x: 1.0     # Rviz에서 확인한 x 좌표
-        y: 0.5     # Rviz에서 확인한 y 좌표
-        yaw: 0.0   # 로봇이 바라볼 방향 (radians)
+        x: 0.5
+        y: 0.0
+        yaw: 0.0
       shelf_2:
         x: 2.5
-        y: -1.2
-        yaw: 1.57  # 90도
+        y: 0.1
+        yaw: 0.0
       shelf_3:
-        x: -0.5
-        y: 2.0
-        yaw: 3.14  # 180도
+        x: 5.0
+        y: 0.2
+        yaw: 0.0

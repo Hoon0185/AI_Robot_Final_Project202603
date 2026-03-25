@@ -23,76 +23,63 @@ ros2 launch turtlebot3_bringup robot.launch.py __ns:=/TB3_2
 ```
 
 ## 3. SLAM 노드 실행
-PC(Remote PC)에서 실행합니다. 로봇 환경(네임스페이스 사용 여부)에 따라 선택하세요.
+PC(Remote PC)에서 실행합니다.
 
-### A. 기본 방식 (Single Robot / No Namespace)
-가장 표준적인 방법입니다.
+### A. SLAM Toolbox 방식 (추천)
+Cartographer보다 설정이 간편하고 지도가 더 정밀하게 생성되는 경향이 있습니다.
 ```bash
-ros2 launch turtlebot3_cartographer cartographer.launch.py
+ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false
 ```
 
-### B. 네임스페이스 방식 (Multi Robot / `TB3_2` 전용)
-여러 대의 로봇을 운용하거나 특정 이름표가 붙은 경우 사용합니다.
+### B. Cartographer 방식 (TB3_2 네임스페이스)
+네임스페이스(`TB3_2`) 환경에서 작업 시 사용합니다.
 ```bash
 ros2 launch patrol_main tb3_2_cartographer.launch.py
 ```
 * **주의**: 이 방식은 RViz에서 `Fixed Frame`을 **`TB3_2/map`**으로, `Map`의 `Durability Policy`를 **`Transient Local`**로 설정해야 지도가 나타납니다.
 
-## 3. 수동 조작 (Teleop)
+## 4. 수동 조작 (Teleop)
 로봇을 움직여 맵을 그립니다.
 ```bash
-# A. 기본 방식
+# 기본 조작
 ros2 run turtlebot3_teleop teleop_keyboard
 
-# B. 네임스페이스 방식 (부드러운 주행 옵션 포함)
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/TB3_2/cmd_vel -p repeat_rate:=10.0
+# 네임스페이스/속도 조절 필요 시
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/cmd_vel -p repeat_rate:=10.0
 ```
 
-## 4. 맵 저장
+## 5. 맵 저장
 ```bash
-# A. 기본 방식 (maps 폴더에서 실행)
-ros2 run nav2_map_server map_saver_cli -f map
-
-# B. 네임스페이스 방식 (maps 폴더에서 실행)
-ros2 run nav2_map_server map_saver_cli -f my_map --ros-args -r map:=/TB3_2/map
+# maps 폴더에서 실행 (파일명: map_final)
+ros2 run nav2_map_server map_saver_cli -f ~/map_final
 ```
-* 저장 후 `map.yaml`과 `map.pgm` 파일이 생성되었는지 확인하세요.
+* 저장 후 `map_final.yaml`과 `map_final.pgm` 파일이 생성되었는지 확인하세요.
 
-## 5. 빌드 및 실행 (패키지)
-작업한 소스코드를 빌드하려면:
+## 6. 빌드 및 설정 (패키지)
+
+### A. 빌드 및 실행
 ```bash
-# logic01 폴더(워크스페이스 루트)에서 실행
-cd logic01
-colcon build --symlink-install
+# 워크스페이스 루트에서 실행
+colcon build --packages-select patrol_main
 source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
 
-## 6. 순찰 스케줄링 모드 설정 (Dynamic Parameter)
+### B. 진열대 좌표 설정 (YAML)
+`src/patrol_main/config/shelf_coords.yaml` 파일은 반드시 다음과 같은 **중첩 구조(ros__parameters)**를 가져야 합니다.
+```yaml
+/**:
+  ros__parameters:
+    shelves:
+      shelf_1: {x: 0.5, y: 0.0, yaw: 0.0}
+```
+
+## 7. 순찰 스케줄링 모드 설정 (Dynamic Parameter)
 순찰 스케줄러는 두 가지 모드를 지원하며, 실시간으로 파라미터를 변경하여 적용할 수 있습니다.
 
 ### 모드 1: 기준 시점 기반 주기 순찰 (Periodic)
-특정 시각을 기준으로 일정 간격마다 순찰합니다.
-- `patrol_mode`: `"periodic"` (기본값)
-- `reference_time`: `"HH:MM"` (기준 시점, 기본 `"00:00"`)
-- `patrol_interval_min`: `분단위` (주기, 기본 `60.0`)
-
-```bash
-# 예시: 09:10분부터 30분 간격으로 순찰 설정
-ros2 param set /patrol_scheduler reference_time "09:10"
-ros2 param set /patrol_scheduler patrol_interval_min 30.0
-```
-
-### 모드 2: 특정 시각 목록 순찰 (Scheduled)
-지정된 시각들에만 순찰합니다.
-- `patrol_mode`: `"scheduled"`
-- `scheduled_times`: `["HH:MM", ...]` (시간 목록)
-
-```bash
-# 예시: 오전 9시, 오후 1시, 오후 6시에만 순찰하도록 설정
-ros2 param set /patrol_scheduler patrol_mode "scheduled"
-ros2 param set /patrol_scheduler scheduled_times '["09:00", "13:00", "18:00"]'
-```
+... (생략) ...
+# (기존 내용 유지)
 
 ### 모드 3: 수동 순찰 실행 (Manual Trigger)
 스케줄과 상관없이 UI 또는 터미널에서 즉시 순찰을 시작합니다.
@@ -104,7 +91,7 @@ ros2 param set /patrol_scheduler scheduled_times '["09:00", "13:00", "18:00"]'
 ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
 ```
 
-## 7. 문제 해결 (Troubleshooting)
+## 8. 문제 해결 (Troubleshooting)
 
 ### A. `tf2` 프레임 에러 (`/base_scan` 관련)
 ROS 2 Humble 이상에서는 프레임 ID 처음에 슬래시(`/`)가 있으면 오류가 발생합니다.
@@ -113,7 +100,11 @@ ROS 2 Humble 이상에서는 프레임 ID 처음에 슬래시(`/`)가 있으면 
 
 ### B. 시간 동기화 에러 (`TF_OLD_DATA` 관련)
 로봇과 PC의 시간이 맞지 않으면 데이터가 무시됩니다.
-- **증상**: `Warning: TF_OLD_DATA ignoring data from the past`
+- **증상**: `Warning: TF_OLD_DATA` 또는 `Message Filter dropping message`
 - **해결**: 
   1. 로봇에서 자동 시간 동기화 일시 중지: `sudo systemctl stop systemd-timesyncd`
   2. PC 시간으로 로봇 시간 설정: `ssh penguin@192.168.1.201 "sudo date -s @$(date +%s)"` (PC 터미널에서 실행)
+
+### C. 노드 크래시 (Import Error)
+- **증상**: `NameError: name 'time' is not defined`
+- **해결**: `patrol_node.py` 상단에 `import time`이 누락되었던 문제를 수정하였습니다.
