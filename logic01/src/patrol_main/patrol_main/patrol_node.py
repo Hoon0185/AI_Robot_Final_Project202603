@@ -13,10 +13,10 @@ from ament_index_python.packages import get_package_share_directory
 class PatrolNode(Node):
     def __init__(self):
         super().__init__('patrol_node')
-        
+
         # 1. Nav2 Action Client 설정
         self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-        
+
         # 2. 파라미터 및 프레임 설정
         # 네임스페이스가 있으면 'NS/map', 없으면 'map'을 기본으로 사용
         ns = self.get_namespace().strip('/')
@@ -24,15 +24,15 @@ class PatrolNode(Node):
         self.declare_parameter('map_frame', default_frame)
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.load_shelves()
-        
+
         # 3. 순찰 상태 관리
         self.shelf_list = list(self.shelves.keys())
         self.current_shelf_idx = 0
         self.is_patrolling = False
-        
+
         # 4. 순찰 명령 구독
         self.cmd_sub = self.create_subscription(String, 'patrol_cmd', self.cmd_callback, 10)
-        
+
         self.get_logger().info('Patrol Main Node has been started.')
 
     def load_shelves(self):
@@ -64,16 +64,16 @@ class PatrolNode(Node):
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
-        
-        
+
+
         self.get_logger().info(f'Navigating to {shelf_name} (x: {coords["x"]}, y: {coords["y"]})...')
-        
+
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
         goal_msg.pose.pose.position.x = float(coords['x'])
         goal_msg.pose.pose.position.y = float(coords['y'])
-        
+
         # Orientation (Simplified: yaw to quaternion)
         import math
         yaw = float(coords['yaw'])
@@ -98,14 +98,22 @@ class PatrolNode(Node):
         status = future.result().status
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info(f'Arrival at shelf {self.shelf_list[self.current_shelf_idx]} confirmed.')
-            time.sleep(2) 
-            self.current_shelf_idx += 1
+
+            # 2초 뒤에 proceed_to_next_shelf 함수가 실행됩니다.
+            self._delay_timer = self.create_timer(2.0, self.proceed_to_next_shelf)
         else:
-            self.get_logger().error(f'Failed to reach {self.shelf_list[self.current_shelf_idx]}. Status: {status}')
-            # Optional: Stop patrol or retry
-            self.is_patrolling = False
-            return
-            
+            # 실패 시 순찰을 종료하지 않고 다음 선반으로 넘어감
+            self.get_logger().warn(f'Failed to reach {self.shelf_list[self.current_shelf_idx]}. Status: {status}')
+            self.get_logger().info('Skipping to the next shelf...')
+            self.current_shelf_idx += 1
+            self.send_next_goal()
+
+    def proceed_to_next_shelf(self):
+        # 1회성 지연을 위한 타이머이므로 실행 직후 취소(cancel) 해줍니다.
+        if self._delay_timer:
+            self._delay_timer.cancel()
+
+        self.current_shelf_idx += 1
         self.send_next_goal()
 
 def main(args=None):

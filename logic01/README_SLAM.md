@@ -63,6 +63,10 @@ ros2 launch patrol_main patrol.launch.py
 1. RViz에서 **[Add]** -> **'By topic'** -> `/shelf_markers` (**MarkerArray**) 추가
 2. 지도 위에 설정된 선반 위치(초록색 구체)와 이름이 노출됩니다.
 
+### 순찰 시스템의 주요 특징
+- **비차단형 지연(Non-blocking Delay)**: 선반 도착 후 2초간 정차할 때 `timer`를 사용하여 노드가 멈추지 않고 상시 통신 가능 상태를 유지합니다.
+- **장애 대응(Fault Tolerance)**: 특정 선반으로의 경로가 막혔을 경우, 순찰을 중단하지 않고 자동으로 해당 지점을 건너뛰고(Skipping) 다음 목표로 진행합니다.
+
 ## 7. 순찰 스케줄링 및 모드 설정 (Dynamic Parameter)
 순찰 스케줄러는 실시간으로 파라미터를 변경하여 즉시 적용할 수 있습니다.
 
