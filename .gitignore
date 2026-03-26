@@ -213,3 +213,6 @@ log/
 
 # IDE Settings
 .vscode/
+
+# 임시 파일
+UI/

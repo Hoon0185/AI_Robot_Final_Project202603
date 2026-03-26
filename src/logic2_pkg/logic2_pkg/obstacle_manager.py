@@ -4,6 +4,7 @@ from sensor_msgs.msg import LaserScan
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from nav2_msgs.srv import ClearEntireCostmap
 
 class ObstacleManager(Node):
   def __init__(self):
@@ -14,25 +15,31 @@ class ObstacleManager(Node):
       reliability=ReliabilityPolicy.BEST_EFFORT,
       depth=10
     )
-    # ---- 라이다(센서) 구독 ----
+    # ---- 구독 ----
     self.scan_sub = self.create_subscription(
       LaserScan,
       'scan',
       self.scan_callback,
       qos_profile
-      )
-    # ---- 로봇 실시간 위치 구독 ----
+    )
     self.odom_sub = self.create_subscription(
       Odometry,
       'odom',
       self.odom_callback,
       10
     )
-    # ---- 구동 신호 전송 ----
-    self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+    # ---- 명령어 발행 ----
+    # self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10) # 기존
+    self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel_obstacle', 10)
+
+    # ---- 서비스 클라이언트 ----
+    self.clear_costmap_client = self.create_client(
+      ClearEntireCostmap,
+      'local_costmap/clear_entirely_local_costmap'
+    )
 
     # ---- 타이머 설정 ----
-    timer_pub = 0.02
+    timer_pub = 0.1 #0.02
     self.timer_second = 1/timer_pub # 1초당 타이머 콜백 횟수 계산
     self.timer = self.create_timer(timer_pub, self.timer_callback)
 
@@ -103,11 +110,6 @@ class ObstacleManager(Node):
         self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 회전을 시작합니다.')
         self.is_blocked = False
         self.wait_counter = -int(2 * self.timer_second) # 우회 로직 진입 (2초)
-
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.angular.z = 1.0
-        self.cmd_vel_pub.publish(msg)
 
     ## ---- 우회 로직(수정 예정) ----
     elif self.wait_counter < 0:
