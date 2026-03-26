@@ -2,6 +2,8 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from typing import List, Optional
+from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
 
@@ -22,6 +24,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 데이터 모델 정의 (Pydantic)
+class PatrolInsert(BaseModel):
+    start_time: str
+    end_time: Optional[str] = None
+    status: str = "완료"
+    total_waypoints: int = 0
+    completed_waypoints: int = 0
+    new_slots: int = 0
+    moved_slots: int = 0
+    missing_slots: int = 0
+
+class Product(BaseModel):
+    product_id: Optional[int] = None
+    product_name: str
+    barcode: str
+    category: str = "General"
+    standard_qty: int = 0
 
 # 데이터베이스 연결 함수
 def get_db_connection():
@@ -74,6 +94,65 @@ async def list_patrols():
     finally:
         if conn:
             conn.close()
+
+# --- Patrol Log Admin API ---
+
+@app.post("/patrol/add")
+async def add_patrol(patrol: PatrolInsert):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO patrol_log (start_time, end_time, status, total_waypoints, completed_waypoints, new_slots, moved_slots, missing_slots)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        values = (patrol.start_time, patrol.end_time, patrol.status, patrol.total_waypoints, patrol.completed_waypoints, patrol.new_slots, patrol.moved_slots, patrol.missing_slots)
+        cursor.execute(query, values)
+        conn.commit()
+        return {"message": "Patrol log added successfully", "id": cursor.lastrowid}
+    except Error as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.delete("/patrol/{patrol_id}")
+async def delete_patrol(patrol_id: int):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM patrol_log WHERE patrol_id = %s", (patrol_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Log not found")
+        return {"message": "Patrol log deleted successfully"}
+    finally:
+        conn.close()
+
+# --- Product Master Admin API ---
+
+@app.get("/products")
+async def list_products():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM product_master ORDER BY product_id DESC")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+@app.post("/products/add")
+async def add_product(product: Product):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = "INSERT INTO product_master (product_name, barcode, category, standard_qty) VALUES (%s, %s, %s, %s)"
+        cursor.execute(query, (product.product_name, product.barcode, product.category, product.standard_qty))
+        conn.commit()
+        return {"message": "Product added successfully", "id": cursor.lastrowid}
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     import uvicorn
