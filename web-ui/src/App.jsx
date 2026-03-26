@@ -76,19 +76,19 @@ function App() {
           <table>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>로봇</th>
-                <th>위치</th>
+                <th>순찰 시작 시간</th>
                 <th>상태</th>
+                <th>완업 웨이포인트</th>
+                <th>슬롯 (신규/이동/분실)</th>
               </tr>
             </thead>
             <tbody>
               {patrolList.map((log) => (
                 <tr key={log.patrol_id}>
-                  <td>{log.patrol_id}</td>
-                  <td>{log.robot_id}</td>
-                  <td>{log.location || 'N/A'}</td>
-                  <td>{log.status}</td>
+                  <td>{new Date(log.start_time).toLocaleString()}</td>
+                  <td><span className={`status-tag ${log.status === '완료' ? 'completed' : log.status === '중단' ? 'error' : 'patrolling'}`}>{log.status}</span></td>
+                  <td>{log.completed_waypoints || 0} / {log.total_waypoints || 0}</td>
+                  <td>{log.new_slots || 0} / {log.moved_slots || 0} / {log.missing_slots || 0}</td>
                 </tr>
               ))}
             </tbody>
