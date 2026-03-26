@@ -27,7 +27,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-          'obstacle_manager = logic2_pkg.obstacle_manager:main',
+          'obstacle_node = logic2_pkg.obstacle_node:main',
         ],
     },
 )

@@ -6,9 +6,9 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from nav2_msgs.srv import ClearEntireCostmap
 
-class ObstacleManager(Node):
+class ObstacleNode(Node):
   def __init__(self):
-    super().__init__('obstacle_manager')
+    super().__init__('obstacle_node')
     self.declare_parameter('obstacle_wait_time',10) # 장애물 대기 시간(ui 조정을 위함)
 
     qos_profile = QoSProfile(
@@ -131,7 +131,7 @@ class ObstacleManager(Node):
 
 def main(args=None):
   rclpy.init(args=args)
-  node = ObstacleManager()
+  node = ObstacleNode()
   try:
     rclpy.spin(node)
   except KeyboardInterrupt:

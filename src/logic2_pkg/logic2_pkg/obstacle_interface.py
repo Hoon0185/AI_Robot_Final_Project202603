@@ -12,7 +12,7 @@ class ObstacleInterface:
 
     self.param_client = self.node.create_client(
       SetParameters,
-      'obstacle_manager/set_parameters'
+      'obstacle_node/set_parameters'
     )
 
     self.executor = rclpy.executors.SingleThreadedExecutor()
@@ -25,7 +25,7 @@ class ObstacleInterface:
     UI 슬라이더 값을 받아 노드에 전달하는 함수
     """
     if not self.param_client.wait_for_service(timeout_sec=2.0):
-      return False, "서비스를 이용할 수 없습니다. obstacle_manager 노드를 확인하세요."
+      return False, "서비스를 이용할 수 없습니다. obstacle_node 노드를 확인하세요."
 
     req = SetParameters.Request()
     val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=int(seconds))

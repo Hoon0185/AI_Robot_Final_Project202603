@@ -9,10 +9,10 @@ def generate_launch_description():
     actions=[
       PushRosNamespace('TB3_2'), # 팀원과 동일한 네임스페이스 적용
 
-      Node( # Obstacle Manager 노드
+      Node( # Obstacle node 노드
         package='logic2_pkg',
-        executable='obstacle_manager',
-        name='obstacle_manager',
+        executable='obstacle_node',
+        name='obstacle_node',
         parameters=[{'use_sim_time': True}],
         output='screen'
       ),
