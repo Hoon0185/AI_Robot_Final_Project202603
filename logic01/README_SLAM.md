@@ -31,7 +31,13 @@ ros2 launch turtlebot3_bringup robot.launch.py
 ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false
 ```
 
-### B. 선반 좌표 추출 (Publish Point)
+### B. 로봇 수동 조작 (PC)
+로봇을 움직여 지도를 완성합니다. 별도의 터미널(PC)에서 실행합니다.
+```bash
+ros2 run turtlebot3_teleop teleop_keyboard
+```
+
+### C. 선반 좌표 추출 (Publish Point)
 RViz 상단의 **[Publish Point]** 도구를 클릭하고 지도 위 선반 위치를 찍으세요. 터미널(PC)에서 아래 명령어로 좌표를 확인합니다.
 ```bash
 ros2 topic echo /clicked_point
