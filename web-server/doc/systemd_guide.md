@@ -29,7 +29,28 @@ WantedBy=multi-user.target
 3. **서비스 시작**: `sudo systemctl start gilbot-backend`
 4. **상태 확인**: `sudo systemctl status gilbot-backend`
 
-## 3. 왜 사용하나요?
-- **상시 가동**: 터미널 창을 닫아도 서버가 죽지 않습니다.
-- **자동 복구**: 서버 내부 에러로 프로세스가 죽으면 Systemd가 즉시 다시 살려냅니다.
-- **부팅 시 자동 실행**: 서버 장비를 껐다 켜도 자동으로 엔진이 돌아갑니다.
+## 4. 🚀 AWS Lightsail 실전 배포 버전
+
+실전 서버(AWS)는 유저명이 `ubuntu`이며, 폴더 경로가 다를 수 있습니다. 아래 설계도를 참조하세요.
+
+### 설계도 (/etc/systemd/system/gilbot-backend.service)
+```ini
+[Unit]
+Description=Gilbot FastAPI Backend Service
+After=network.target mysql.service
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/AI_Robot_Final_Project202603/web-server
+ExecStart=/usr/bin/python3 /home/ubuntu/AI_Robot_Final_Project202603/web-server/main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## 5. 💡 주의사항 (로컬 vs 실전)
+- **유저명**: 로컬은 `robot`, 실전은 `ubuntu`입니다.
+- **경로**: 로컬은 `/home/robot/...`, 실전은 `/home/ubuntu/...` 입니다.
+- **포트**: 8000번 포트가 이미 사용 중이라면, 실전에서도 `sudo fuser -k 8000/tcp`로 청소 후 엔진을 부팅하세요.
