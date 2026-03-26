@@ -47,9 +47,14 @@ ros2 run nav2_map_server map_saver_cli -f ~/my_map_03
 ### B. 내비게이션 실행 (순찰 모드)
 **주의**: SLAM을 종료(`Ctrl+C`)한 후 실행해야 프레임 충돌이 없습니다.
 ```bash
-ros2 launch turtlebot3_navigation2 navigation2.launch.py use_sim_time:=false autostart:=true map:=/절대경로/my_map_03.yaml
+ros2 launch turtlebot3_navigation2 navigation2.launch.py \
+use_sim_time:=false \
+autostart:=true \
+map:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/maps/my_map_03.yaml \
+params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/nav2_params.yaml
 ```
-* **Tip**: 실행 후 RViz에서 **[2D Pose Estimate]**로 로봇의 초기 위치를 반드시 찍어주세요.
+> [!TIP]
+> 위 명령어는 커스텀 `nav2_params.yaml`을 사용하여 WiFi 지연으로 인한 odom 에러를 방지하고 도착 정밀도를 높였습니다. 실행 후 RViz에서 **[2D Pose Estimate]**로 초기 위치를 잡아주세요.
 
 ## 6. 순찰 시스템 실행
 ```bash
