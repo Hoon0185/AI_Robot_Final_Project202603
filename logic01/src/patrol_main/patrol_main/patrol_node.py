@@ -8,6 +8,8 @@ from action_msgs.msg import GoalStatus
 import yaml
 import os
 import time
+import json
+from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 
 class PatrolNode(Node):
@@ -33,6 +35,11 @@ class PatrolNode(Node):
         # 4. 순찰 명령 구독
         self.cmd_sub = self.create_subscription(String, 'patrol_cmd', self.cmd_callback, 10)
 
+        # 5. 순찰 상태 발행 (UI용)
+        self.patrol_status_pub = self.create_publisher(String, 'patrol_status', 10)
+        self.start_time = None
+        self.end_time = None
+
         self.get_logger().info('Patrol Main Node has been started.')
 
     def load_shelves(self):
@@ -53,13 +60,17 @@ class PatrolNode(Node):
         if msg.data == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence...')
             self.is_patrolling = True
+            self.start_time = datetime.now()
             self.current_shelf_idx = 0
+            self.publish_status('patrolling')
             self.send_next_goal()
 
     def send_next_goal(self):
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().info('Patrol Completed!')
             self.is_patrolling = False
+            self.end_time = datetime.now()
+            self.publish_status('completed')
             return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
@@ -106,6 +117,8 @@ class PatrolNode(Node):
             self.get_logger().warn(f'Failed to reach {self.shelf_list[self.current_shelf_idx]}. Status: {status}')
             self.get_logger().info('Skipping to the next shelf...')
             self.current_shelf_idx += 1
+            if self.is_patrolling:
+                self.publish_status('patrolling')
             self.send_next_goal()
 
     def proceed_to_next_shelf(self):
@@ -114,7 +127,35 @@ class PatrolNode(Node):
             self._delay_timer.cancel()
 
         self.current_shelf_idx += 1
+        if self.is_patrolling:
+            self.publish_status('patrolling')
         self.send_next_goal()
+
+    def publish_status(self, status):
+        info = {
+            'status': status,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        if status == 'patrolling':
+            info['start_time'] = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
+            if self.current_shelf_idx < len(self.shelf_list):
+                info['current_shelf'] = self.shelf_list[self.current_shelf_idx]
+                info['progress'] = f"{self.current_shelf_idx + 1}/{len(self.shelf_list)}"
+        elif status == 'completed':
+            info['start_time'] = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
+            info['end_time'] = self.end_time.strftime('%Y-%m-%d %H:%M:%S')
+            duration = self.end_time - self.start_time
+            # Format duration as HH:MM:SS
+            total_seconds = int(duration.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            info['duration'] = f"{hours:02}:{minutes:02}:{seconds:02}"
+            info['total_shelves'] = len(self.shelf_list)
+        
+        msg = String()
+        msg.data = json.dumps(info, ensure_ascii=False)
+        self.patrol_status_pub.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

@@ -117,3 +117,33 @@ ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
   ros2 service call /local_costmap/clear_entirely_local_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
   ros2 service call /global_costmap/clear_entirely_global_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
   ```
+
+## 9. 순찰 상태 및 시간 정보 (UI 연동)
+UI 파트에서 최근 순찰 시간 및 현재 진행 상태를 표시하기 위해 `/patrol_status` 토픽을 제공합니다.
+
+### A. 토픽 정보
+- **Topic**: `/patrol_status`
+- **Message Type**: `std_msgs/msg/String` (JSON format)
+
+### B. 메시지 형식 예시
+- **순찰 중 (patrolling)**:
+  ```json
+  {
+    "status": "patrolling",
+    "timestamp": "2026-03-26 09:15:00",
+    "start_time": "2026-03-26 09:15:00",
+    "current_shelf": "shelf_1",
+    "progress": "1/3"
+  }
+  ```
+- **순찰 완료 (completed)**:
+  ```json
+  {
+    "status": "completed",
+    "timestamp": "2026-03-26 09:20:00",
+    "start_time": "2026-03-26 09:15:00",
+    "end_time": "2026-03-26 09:20:00",
+    "duration": "00:05:00",
+    "total_shelves": 3
+  }
+  ```
