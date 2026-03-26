@@ -154,6 +154,26 @@ async def add_product(product: Product):
     finally:
         conn.close()
 
+@app.get("/inventory")
+async def list_inventory():
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # slot 테이블과 product_master를 바코드 기반으로 결합하여 상세 정보 조회
+        query = """
+            SELECT s.*, p.product_name, p.category 
+            FROM slot s
+            LEFT JOIN product_master p ON s.barcode = p.barcode
+            ORDER BY s.last_updated DESC
+        """
+        cursor.execute(query)
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     import uvicorn
     # 외부 IP 허용 및 포트 8000 실행

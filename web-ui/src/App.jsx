@@ -6,6 +6,7 @@ function App() {
   const [status, setStatus] = useState({ status: 'offline', database: 'unknown' });
   const [patrolList, setPatrolList] = useState([]);
   const [products, setProducts] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // 입력을 위한 폼 상태
@@ -33,6 +34,12 @@ function App() {
       if (productRes.ok) {
         const productData = await productRes.json();
         if (Array.isArray(productData)) setProducts(productData);
+      }
+
+      const inventoryRes = await fetch('/api/inventory');
+      if (inventoryRes.ok) {
+        const inventoryData = await inventoryRes.json();
+        if (Array.isArray(inventoryData)) setInventory(inventoryData);
       }
     } catch (error) {
       console.error("데이터 로딩 실패:", error);
@@ -169,6 +176,39 @@ function App() {
                           <td>{p.product_name}</td>
                           <td>{p.barcode}</td>
                           <td>{p.standard_qty || 0} 개</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="admin-card full-width">
+                <h2>📦 실시간 동적 인벤토리 현황 (Slot Tracking)</h2>
+                <p className="sub-text">바코드 및 오도메트리 좌표 기반 실시간 위치 추적</p>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Slot ID</th>
+                        <th>바코드</th>
+                        <th>상품명</th>
+                        <th>Odom X</th>
+                        <th>Odom Y</th>
+                        <th>상태</th>
+                        <th>최종 업데이트</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventory.map(item => (
+                        <tr key={item.slot_id}>
+                          <td>{item.slot_id}</td>
+                          <td><code>{item.barcode}</code></td>
+                          <td>{item.product_name || '미등록 상품'}</td>
+                          <td>{item.odom_x?.toFixed(2) || '0.00'}</td>
+                          <td>{item.odom_y?.toFixed(2) || '0.00'}</td>
+                          <td><span className={`tag ${item.status}`}>{item.status}</span></td>
+                          <td>{new Date(item.last_updated).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
