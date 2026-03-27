@@ -95,10 +95,10 @@ shelf ||--o{ shelf_product : "배치 정보"
 > = 하나의 매대에 여러 제품이 배치될 수 있음
 
 ```
-product_master ||--o{ inventory_status : "추적 대상"
+product_master ||--o{ shelf_status : "추적 대상"
 ```
-> **제품(product_master) 1개**는 **재고 현황(inventory_status) 0개 이상**을 가질 수 있다.  
-> = 한 제품의 재고 현황이 여러 매대에 걸쳐 기록될 수 있음
+> **제품(product_master) 1개**는 **매대 현황(shelf_status) 0개 이상**을 가질 수 있다.  
+> = 한 제품의 진열 상태가 여러 매대에 걸쳐 기록될 수 있음
 
 ---
 
@@ -108,24 +108,24 @@ product_master ||--o{ inventory_status : "추적 대상"
 flowchart LR
     EXT(["&#x1F4E6; 외부 재고 DB"]) -- 동기화 --> PM["product_master\n(제품정보 캐시)"]
 
-    PM --> SP["shelf_product\n(기대 배치)"]
+    PM --> SP["waypoint_product_plan\n(기대 배치)"]
     PM --> SL["slot\n(실제 위치 + 바코드)"]
-    PM --> IS["inventory_status\n(실시간 재고)"]
+    PM --> SS["shelf_status\n(실시간 진열현황)"]
     PM --> AL["alert\n(알림)"]
 
-    SH["shelf\n(매대 번호/좌표)"] --> SP
-    SH --> SL
-    SH --> IS
-    SH --> DL["detection_log\n(인식 로그)"]
-    SH --> WP["waypoint\n(순찰 정지위치)"]
-    SH --> AL
+    WP["waypoint\n(순찰 정지위치)"] --> SP
+    WP --> SL
+    WP --> SS
+    WP --> DL["detection_log\n(인식 로그)"]
+    WP --> AL
 
     SL --> SLH["slot_history\n(변경 이력)"]
-    SL --> IS
+    SL --> SS
     SL --> DL
     SL --> AL
 
     PL["patrol_log\n(순찰 기록)"] --> DL
+    PC["patrol_config\n(운영 설정)"] --> PL
 ```
 
 ---

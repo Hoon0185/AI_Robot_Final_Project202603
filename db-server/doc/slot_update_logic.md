@@ -18,13 +18,11 @@
 flowchart TD
     A(["&#x1F6E1; 순찰 시작"]) --> B["patrol_log INSERT\npatrol_id 발급"]
     B --> C{"각 waypoint 순회"}
-
-    C --> D["바코드 감지\nYOLO + 바코드 리더"]
-    D --> E["slot 테이블에서\n바코드 조회"]
-
+    C --> D["이미지 촬영 및 전송\n(Robot → Image Server)"]
+    D --> E["상품 바코드/객체 판독\n(Image Server → DB)"]
     E --> F{"DB에 있는가?"}
 
-    F -- "없음 (신규)" --> G["케이스 C\nslot INSERT\nslot_history: created"]
+    F -- "없음 (신규)" --> G["slot INSERT\nslot_history: created"]
     F -- "있음" --> H{"위치가 다른가?"}
 
     H -- "같은 위치" --> I["케이스 A\nslot.status = active\nodom_x/y 갱신"]
@@ -39,7 +37,7 @@ flowchart TD
     L --> M{"미감지 횟수?"}
 
     M -- "1회" --> N["slot.status = empty\nalert: 재고부족"]
-    M -- "2회 이상" --> O["slot.status = deleted\nslot_history: deleted\nalert: 품절"]
+    M -- "2회 이상" --> O["slot.status = deleted\nslot_history: deleted\nalert: 없음"]
 
     N --> P["patrol_log UPDATE\nend_time, status=완료\nnew/moved/missing 집계"]
     O --> P
@@ -65,17 +63,18 @@ def process_patrol_complete(patrol_id):
         SELECT slot_id FROM slot WHERE status = 'active'
     """)
 
-    # 3. 이번 순찰에서 못 본 슬롯
+    # 3. 이번 순찰에서 못 본 슬롯 (Plan에 있었으나 Reality에 없는 경우)
     missing = set(active_slots) - set(scanned_slots)
 
     for slot_id in missing:
         slot = db.get_slot(slot_id)
+        # miss_count는 slot 테이블에 존재하며, 순찰 완료 시마다 1씩 증가
+        # (이 의사코드에서는 miss_count 갱신 로직은 생략)
 
         if slot.miss_count >= 1:
             # 2회 이상 미감지 → 삭제 처리
             db.update_slot(slot_id, status='deleted')
-            db.insert_slot_history(slot_id, change_type='deleted')
-            db.insert_alert(slot_id, alert_type='품절')
+            db.insert_alert(slot_id, alert_type='없음')
         else:
             # 1회 미감지 → 빈자리 처리
             db.update_slot(slot_id, status='empty')
@@ -146,7 +145,7 @@ stateDiagram-v2
 |---|---|
 | 0회 | `active` 유지 |
 | 1회 | `empty` → `alert: 재고부족` |
-| 2회 이상 | `deleted` → `alert: 품절` |
+| 2회 이상 | `deleted` → `alert: 없음` |
 
 > 💡 이 기준은 순찰 주기에 따라 조정 필요  
 > (예: 10분 단위 순찰이면 2회 = 20분 이상 미감지)
