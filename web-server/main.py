@@ -31,11 +31,8 @@ class PatrolInsert(BaseModel):
     start_time: str
     end_time: Optional[str] = None
     status: str = "완료"
-    total_waypoints: int = 0
-    completed_waypoints: int = 0
-    new_slots: int = 0
-    moved_slots: int = 0
-    missing_slots: int = 0
+    scanned_slots: int = 0
+    error_found: int = 0
 
 class Product(BaseModel):
     product_id: Optional[int] = None
@@ -106,10 +103,10 @@ async def add_patrol(patrol: PatrolInsert):
     try:
         cursor = conn.cursor()
         query = """
-            INSERT INTO patrol_log (start_time, end_time, status, total_waypoints, completed_waypoints, new_slots, moved_slots, missing_slots)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO patrol_log (start_time, end_time, status, scanned_slots, error_found)
+            VALUES (%s, %s, %s, %s, %s)
         """
-        values = (patrol.start_time, patrol.end_time, patrol.status, patrol.total_waypoints, patrol.completed_waypoints, patrol.new_slots, patrol.moved_slots, patrol.missing_slots)
+        values = (patrol.start_time, patrol.end_time, patrol.status, patrol.scanned_slots, patrol.error_found)
         cursor.execute(query, values)
         conn.commit()
         return {"message": "Patrol log added successfully", "id": cursor.lastrowid}
@@ -155,6 +152,44 @@ async def add_product(product: Product):
     finally:
         conn.close()
 
+# --- v3.1 New Endpoints ---
+
+@app.get("/alerts")
+async def list_alerts():
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT a.*, p.product_name, w.waypoint_name
+            FROM alert a
+            LEFT JOIN product_master p ON a.product_id = p.product_id
+            LEFT JOIN waypoint w ON a.waypoint_id = w.waypoint_id
+            WHERE a.is_resolved = FALSE
+            ORDER BY a.alert_id DESC
+        """
+        cursor.execute(query)
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+@app.get("/detections")
+async def list_detections():
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT d.*, p.product_name 
+            FROM detection_log d
+            LEFT JOIN product_master p ON d.product_id = p.product_id
+            ORDER BY d.log_id DESC LIMIT 50
+        """
+        cursor.execute(query)
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
 @app.get("/inventory")
 async def list_inventory():
     conn = get_db_connection()
@@ -162,12 +197,13 @@ async def list_inventory():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        # slot 테이블과 product_master를 바코드 기반으로 결합하여 상세 정보 조회
+        # v3.1 스키마에 맞춘 현재 매대 상태 조회
         query = """
-            SELECT s.*, p.product_name, p.category 
-            FROM slot s
-            LEFT JOIN product_master p ON s.barcode = p.barcode
-            ORDER BY s.last_updated DESC
+            SELECT ss.*, p.product_name, w.waypoint_name
+            FROM shelf_status ss
+            LEFT JOIN product_master p ON ss.product_id = p.product_id
+            LEFT JOIN waypoint w ON ss.waypoint_id = w.waypoint_id
+            ORDER BY ss.last_updated_at DESC
         """
         cursor.execute(query)
         return cursor.fetchall()
