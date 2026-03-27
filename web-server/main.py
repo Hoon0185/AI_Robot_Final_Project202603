@@ -13,7 +13,8 @@ load_dotenv()
 app = FastAPI(
     title="Gilbot API Server",
     description="편의점 매대 관리 로봇(Gilbot) 제어를 위한 백엔드 서버",
-    version="0.2.2"
+    version="0.2.3",
+    root_path="/api"
 )
 
 # CORS 설정: 프론트엔드(React 등)의 접속을 허용합니다.
