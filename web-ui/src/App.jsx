@@ -130,6 +130,9 @@ function App() {
           <button className={view === 'admin' ? 'active' : ''} onClick={() => setView('admin')}>
             <span style={{marginRight: '8px'}}>🛠️</span> 관리 대시보드
           </button>
+          <button className={view === 'system' ? 'active' : ''} onClick={() => setView('system')}>
+            <span style={{marginRight: '8px'}}>⚙️</span> 시스템 관리
+          </button>
         </nav>
         
         <div className="status-indicator">
@@ -242,7 +245,7 @@ function App() {
               </section>
             </div>
           </div>
-        ) : (
+        ) : view === 'admin' ? (
           /* Admin View */
           <div className="admin-content">
             <header>
@@ -352,7 +355,17 @@ function App() {
                   </table>
                 </div>
               </section>
+            </div>
+          </div>
+        ) : view === 'system' ? (
+          /* System View */
+          <div className="system-content">
+            <header>
+              <h1>시스템 관리</h1>
+              <p>순찰 기록 관리 및 시스템 무결성 작업</p>
+            </header>
 
+            <div className="admin-grid">
               <section className="apple-card" style={{gridColumn: '1 / -1'}}>
                 <h2 className="section-title" style={{marginTop: 0}}>⚙️ 시스템 작업 로그 관리</h2>
                 <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '20px'}}>순찰 기록의 무결성을 위해 필요한 경우 기록을 삭제할 수 있습니다.</p>
@@ -386,6 +399,8 @@ function App() {
               </section>
             </div>
           </div>
+        ) : (
+          null
         )}
       </main>
     </div>
