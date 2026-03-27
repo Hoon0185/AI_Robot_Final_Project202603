@@ -42,7 +42,6 @@ CREATE TABLE slot (
     row_num      INT DEFAULT 1             COMMENT '단(Tier) 번호 (1단, 2단 등)',
     product_id   INT                       COMMENT '현재 이 슬롯의 제품',
     barcode_tag  VARCHAR(50) UNIQUE        COMMENT '매대에 부착된 슬롯 식별 바코드(태그)',
-    status       ENUM('active','empty','deleted') DEFAULT 'active',
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (waypoint_id) REFERENCES waypoint(waypoint_id),
     FOREIGN KEY (product_id)  REFERENCES product_master(product_id)

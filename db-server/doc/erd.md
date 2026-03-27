@@ -71,7 +71,6 @@ erDiagram
         INT row_num "단 번호"
         INT product_id FK "진열 중인 상품"
         VARCHAR barcode_tag "슬롯 식별 태그 (UNIQUE)"
-        ENUM status "active / empty / deleted"
     }
 
     waypoint_product_plan {
@@ -156,15 +155,13 @@ erDiagram
 
 ```json
 {
-  "patrol_id": 10,       // 어느 순찰 회차인지 (로봇이 고정값 전송)
-  "waypoint_id": 5,     // 로봇이 현재 위치한 Waypoint 고유 ID
-  "tag_barcode": "TAG-S1-R2", // 이미지 서버가 읽어낸 매대 하단 슬롯 식별 태그 (핵심 식별자)
-  "detected_barcode": "8801111222233", // YOLO가 인식한 상품 바코드/ID (실물)
-  "product_id": 15,      // 이미지 서버 내부 DB 매칭 결과 (선택 사항)
-  "confidence": 0.98,    // 판독 신뢰도
-  "result": "정상",      // 최종 위치 판독 결과 (정상/없음/오진열)
-  "odom_x": 2.45,        // 인식 시점 로봇 좌표 X
-  "odom_y": 1.12,        // 인식 시점 로봇 좌표 Y
-  "timestamp": "2026-03-27T10:00:00"
+  "tag_barcode": "TAG-S1-R2",         // [어떤 매대에서] 스캔된 매대 하단 식별 태그
+  "detected_barcode": "8801111222233", // [무엇을 보았는가] YOLO가 인식한 상품 바코드 (없으면 null)
+  "confidence": 0.98,                 // [신뢰도] YOLO 분석 정확도
+  "odom_x": 2.45,                     // [위치] 인식 시점 로봇 좌표 X
+  "odom_y": 1.12,                     // [위치] 인식 시점 로봇 좌표 Y
+  "timestamp": "2026-03-27T10:00:00"  // [시각] 인식 시각
 }
 ```
+> 💡 **판독 주체 변경**: 이미지 서버는 오직 "무엇을 보았다"는 **원시 데이터(Raw Data)**만 전송합니다. 
+> `정상/없음/오진열` 여부는 DB 서버가 진열 계획(Plan)과 대조하여 **내부적으로 최종 판독**합니다.
