@@ -8,9 +8,15 @@ function App() {
   const [products, setProducts] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [detections, setDetections] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  // 입력을 위한 폼 상태 (상품 마스터 관리용)
+  // 데이터 상태 관리
+  const [patrolConfig, setPatrolConfig] = useState({
+    avoidance_wait_time: 5,
+    patrol_start_time: '09:00:00',
+    patrol_end_time: '22:00:00',
+    interval_hour: 1,
+    interval_minute: 0,
+    is_active: true
+  });
   const [newProduct, setNewProduct] = useState({ product_name: '', barcode: '', standard_qty: 0, category: 'Snack' });
 
   const fetchGilbotData = async () => {
@@ -53,6 +59,13 @@ function App() {
         if (Array.isArray(productData)) setProducts(productData);
       }
 
+      // 5. 순찰 설정 (Patrol Config)
+      const configRes = await fetch('/api/patrol/config');
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        setPatrolConfig(configData);
+      }
+
     } catch (error) {
       console.error("데이터 로딩 실패:", error);
     } finally {
@@ -89,6 +102,21 @@ function App() {
       const res = await fetch(`/api/patrol/${id}`, { method: 'DELETE' });
       if (res.ok) fetchGilbotData();
     } catch (err) { alert("삭제 실패"); }
+  };
+
+  const handleUpdateConfig = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/patrol/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patrolConfig)
+      });
+      if (res.ok) {
+        alert("순찰 설정이 저장되었습니다.");
+        fetchGilbotData();
+      }
+    } catch (err) { alert("설정 저장 실패"); }
   };
 
   return (
@@ -247,6 +275,47 @@ function App() {
                     → phpMyAdmin으로 이동하여 직접 쿼리 실행
                   </a>
                 </div>
+              </section>
+
+              <section className="apple-card">
+                <h2 className="section-title" style={{marginTop: 0}}>⚙️ 순찰 시스템 설정</h2>
+                <form onSubmit={handleUpdateConfig}>
+                  <div className="form-group">
+                    <label>회피 대기 시간 (초)</label>
+                    <input type="number" value={patrolConfig.avoidance_wait_time} 
+                           onChange={e => setPatrolConfig({...patrolConfig, avoidance_wait_time: parseInt(e.target.value)})} />
+                  </div>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
+                    <div className="form-group">
+                      <label>순찰 시작 가능 시각</label>
+                      <input type="time" step="1" value={patrolConfig.patrol_start_time} 
+                             onChange={e => setPatrolConfig({...patrolConfig, patrol_start_time: e.target.value})} />
+                    </div>
+                    <div className="form-group">
+                      <label>순찰 종료/복귀 시각</label>
+                      <input type="time" step="1" value={patrolConfig.patrol_end_time} 
+                             onChange={e => setPatrolConfig({...patrolConfig, patrol_end_time: e.target.value})} />
+                    </div>
+                  </div>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
+                    <div className="form-group">
+                      <label>반복 주기 (시간)</label>
+                      <input type="number" min="0" max="23" value={patrolConfig.interval_hour} 
+                             onChange={e => setPatrolConfig({...patrolConfig, interval_hour: parseInt(e.target.value)})} />
+                    </div>
+                    <div className="form-group">
+                      <label>반복 주기 (분)</label>
+                      <input type="number" min="0" max="59" value={patrolConfig.interval_minute} 
+                             onChange={e => setPatrolConfig({...patrolConfig, interval_minute: parseInt(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px'}}>
+                    <input type="checkbox" checked={patrolConfig.is_active} style={{width: 'auto'}}
+                           onChange={e => setPatrolConfig({...patrolConfig, is_active: e.target.checked})} />
+                    <label style={{marginBottom: 0}}>순찰 활성화 상태</label>
+                  </div>
+                  <button type="submit" className="apple-button" style={{width: '100%', marginTop: '15px'}}>설정 값 저장하기</button>
+                </form>
               </section>
 
               <section className="apple-card">

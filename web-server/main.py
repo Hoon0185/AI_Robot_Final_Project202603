@@ -41,6 +41,22 @@ class Product(BaseModel):
     category: str = "General"
     standard_qty: int = 0
 
+class PatrolConfig(BaseModel):
+    avoidance_wait_time: int
+    patrol_start_time: str
+    patrol_end_time: str
+    interval_hour: int
+    interval_minute: int
+    is_active: bool = True
+
+class PatrolConfig(BaseModel):
+    avoidance_wait_time: int
+    patrol_start_time: str
+    patrol_end_time: str
+    interval_hour: int
+    interval_minute: int
+    is_active: bool = True
+
 # 데이터베이스 연결 함수
 def get_db_connection():
     try:
