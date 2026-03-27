@@ -17,7 +17,7 @@ function App() {
     interval_minute: 0,
     is_active: true
   });
-  const [newProduct, setNewProduct] = useState({ product_name: '', barcode: '', category: '과자', standard_qty: 1 });
+  const [newProduct, setNewProduct] = useState({ product_name: '', category: '과자', barcode: '', standard_qty: 10 });
 
   const fetchGilbotData = async () => {
     try {
@@ -259,10 +259,6 @@ function App() {
                     <input type="text" placeholder="예: 신라면" value={newProduct.product_name} onChange={e => setNewProduct({...newProduct, product_name: e.target.value})} required />
                   </div>
                   <div className="form-group">
-                    <label>바코드</label>
-                    <input type="text" placeholder="barcode string" value={newProduct.barcode} onChange={e => setNewProduct({...newProduct, barcode: e.target.value})} required />
-                  </div>
-                  <div className="form-group">
                     <label>카테고리</label>
                     <select value={newProduct.category} 
                             style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#fff' }}
@@ -272,7 +268,11 @@ function App() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>표준 재고 수량</label>
+                    <label>바코드</label>
+                    <input type="text" placeholder="barcode string" value={newProduct.barcode} onChange={e => setNewProduct({...newProduct, barcode: e.target.value})} required />
+                  </div>
+                  <div className="form-group">
+                    <label>최소 유지 수량</label>
                     <input type="number" min="1" value={newProduct.standard_qty} onChange={e => setNewProduct({...newProduct, standard_qty: parseInt(e.target.value)})} required />
                   </div>
                   <button type="submit" className="apple-button" style={{ width: '100%' }}>마스터 DB에 등록</button>
