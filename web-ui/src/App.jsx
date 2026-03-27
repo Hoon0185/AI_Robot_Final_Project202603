@@ -17,7 +17,7 @@ function App() {
     interval_minute: 0,
     is_active: true
   });
-  const [newProduct, setNewProduct] = useState({ product_name: '', barcode: '', standard_qty: 0, category: 'Snack' });
+  const [newProduct, setNewProduct] = useState({ product_name: '', barcode: '', category: '과자', standard_qty: 1 });
 
   const fetchGilbotData = async () => {
     try {
@@ -263,10 +263,19 @@ function App() {
                     <input type="text" placeholder="barcode string" value={newProduct.barcode} onChange={e => setNewProduct({...newProduct, barcode: e.target.value})} required />
                   </div>
                   <div className="form-group">
-                    <label>표준 재고 수량</label>
-                    <input type="number" value={newProduct.standard_qty} onChange={e => setNewProduct({...newProduct, standard_qty: parseInt(e.target.value)})} required />
+                    <label>카테고리</label>
+                    <select value={newProduct.category} 
+                            style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#fff' }}
+                            onChange={e => setNewProduct({...newProduct, category: e.target.value})}>
+                      <option value="과자">과자</option>
+                      <option value="음료">음료</option>
+                    </select>
                   </div>
-                  <button type="submit" className="apple-button">마스터 DB에 등록</button>
+                  <div className="form-group">
+                    <label>표준 재고 수량</label>
+                    <input type="number" min="1" value={newProduct.standard_qty} onChange={e => setNewProduct({...newProduct, standard_qty: parseInt(e.target.value)})} required />
+                  </div>
+                  <button type="submit" className="apple-button" style={{ width: '100%' }}>마스터 DB에 등록</button>
                 </form>
 
                 <div style={{marginTop: '40px', paddingTop: '20px', borderTop: '1px solid var(--border-color)'}}>
