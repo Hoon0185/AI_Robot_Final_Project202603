@@ -115,6 +115,7 @@ erDiagram
 
     alert {
         INT alert_id PK
+        INT patrol_id FK "발견 순찰 회차"
         INT waypoint_id FK
         INT slot_id FK
         INT product_id FK
@@ -143,8 +144,9 @@ erDiagram
     patrol_log        ||--o{ detection_log         : "수행"
     waypoint          ||--o{ detection_log         : "위치"
     slot              ||--o{ detection_log         : "슬롯"
-    waypoint          ||--o{ alert                 : "발생"
-    slot              ||--o{ alert                 : "위치"
+    patrol_log        ||--o{ alert                 : "발생"
+    waypoint          ||--o{ alert                 : "위치"
+    slot              ||--o{ alert                 : "슬롯"
     product_master    ||--o{ alert                 : "대상"
 ```
 
@@ -154,16 +156,15 @@ erDiagram
 
 ```json
 {
-  "patrol_id": 10,
-  "waypoint_id": 5,
-  "slot_id": 24,
-  "tag_barcode": "TAG-S1-R2",
-  "detected_barcode": "8801111222233",
-  "product_id": 15,
-  "confidence": 0.98,
-  "result": "정상",
-  "odom_x": 2.45,
-  "odom_y": 1.12,
+  "patrol_id": 10,       // 어느 순찰 회차인지 (로봇이 고정값 전송)
+  "waypoint_id": 5,     // 로봇이 현재 위치한 Waypoint 고유 ID
+  "tag_barcode": "TAG-S1-R2", // 이미지 서버가 읽어낸 매대 하단 슬롯 식별 태그 (핵심 식별자)
+  "detected_barcode": "8801111222233", // YOLO가 인식한 상품 바코드/ID (실물)
+  "product_id": 15,      // 이미지 서버 내부 DB 매칭 결과 (선택 사항)
+  "confidence": 0.98,    // 판독 신뢰도
+  "result": "정상",      // 최종 위치 판독 결과 (정상/없음/오진열)
+  "odom_x": 2.45,        // 인식 시점 로봇 좌표 X
+  "odom_y": 1.12,        // 인식 시점 로봇 좌표 Y
   "timestamp": "2026-03-27T10:00:00"
 }
 ```

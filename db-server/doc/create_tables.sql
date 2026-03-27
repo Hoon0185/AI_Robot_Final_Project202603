@@ -104,6 +104,7 @@ CREATE TABLE detection_log (
 -- 8. alert (이상 감제 알림)
 CREATE TABLE alert (
     alert_id    INT AUTO_INCREMENT PRIMARY KEY,
+    patrol_id   INT NOT NULL,
     waypoint_id INT NOT NULL,
     slot_id     INT,
     product_id  INT NOT NULL,
@@ -111,6 +112,7 @@ CREATE TABLE alert (
     message     TEXT,
     is_resolved BOOLEAN  DEFAULT FALSE,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patrol_id)   REFERENCES patrol_log(patrol_id),
     FOREIGN KEY (waypoint_id) REFERENCES waypoint(waypoint_id),
     FOREIGN KEY (slot_id)     REFERENCES slot(slot_id),
     FOREIGN KEY (product_id)  REFERENCES product_master(product_id)
