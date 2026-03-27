@@ -13,10 +13,10 @@ source ~/turtlebot3_ws/install/setup.bash
 로봇과 PC의 시간이 맞지 않으면 TF 에러로 지도가 그려지지 않거나 로봇 위치가 사라집니다.
 ```bash
 # 1. 로봇(SSH)에서 자동 동기화 중지
-ssh penguin@192.168.1.201 "echo robot123 | sudo -S systemctl stop systemd-timesyncd"
+ssh penguin@192.168.230.78 "echo robot123 | sudo -S systemctl stop systemd-timesyncd"
 
 # 2. PC 시간을 로봇에 강제 주입 (PC 터미널에서 실행)
-ssh penguin@192.168.1.201 "echo robot123 | sudo -S date -s '@$(date +%s)'"
+ssh penguin@192.168.230.78 "echo robot123 | sudo -S date -s '@$(date +%s)'"
 ```
 
 ## 3. 로봇 기체 실행 (Bringup)
@@ -61,6 +61,10 @@ params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/pat
 ```
 > [!TIP]
 > 위 명령어는 커스텀 `nav2_params.yaml`을 사용하여 WiFi 지연으로 인한 odom 에러를 방지하고 도착 정밀도를 높였습니다. 실행 후 RViz에서 **[2D Pose Estimate]**로 초기 위치를 잡아주세요.
+> 만약 RViz가 자동으로 뜨지 않거나 내비게이션용 설정을 수동으로 불러오고 싶다면 아래 명령어를 별도 터미널에서 실행하세요:
+> ```bash
+> rviz2 -d $(ros2 pkg prefix turtlebot3_navigation2)/share/turtlebot3_navigation2/rviz/tb3_navigation2.rviz
+> ```
 
 ## 6. 순찰 시스템 실행
 ```bash
