@@ -3,28 +3,43 @@
 > **프로젝트:** 편의점 매대 관리 로봇  
 > **DB명:** `gilbot`  
 > **서버:** Amazon Lightsail `16.184.56.119`  
-> **작성일:** 2026-03-24  
+> **스키마 버전:** v3.1 (단순 상태 관리 모델)  
+> **작성일:** 2026-03-27  
 > **작성자:** DB/WEB 파트  
-
-> 📖 ERD 보는 법: [`how_to_view_erd.md`](./how_to_view_erd.md) 참조
 
 ---
 
 ## 설계 원칙
 
+> ⚠️ **v3.1 개정 주요 변경사항**
+> - **수량 관리 폐기**: 로봇의 물리적 한계를 고려하여 '개수' 대신 **'상태(정상/품절/오진열)'**에만 집중
+> - **위치 정보 최적화**: `slot` 테이블에서 불필요한 `col_num`(열 번호) 제거 (바코드 태그가 위치를 대체)
+> - **상태값 한글화**: `inventory_status`, `detection_log` 등의 결과값을 직관적인 한글(`정상`, `품절`, `오진열`)로 변경
+
 | 테이블 | 역할 |
 |---|---|
-| `product_master` | 외부 재고관리 DB에서 필요한 필드만 **동기화 캐시** (직접 접근 불가 대응) |
-| `shelf` | 매대 번호 및 위치 좌표 (로봇 순찰 웨이포인트 기준) |
-| `shelf_product` | 매대-제품 포괄 관리 (어느 매대에 어떤 제품이 있어야 하는가) |
-| `inventory_status` | 실시간 재고 현황 + **odom_x/y** (바코드 괐 시점의 로봇 실제 위치) |
-| `detection_log` | 매 인식마다 쌓이는 이력 + **odom_x/y** (인식 시점 위치) |
-| `waypoint` | 순찰 경로상 각 매대 로봇 정지 위치 |
-| `patrol_log` | 순찰 회차 기록 (시작/종료/완료 웨이포인트 수) |
-| `alert` | 재고 부족 / 품절 / 이상 감지 알림 |
+| `product_master` | 외부 재고관리 DB에서 필요한 필드만 **동기화 캐시** |
+| `waypoint` | 로봇이 물리적으로 **정지하여 스캔하는 위치** (X/Y 좌표 기반) |
+| `slot` | 매대 하단 바코드/QR 태크로 식별되는 **개별 진열 공간** |
+| `waypoint_product_plan` | 특정 슬롯에 **어떤 상품이 있어야 하는지** 정의하는 마스터 정보 |
+| `inventory_status` | 순찰 후 최종적으로 파악된 **슬롯별 현재 상태** |
+| `patrol_log` | 순찰 회차별 결과 통계 (스캔 수, 오류 발견 수 등) |
+| `detection_log` | 순찰 중 발생하는 **모든 인식 이력** (바코드, odom, 신뢰도 등) |
+| `alert` | 품절/오진열 등 즉각적인 조치가 필요한 **알림 정보** |
+| `slot_history` | 슬롯의 생성 및 상품 변경 이력 추적 |
 
-> ⚠️ **v2.1 개정:** 행/열(row/col) 슬롯 방식 폐기 → **바코드 + odom 좌표** 방식으로 위치 판단
-> Odom drift 문제 및 군집 상품 슬롯 할당 불가 문제로 인해 개선
+---
+
+## 로봇 운영 프로세스
+
+1.  **Waypoint 도착**: 로봇이 미리 정의된 정지 위치(X, Y)에 멈춤
+2.  **Tag 스캔**: 매대 하단의 **바코드 태그**를 읽어 어떤 `slot`인지 식별
+3.  **Product 스캔**: 슬롯에 놓인 **상품 바코드**를 읽어 `product_id` 확인
+4.  **결과 판독**:
+    - **정상**: `plan`의 상품과 `detected` 상품이 일치
+    - **품절**: 상품 바코드가 읽히지 않음
+    - **오진열**: `plan`과 다른 상품 바코드가 읽힘
+5.  **DB 기록**: `detection_log`에 모든 시도 기록 및 `inventory_status` 최신화
 
 ---
 
@@ -32,130 +47,123 @@
 
 ```mermaid
 erDiagram
+
     product_master {
         INT product_id PK
-        VARCHAR product_name
-        VARCHAR category
-        VARCHAR barcode
-        INT standard_qty
-        DATETIME last_synced_at
-    }
-
-    shelf {
-        INT shelf_id PK
-        INT shelf_no "매대 번호"
-        VARCHAR shelf_name "매대 이름"
-        INT total_rows "총 행 수"
-        INT total_cols "총 열 수"
-        FLOAT loc_x "X 좌표"
-        FLOAT loc_y "Y 좌표"
-        DATETIME created_at
-    }
-
-    shelf_product {
-        INT id PK
-        INT shelf_id FK
-        INT product_id FK
-        INT expected_qty
-    }
-
-    inventory_status {
-        INT status_id PK
-        INT shelf_id FK
-        INT product_id FK
-        INT current_qty
-        ENUM status
-        FLOAT odom_x "바코드 괐 X 위치"
-        FLOAT odom_y "바코드 괐 Y 위치"
-        DATETIME last_updated_at
-    }
-
-    detection_log {
-        INT log_id PK
-        INT shelf_id FK
-        INT product_id FK
-        VARCHAR detected_category
-        VARCHAR detected_product
-        FLOAT confidence
-        ENUM result
-        FLOAT odom_x "바코드 괐 X 위치"
-        FLOAT odom_y "바코드 괐 Y 위치"
-        DATETIME created_at
+        VARCHAR product_name "제품명"
+        VARCHAR category "분류"
+        VARCHAR barcode "제품 바코드 (UNIQUE)"
     }
 
     waypoint {
         INT waypoint_id PK
-        INT shelf_id FK
-        INT order_num
-        FLOAT robot_x
-        FLOAT robot_y
-        BOOLEAN is_active
+        INT waypoint_no "제어 번호 (UNIQUE)"
+        VARCHAR waypoint_name "위치 별칭"
+        FLOAT loc_x "X 좌표"
+        FLOAT loc_y "Y 좌표"
+    }
+
+    slot {
+        INT slot_id PK
+        INT waypoint_id FK
+        INT row_num "단 번호"
+        INT product_id FK "진열 중인 상품"
+        VARCHAR barcode_tag "슬롯 식별 태그 (UNIQUE)"
+        FLOAT odom_x "최근 위치 X"
+        FLOAT odom_y "최근 위치 Y"
+        ENUM status "active / empty / deleted"
+    }
+
+    waypoint_product_plan {
+        INT plan_id PK
+        INT waypoint_id FK
+        INT slot_id FK
+        INT product_id FK "있어야 할 상품"
+    }
+
+    inventory_status {
+        INT status_id PK
+        INT waypoint_id FK
+        INT slot_id FK
+        INT product_id FK
+        ENUM status "정상 / 품절 / 오진열"
+        DATETIME last_updated_at
     }
 
     patrol_log {
         INT patrol_id PK
         DATETIME start_time
         DATETIME end_time
-        ENUM status
-        INT total_waypoints
-        INT completed_waypoints
+        ENUM status "진행중 / 완료 / 중단"
+        INT scanned_slots "총 스캔 슬롯"
+        INT error_found "오류 발견 수"
+    }
+
+    detection_log {
+        INT log_id PK
+        INT patrol_id FK
+        INT waypoint_id FK
+        INT slot_id FK
+        INT product_id FK
+        VARCHAR detected_barcode "인식 바코드"
+        VARCHAR tag_barcode "태그 바코드"
+        FLOAT confidence
+        ENUM result "정상 / 품절 / 오진열"
+        FLOAT odom_x "인식 시 위치 X"
+        FLOAT odom_y "인식 시 위치 Y"
     }
 
     alert {
         INT alert_id PK
-        INT shelf_id FK
+        INT waypoint_id FK
+        INT slot_id FK
         INT product_id FK
-        ENUM alert_type
+        ENUM alert_type "품절 / 오진열 / 수정필요"
         TEXT message
         BOOLEAN is_resolved
-        DATETIME created_at
     }
 
-    product_master ||--o{ shelf_product    : "진열 제품"
-    shelf          ||--o{ shelf_product    : "배치 정보"
-    product_master ||--o{ inventory_status : "추적 대상"
-    shelf          ||--o{ inventory_status : "재고 현황"
-    product_master ||--o{ detection_log    : "인식 제품"
-    shelf          ||--o{ detection_log    : "인식 위치"
-    shelf          ||--o{ waypoint         : "정지 포인트"
-    product_master ||--o{ alert            : "알림 대상"
-    shelf          ||--o{ alert            : "알림 발생"
+    slot_history {
+        INT history_id PK
+        INT slot_id FK
+        ENUM change_type "created / product_changed / deleted"
+        INT old_product_id
+        INT new_product_id
+    }
+
+    waypoint          ||--o{ slot                 : "식별"
+    product_master    ||--o{ slot                 : "진열"
+    slot              ||--o{ slot_history          : "이력"
+    waypoint          ||--o{ waypoint_product_plan : "계획"
+    slot              ||--o{ waypoint_product_plan : "공간"
+    product_master    ||--o{ waypoint_product_plan : "대상"
+    waypoint          ||--o{ inventory_status      : "현황"
+    slot              ||--o{ inventory_status      : "위치"
+    product_master    ||--o{ inventory_status      : "물품"
+    patrol_log        ||--o{ detection_log         : "수행"
+    waypoint          ||--o{ detection_log         : "위치"
+    slot              ||--o{ detection_log         : "슬롯"
+    waypoint          ||--o{ alert                 : "발생"
+    slot              ||--o{ alert                 : "위치"
+    product_master    ||--o{ alert                 : "대상"
 ```
 
 ---
 
-## 외부 재고 DB 연동 전략
-
-```
-[외부 재고관리 DB] (접근 불가)
-  제품명, 종류, 바코드, 기준수량 등
-          ↓  sync_product.py (수동 or 주기 실행)
-[gilbot DB - product_master 테이블]
-  캐시로 저장 → robot / web 시스템이 이를 참조
-```
-
-**동기화 방법 (우선순위):**
-1. 관리자가 CSV로 내보내기 → `sync_product.py`로 import
-2. (가능하다면) 외부 DB API 호출 → 자동 동기화
-
----
-
-## JSON 전송 스펙 (로봇 → 웹 서버)
+## JSON 데이터 스펙 (v3.1)
 
 ```json
 {
-  "shelf_id": 1,
-  "product_id": 42,
-  "detected_category": "snack",
-  "detected_product": "포카칩 오리지널",
-  "confidence": 0.94,
-  "result": "있다",
-  "timestamp": "2026-03-24T12:00:00"
+  "patrol_id": 10,
+  "waypoint_id": 5,
+  "slot_id": 24,
+  "tag_barcode": "TAG-S1-R2",
+  "detected_barcode": "8801111222233",
+  "product_id": 15,
+  "confidence": 0.98,
+  "result": "정상",
+  "odom_x": 2.45,
+  "odom_y": 1.12,
+  "timestamp": "2026-03-27T10:00:00"
 }
 ```
-
----
-
-## CREATE TABLE SQL
-
-전체 SQL은 [`create_tables.sql`](./create_tables.sql) 파일 참조
