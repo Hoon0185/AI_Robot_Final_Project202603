@@ -1,0 +1,38 @@
+graph TD
+    %% 1. 외부 사용자
+    User((<b>사용자/관리자</b>))
+
+    %% 2. 시스템 컨트롤 타워
+    subgraph CT [시스템 제어 및 흐름]
+        Main[main_ui.py<br/><b>Main</b>]
+        Login[robot_login.py<br/><b>LoginWindow</b>]
+    end
+
+    %% 3. 실제 작동 인터페이스
+    subgraph UI_LOGIC [사용자 화면 및 로직]
+        direction LR
+        Panel[robot_ui.py<br/><b>MainWindow</b>]
+        Handler[robot_logic.py<br/><b>RobotLogicHandler</b>]
+    end
+
+    %% 4. 외부 기기
+    Robot[[<b>실제 로봇 / 서버</b>]]
+
+    %% --- 연결 흐름 (Flow) ---
+    User -->|ID/PW 입력| Login
+    Login -- "로그인 성공 (Signal)" --> Main
+    Main -->|1. 로그인 윈도우 종료| Login
+    Main -->|2. 메인 윈도우 생성| Panel
+    Main -->|3. UI 주입| Handler
+
+    %% 상세 시그널 연결 (UI -> Logic)
+    Panel -- "순찰/이동/비상정지 신호" --> Handler
+    Handler -->|패킷/명령 전송| Robot
+
+    %% --- 스타일링 (디자인) ---
+    style User fill:#f8f9fa,stroke:#333,stroke-width:2px
+    style Main fill:#FFDDC1,stroke:#E67E22,stroke-width:2px
+    style Login fill:#D5AAFF,stroke:#8E44AD,stroke-width:2px
+    style Panel fill:#C1FFD7,stroke:#27AE60,stroke-width:2px
+    style Handler fill:#C1E3FF,stroke:#2980B9,stroke-width:2px
+    style Robot fill:#EEEEEE,stroke:#333,stroke-width:3px
