@@ -15,8 +15,8 @@ AI_Robot_Final_Project/
         └── setup.py                  # 엔트리 포인트 설정
 ```
 ### 2. 주행 우선 순위 설정 (twist_mux)
-여러 노드에서 발행되는 속도 명령(cmd_vel)의 충돌을 방지하기 위해 twist_mux를 통한 우선순위 적용
-모든 제어 명령은 `/cmd_vel`로 발행하지 않고 아래 **지정된 토픽을 사용**해야 합니다.
+여러 노드에서 발행되는 속도 명령(cmd_vel)의 충돌을 방지하기 위해 twist_mux를 통한 우선순위 적용 <br>
+모든 제어 명령은 `/cmd_vel`로 발행하지 않고 아래 **지정된 토픽을 사용**해야 합니다.<br>
 (예: `/cmd_vel_obstacle`)
 **우선순위 계층 구조**
 | 순위 | 토픽 명칭 | 우선순위 값 | 비고 |
@@ -42,14 +42,14 @@ AI_Robot_Final_Project/
   ```bash
   ros2 topic list | grep cmd_vel
   ```
-[출력 항목]
-`/cmd_vel_obstacle` (입력1)
-`/cmd_vel_teleop` (입력2)
-`/cmd_vel_nav` (입력3)
-`/cmd_vel` (최종 출력)
+[출력 항목]<br>
+`/cmd_vel_obstacle` (입력1)<br>
+`/cmd_vel_teleop` (입력2)<br>
+`/cmd_vel_nav` (입력3)<br>
+`/cmd_vel` (최종 출력)<br>
 
 ### 4. 장애물 감지 로직 상세 (수정 필요)
--감지 범위: 전방 60도(-30도 ~ +30도), 거리 0.35m 이내 장애물 감지 시 즉시 정지.
+- 감지 범위: 전방 60도(-30도 ~ +30도), 거리 0.35m 이내 장애물 감지 시 즉시 정지.
 - 가변 대기 시간: UI 슬라이더를 통해 obstacle_wait_time 파라미터를 실시간으로 변경 가능(기본 10초).
 - 자동 우회: 설정된 대기 시간이 지나면 로봇은 자동으로 제자리 회전(1.0 rad/s)을 2초간 수행하여 탈출 시도.
 
