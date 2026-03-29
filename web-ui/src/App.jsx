@@ -490,11 +490,11 @@ function App() {
                 <table className="fixed-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '150px', textAlign: 'center' }}>위치 (웨이포인트)</th>
-                      <th style={{ width: '80px', textAlign: 'center' }}>단수</th>
-                      <th style={{ width: '120px', textAlign: 'center' }}>슬롯 태그</th>
-                      <th style={{ width: '120px', textAlign: 'center' }}>현재 상태</th>
-                      <th style={{ textAlign: 'center' }}>진열 정보 (계획 vs 실제)</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>위치 (구역)</th>
+                      <th style={{ width: '40px', textAlign: 'center', padding: '12px 2px' }}>단</th>
+                      <th style={{ width: '220px', textAlign: 'center' }}>계획된 상품</th>
+                      <th style={{ width: '70px', textAlign: 'center', padding: '12px 2px' }}>상태</th>
+                      <th style={{ textAlign: 'center' }}>인식된 상품 (실측)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -504,33 +504,21 @@ function App() {
                       shelfStatus.map(item => (
                         <tr key={item.status_id}>
                           <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.waypoint_name}</td>
-                          <td style={{ textAlign: 'center' }}>{item.row_num || 1}</td>
-                          <td style={{ textAlign: 'center' }}><code>{item.barcode_tag}</code></td>
+                          <td style={{ textAlign: 'center', padding: '14px 2px' }}>{item.row_num || 1}</td>
                           <td style={{ textAlign: 'center' }}>
-                            <span className={`tag ${item.status}`}>{item.status}</span>
+                            <div style={{ fontWeight: '500' }}>{item.planned_product_name}</div>
+                            <div style={{ fontSize: '10px', color: '#8E8E93' }}><code>{item.barcode_tag}</code></div>
                           </td>
-                          <td>
+                          <td style={{ textAlign: 'center', padding: '14px 2px' }}>
+                            <span className={`tag ${item.status}`} style={{ padding: '4px 8px', fontSize: '11px' }}>{item.status}</span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
                             {item.status === '정상' ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: 'var(--accent-green)', fontWeight: '600' }}>[정상]</span>
-                                <span>{item.planned_product_name}</span>
-                              </div>
+                              <span style={{ color: 'var(--accent-green)', fontWeight: '600' }}>{item.planned_product_name}</span>
                             ) : item.status === '오진열' ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div style={{ display: 'flex', gap: '8px', fontSize: '12px' }}>
-                                  <span style={{ color: 'var(--text-secondary)', width: '40px' }}>계획:</span>
-                                  <span style={{ fontWeight: '500' }}>{item.planned_product_name}</span>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
-                                  <span style={{ color: 'var(--accent-red)', width: '40px', fontWeight: '600' }}>인식:</span>
-                                  <span style={{ color: 'var(--accent-red)', fontWeight: '700' }}>{item.product_name}</span>
-                                </div>
-                              </div>
+                                <span style={{ color: 'var(--accent-red)', fontWeight: '700' }}>{item.product_name || '알 수 없음'}</span>
                             ) : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: 'var(--accent-red)', fontWeight: '600' }}>[결품]</span>
-                                <span style={{ textDecoration: 'line-through', color: 'var(--text-secondary)' }}>{item.planned_product_name}</span>
-                              </div>
+                              <span style={{ color: '#8E8E93' }}>-</span>
                             )}
                           </td>
                         </tr>
