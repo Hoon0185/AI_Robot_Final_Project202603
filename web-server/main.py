@@ -500,10 +500,19 @@ async def list_inventory():
     try:
         cursor = conn.cursor(dictionary=True)
         query = """
-            SELECT ss.*, p.product_name, w.waypoint_name
+            SELECT 
+                ss.*, 
+                p.product_name, 
+                p.barcode AS product_barcode,
+                w.waypoint_name,
+                pp.row_num,
+                mp.product_name AS planned_product_name,
+                mp.barcode AS planned_product_barcode
             FROM shelf_status ss
             LEFT JOIN product_master p ON ss.product_id = p.product_id
             LEFT JOIN waypoint w ON ss.waypoint_id = w.waypoint_id
+            LEFT JOIN waypoint_product_plan pp ON ss.barcode_tag = pp.barcode_tag
+            LEFT JOIN product_master mp ON pp.product_id = mp.product_id
             ORDER BY ss.last_updated_at DESC
         """
         cursor.execute(query)

@@ -51,10 +51,11 @@ CREATE TABLE slot (
 CREATE TABLE waypoint_product_plan (
     plan_id      INT AUTO_INCREMENT PRIMARY KEY,
     waypoint_id  INT NOT NULL,
-    slot_id      INT NOT NULL,
     product_id   INT NOT NULL,
+    barcode_tag  VARCHAR(50) UNIQUE NOT NULL,
+    row_num      INT DEFAULT 1,
+    plan_order   INT DEFAULT 0,
     FOREIGN KEY (waypoint_id) REFERENCES waypoint(waypoint_id),
-    FOREIGN KEY (slot_id)     REFERENCES slot(slot_id),
     FOREIGN KEY (product_id)  REFERENCES product_master(product_id)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4;
 

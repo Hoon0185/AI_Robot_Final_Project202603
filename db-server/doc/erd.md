@@ -74,8 +74,10 @@ erDiagram
     waypoint_product_plan {
         INT plan_id PK
         INT waypoint_id FK
-        INT slot_id FK
         INT product_id FK "있어야 할 상품"
+        VARCHAR barcode_tag "슬롯 식별 태그 (UNIQUE)"
+        INT row_num "단 번호 (Numeric Only)"
+        INT plan_order "순찰 순서"
     }
 
     shelf_status {

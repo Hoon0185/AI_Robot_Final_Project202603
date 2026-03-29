@@ -85,7 +85,6 @@ function App() {
           if (alertData.length > lastAlertCount && lastAlertCount !== 0) {
             playAlertSound();
             setShowNotification(true);
-            setTimeout(() => setShowNotification(false), 5000); // 5초 후 자동 닫힘
           }
           setAlerts(alertData);
           setLastAlertCount(alertData.length);
@@ -374,7 +373,7 @@ function App() {
             ) : (
               alerts.slice(0, 10).map(alert => (
                 <div key={alert.alert_id} className="sidebar-alert-item" style={{ padding: '8px' }}>
-                  <h5 style={{ fontSize: '12px' }}>{alert.alert_type}</h5>
+                  <h5 style={{ fontSize: '12px' }}>{alert.alert_type === '없음' ? '결품' : alert.alert_type}</h5>
                   <p style={{ margin: '2px 0 6px', fontSize: '11px' }}>{alert.waypoint_name || '매대'}</p>
                   <button 
                     className="apple-button secondary slim" 
@@ -450,26 +449,58 @@ function App() {
                   <span className="legend-item"><span className="legend-dot wrong"></span> 오진열</span>
                 </div>
               </div>
-              <div className="shelf-grid">
-                {shelfStatus.length === 0 ? (
-                  <div className="empty-shelf">데이터를 수집 중입니다...</div>
-                ) : (
-                  shelfStatus.map(item => (
-                    <div key={item.status_id} className={`shelf-slot ${item.status}`}>
-                      <div className="slot-header">
-                        <span className="waypoint-badge">{item.waypoint_name}</span>
-                        <span className="row-badge">{item.row_num}단</span>
-                      </div>
-                      <div className="product-info">
-                        <div className="p-name">{item.product_name}</div>
-                        <div className="p-barcode"><code>{item.barcode_tag}</code></div>
-                      </div>
-                      <div className="slot-status">
-                        {item.status === '정상' ? '✅' : item.status === '결품' ? '❌ 결품' : '⚠️ 오진열'}
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div className="table-container">
+                <table className="fixed-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '150px', textAlign: 'center' }}>위치 (웨이포인트)</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>단수</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>슬롯 태그</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>현재 상태</th>
+                      <th style={{ textAlign: 'center' }}>진열 정보 (계획 vs 실제)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shelfStatus.length === 0 ? (
+                      <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>데이터를 수집 중입니다...</td></tr>
+                    ) : (
+                      shelfStatus.map(item => (
+                        <tr key={item.status_id}>
+                          <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.waypoint_name}</td>
+                          <td style={{ textAlign: 'center' }}>{item.row_num}단</td>
+                          <td style={{ textAlign: 'center' }}><code>{item.barcode_tag}</code></td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span className={`tag ${item.status}`}>{item.status}</span>
+                          </td>
+                          <td>
+                            {item.status === '정상' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ color: 'var(--accent-green)', fontWeight: '600' }}>[정상]</span>
+                                <span>{item.planned_product_name}</span>
+                              </div>
+                            ) : item.status === '오진열' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ display: 'flex', gap: '8px', fontSize: '12px' }}>
+                                  <span style={{ color: 'var(--text-secondary)', width: '40px' }}>계획:</span>
+                                  <span style={{ fontWeight: '500' }}>{item.planned_product_name}</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
+                                  <span style={{ color: 'var(--accent-red)', width: '40px', fontWeight: '600' }}>인식:</span>
+                                  <span style={{ color: 'var(--accent-red)', fontWeight: '700' }}>{item.product_name}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ color: 'var(--accent-red)', fontWeight: '600' }}>[결품]</span>
+                                <span style={{ textDecoration: 'line-through', color: 'var(--text-secondary)' }}>{item.planned_product_name}</span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </section>
 
@@ -528,7 +559,7 @@ function App() {
                         <td style={{ color: '#8E8E93', textAlign: 'center' }}>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
                         <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
                         <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
-                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
+                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result === '없음' ? '결품' : d.result}`}>{d.result === '없음' ? '결품' : d.result}</span></td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
