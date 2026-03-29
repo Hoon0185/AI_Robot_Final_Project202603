@@ -12,9 +12,7 @@
 ## 설계 원칙
 
 > ⚠️ **v3.1 개정 주요 변경사항**
-> - **수량 관리 폐기**: 로봇의 물리적 한계를 고려하여 '개수' 대신 **'상태(정상/없음/오진열)'**에만 집중
-> - **위치 정보 최적화**: `slot` 테이블에서 불필요한 `col_num`(열 번호) 제거 (바코드 태그가 위치를 대체)
-> - **상태값 한글화**: `shelf_status`, `detection_log` 등의 결과값을 직관적인 한글(`정상`, `상품 미진열`, `오진열`)로 변경
+> - **상태값 한글화**: `shelf_status`, `detection_log` 등의 결과값을 직관적인 한글(`정상`, `결품`, `오진열`)로 변경
 
 | 테이블 | 역할 |
 |---|---|
@@ -25,7 +23,7 @@
 | `shelf_status` | 순찰 후 최종적으로 파악된 **슬롯별 현재 진열 상태** |
 | `patrol_log` | 순찰 회차별 결과 통계 (스캔 수, 오류 발견 수 등) |
 | `detection_log` | 순찰 중 발생하는 **모든 인식 이력** (바코드, odom, 신뢰도 등) |
-| `alert` | 없음/오진열 등 즉각적인 조치가 필요한 **알림 정보** |
+| `alert` | 결품/오진열 등 즉각적인 조치가 필요한 **알림 정보** |
 | `patrol_config` | 로봇 운영 설정 (대기시간, 스케줄, 인터발 등) |
 
 ---
@@ -37,7 +35,7 @@
 3.  **이미지 서버 YOLO 판독**: 로봇이 전송한 이미지를 **이미지 서버**에서 **YOLO**로 인식 → 실제 상품의 바코드를 읽는 대신, 외형 기반으로 바코드 ID를 식별하여 DB로 전달
 4.  **결과 비교 및 판독**:
     - **정상**: 계획된 상품 바코드와 인식된 바코드 ID 일치
-    - **상품 미진열**: 해당 위치에 상품이 인식되지 않음 (Display Empty)
+    - **결품**: 해당 위치에 상품이 인식되지 않음 (Display Empty)
     - **오진열**: 계획과 다른 바코드 ID가 인식됨 → **이미지 서버가 전송한 실물 ID를 `alert`에 기록**
 5.  **DB 기록**: `detection_log`에 판독 결과 기록 및 `shelf_status` 현재 상태 갱신
 
@@ -85,7 +83,7 @@ erDiagram
         INT waypoint_id FK
         INT slot_id FK
         INT product_id FK
-        ENUM status "정상 / 없음 / 오진열"
+        ENUM status "정상 / 결품 / 오진열"
         DATETIME last_updated_at
     }
 
@@ -107,7 +105,7 @@ erDiagram
         VARCHAR detected_barcode "인식 바코드"
         VARCHAR tag_barcode "태그 바코드"
         FLOAT confidence
-        ENUM result "정상 / 없음 / 오진열"
+        ENUM result "정상 / 결품 / 오진열"
         FLOAT odom_x "인식 시 위치 X"
         FLOAT odom_y "인식 시 위치 Y"
     }
@@ -118,7 +116,7 @@ erDiagram
         INT waypoint_id FK
         INT slot_id FK
         INT product_id FK
-        ENUM alert_type "없음 / 오진열 / 수정필요"
+        ENUM alert_type "결품 / 오진열 / 수정필요"
         TEXT message
         BOOLEAN is_resolved
     }
@@ -164,4 +162,4 @@ erDiagram
 }
 ```
 > 💡 **판독 주체 변경**: 이미지 서버는 오직 "무엇을 보았다"는 **원시 데이터(Raw Data)**만 전송합니다.
-> `정상/상품 미진열/오진열` 여부는 DB 서버가 진열 계획(Plan)과 대조하여 **내부적으로 최종 판독**합니다.
+> `정상/결품/오진열` 여부는 DB 서버가 진열 계획(Plan)과 대조하여 **내부적으로 최종 판독**합니다.

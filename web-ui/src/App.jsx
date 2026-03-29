@@ -466,7 +466,7 @@ function App() {
                         <div className="p-barcode"><code>{item.barcode_tag}</code></div>
                       </div>
                       <div className="slot-status">
-                        {item.status === '정상' ? '✅' : item.status === '상품 없음' ? '❌ 결품' : '⚠️ 오진열'}
+                        {item.status === '정상' ? '✅' : item.status === '결품' ? '❌ 결품' : '⚠️ 오진열'}
                       </div>
                     </div>
                   ))

@@ -415,7 +415,7 @@ html {
 }
 
 .shelf-slot.정상 { border-left: 4px solid var(--accent-green); }
-.shelf-slot.상품\ 없음 { border-left: 4px solid var(--accent-red); background: var(--accent-red-soft); }
+.shelf-slot.결품 { border-left: 4px solid var(--accent-red); background: var(--accent-red-soft); }
 .shelf-slot.오진열 { border-left: 4px solid var(--accent-orange); background: var(--accent-orange-soft); }
 
 .slot-header {
@@ -566,8 +566,7 @@ tr:last-child td {
   color: #1e40af;
 }
 
-.tag.없음,
-.tag.상품\ 없음,
+.tag.결품,
 .tag.오진열,
 .tag.중단 {
   background: var(--accent-red-soft);
