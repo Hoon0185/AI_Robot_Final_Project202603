@@ -557,6 +557,23 @@ async def list_waypoints():
     finally:
         conn.close()
 
+@app.delete("/waypoints/{waypoint_id}")
+async def delete_waypoint(waypoint_id: int):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM waypoint_product_plan WHERE waypoint_id = %s", (waypoint_id,))
+        if cursor.fetchone()[0] > 0:
+            raise HTTPException(status_code=400, detail="삭제 실패: 해당 웨이포인트에 연결된 상품 진열 계획이 남아있습니다. 먼저 계획을 삭제해 주세요.")
+        
+        cursor.execute("DELETE FROM waypoint WHERE waypoint_id = %s", (waypoint_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Waypoint not found")
+        return {"message": "Waypoint deleted successfully"}
+    finally:
+        conn.close()
+
 @app.post("/admin/unified-register")
 async def unified_register(data: UnifiedRegisterInput):
     conn = get_db_connection()

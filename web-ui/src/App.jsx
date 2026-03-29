@@ -222,6 +222,25 @@ function App() {
     }
   };
 
+  const handleDeleteWaypoint = async (id) => {
+    if (!window.confirm("정말 이 웨이포인트를 삭제하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/waypoints/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        alert("웨이포인트가 삭제되었습니다.");
+        fetchStaticData();
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "삭제 실패");
+      }
+    } catch (err) {
+      alert("삭제 실패: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateConfig = async (e) => {
     if (e) e.preventDefault();
     try {
@@ -750,37 +769,68 @@ function App() {
                 )}
               </section>
 
-              <section className="apple-card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>⚙️ 시스템 작업 로그 관리</h2>
-                <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>순찰 기록의 무결성을 위해 필요한 경우 기록을 삭제할 수 있습니다.</p>
-                <div className="table-container">
-                  <table className="fixed-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '80px' }}>ID</th>
-                        <th>시작 시간</th>
-                        <th style={{ width: '120px' }}>상태</th>
-                        <th style={{ width: '120px' }}>스캔</th>
-                        <th style={{ width: '100px' }}>조치</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {patrolList.map(log => (
-                        <tr key={log.patrol_id}>
-                          <td style={{ fontWeight: '600' }}>#{log.patrol_id}</td>
-                          <td style={{ color: '#424245' }}>{new Date(log.start_time).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
-                          <td style={{ color: log.status === '완료' ? 'var(--accent-green)' : 'var(--text-primary)' }}>{log.status}</td>
-                          <td>{log.scanned_slots} 슬롯</td>
-                          <td>
-                            <button className="apple-button secondary" style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
-                              onClick={() => handleDeletePatrol(log.patrol_id)}>삭제</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+               <section className="apple-card">
+                 <h2 className="section-title" style={{ marginTop: 0 }}>⚙️ 시스템 작업 로그 관리</h2>
+                 <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>순찰 기록의 무결성을 위해 필요한 경우 기록을 삭제할 수 있습니다.</p>
+                 <div className="table-container">
+                   <table className="fixed-table">
+                     <thead>
+                       <tr>
+                         <th style={{ width: '80px' }}>ID</th>
+                         <th>시작 시간</th>
+                         <th style={{ width: '120px' }}>상태</th>
+                         <th style={{ width: '120px' }}>스캔</th>
+                         <th style={{ width: '100px' }}>조치</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {patrolList.map(log => (
+                         <tr key={log.patrol_id}>
+                           <td style={{ fontWeight: '600' }}>#{log.patrol_id}</td>
+                           <td style={{ color: '#424245' }}>{new Date(log.start_time).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                           <td style={{ color: log.status === '완료' ? 'var(--accent-green)' : 'var(--text-primary)' }}>{log.status}</td>
+                           <td>{log.scanned_slots} 슬롯</td>
+                           <td>
+                             <button className="apple-button secondary" style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
+                               onClick={() => handleDeletePatrol(log.patrol_id)}>삭제</button>
+                           </td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+               </section>
+
+               <section className="apple-card">
+                 <h2 className="section-title" style={{ marginTop: 0 }}>📍 등록된 웨이포인트(구역) 관리</h2>
+                 <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없어야 가능합니다.)</p>
+                 <div className="table-container">
+                   <table className="fixed-table">
+                     <thead>
+                       <tr>
+                         <th style={{ width: '80px' }}>ID</th>
+                         <th>웨이포인트 이름</th>
+                         <th style={{ width: '100px' }}>번호</th>
+                         <th style={{ width: '100px' }}>조치</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {waypoints.map(wp => (
+                         <tr key={wp.waypoint_id}>
+                           <td>#{wp.waypoint_id}</td>
+                           <td style={{ fontWeight: '600' }}>{wp.waypoint_name}</td>
+                           <td>{wp.waypoint_no}</td>
+                           <td>
+                             <button className="apple-button secondary" 
+                               style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
+                               onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>
+                           </td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+               </section>
             </div>
           </div>
         ) : (
