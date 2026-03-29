@@ -24,7 +24,7 @@ def send_detection(tag, detected, confidence=0.98):
             result = response.json()
             print(f"[응답] 상태: {result.get('status')}")
             print(f"[판독 결과] {result.get('judgment')}")
-            print(f"[슬롯 정보] {result.get('slot_info')}")
+            print(f"[위치 정보] {result.get('location')} (태그: {result.get('tag_barcode')})")
         else:
             print(f"❌ 서버 오류: {response.status_code}")
             print(response.text)

@@ -54,6 +54,9 @@ function App() {
     waypoint_name: '',
     row_num: 1
   });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchGilbotData = async () => {
     try {
@@ -162,26 +165,35 @@ function App() {
       alert("⚠️ 필수 항목들을 모두 입력해 주세요.");
       return;
     }
+    setLoading(true);
     try {
-      setLoading(true);
       const res = await fetch('/api/admin/unified-register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(unifiedForm)
       });
       if (res.ok) {
-        alert("🎉 상품 및 진열 계획이 성공적으로 등록되었습니다!");
-        setUnifiedForm({
-          product_name: '', product_barcode: '', category: '과자',
-          min_inventory_qty: 5, waypoint_name: '', slot_tag: '', row_num: 1
-        });
+        alert("✅ 상품 및 위치 정보가 성공적으로 등록/수정되었습니다!");
         fetchStaticData();
+        fetchGilbotData();
       } else {
         const errData = await res.json();
-        alert("❌ 등록 실패: " + errData.detail);
+        alert("❌ 처리 실패: " + errData.detail);
       }
     } catch (err) { alert("연결 오류 발생"); }
     finally { setLoading(false); }
+  };
+
+  const handleEditClick = (plan) => {
+    setUnifiedForm({
+      product_name: plan.product_name,
+      product_barcode: plan.product_barcode,
+      category: plan.category || '과자',
+      min_inventory_qty: plan.min_inventory_qty || 5,
+      waypoint_name: plan.waypoint_name,
+      row_num: plan.row_num || 1
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeletePatrol = async (id) => {
@@ -447,7 +459,7 @@ function App() {
                     </div>
 
                     <div style={{background: 'rgba(0, 122, 255, 0.03)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(0, 122, 255, 0.1)'}}>
-                      <h3 style={{fontSize: '14px', marginBottom: '12px', color: 'var(--accent-blue)'}}>📍 매대 위치 정보</h3>
+                      <h3 style={{fontSize: '14px', marginBottom: '12px', color: 'var(--accent-blue)'}}>📍 상품 위치 정보</h3>
                       <div className="form-group">
                         <label>위치/구역 이름 (Waypoint)</label>
                         <input 
@@ -471,15 +483,34 @@ function App() {
                   </div>
 
                   <button type="submit" className="apple-button" style={{ width: '100%', marginTop: '20px', height: '48px', fontSize: '16px' }} disabled={loading}>
-                    {loading ? '등록 중...' : '마스터 정보 및 진열 계획 등록'}
+                    {loading ? '처리 중...' : '마스터 정보 및 상품 위치 정보 등록'}
                   </button>
                 </form>
               </section>
 
-              {/* 하단 전체 폭: 상품 진열 계획 (Planogram) */}
+              {/* 하단 전체 폭: 상품 위치 관리 리스트 */}
               <section className="apple-card">
-                <h2 className="section-title" style={{marginTop: 0}}>📋 상품 진열 계획 (Planogram) 조회</h2>
-                <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>현재 로봇이 순찰하며 점검해야 할 마스터 진열 정보입니다.</p>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+                  <h2 className="section-title" style={{margin: 0}}>📋 상품 위치 관리 리스트</h2>
+                  <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+                    <div className="form-group" style={{margin: 0}}>
+                      <select style={{margin: 0, padding: '5px 10px'}} value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value)); setCurrentPage(1); }}>
+                        <option value={5}>5개까지 보기</option>
+                        <option value={10}>10개까지 보기</option>
+                        <option value={20}>20개까지 보기</option>
+                      </select>
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="상품명 또는 바코드 검색..." 
+                      style={{margin: 0, width: '250px'}}
+                      value={searchTerm}
+                      onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                    />
+                  </div>
+                </div>
+                
+                <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>리스트의 행을 클릭하면 상단에서 바로 수정할 수 있습니다.</p>
                 <div className="table-container">
                   <table>
                     <thead>

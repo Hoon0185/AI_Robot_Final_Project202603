@@ -13,14 +13,14 @@ load_dotenv()
 app = FastAPI(
     title="Gilbot API Server",
     description="편의점 매대 관리 로봇(Gilbot) 제어를 위한 백엔드 서버",
-    version="0.2.4",
+    version="0.3.0",
     root_path="/api"
 )
 
 # CORS 설정: 프론트엔드(React 등)의 접속을 허용합니다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 실무에서는 ["http://localhost:3000"] 처럼 특정 주소만 넣는 것을 권장합니다.
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,6 +56,20 @@ class DetectionInput(BaseModel):
     odom_x: float = 0.0
     odom_y: float = 0.0
     timestamp: str
+
+class UnifiedRegisterInput(BaseModel):
+    product_name: str
+    product_barcode: str
+    category: str = "General"
+    min_inventory_qty: int = 5
+    waypoint_name: str
+    row_num: int = 1
+
+class PlanAddInput(BaseModel):
+    waypoint_id: int
+    barcode_tag: str
+    row_num: int = 1
+    product_id: int
 
 # 데이터베이스 연결 함수
 def get_db_connection():
@@ -151,7 +165,6 @@ async def finish_patrol():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        # 진행 중인 가장 최근 순찰 찾기
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
         if not patrol:
@@ -206,14 +219,14 @@ async def add_product(product: Product):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        query = "INSERT INTO product_master (product_name, barcode, category, standard_qty) VALUES (%s, %s, %s, %s)"
-        cursor.execute(query, (product.product_name, product.barcode, product.category, product.standard_qty))
+        query = "INSERT INTO product_master (product_name, barcode, category, min_inventory_qty) VALUES (%s, %s, %s, %s)"
+        cursor.execute(query, (product.product_name, product.barcode, product.category, product.min_inventory_qty))
         conn.commit()
         return {"message": "Product added successfully", "id": cursor.lastrowid}
     finally:
         conn.close()
 
-# --- v3.1 New Endpoints ---
+# --- Analysis & Detection API ---
 
 @app.get("/alerts")
 async def list_alerts():
@@ -247,29 +260,26 @@ async def add_detection(data: DetectionInput):
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
         if not patrol:
-            # 진행중인 게 없으면 그냥 '완료'된 최신이라도 찾거나 에러
             cursor.execute("SELECT patrol_id FROM patrol_log ORDER BY start_time DESC LIMIT 1")
             patrol = cursor.fetchone()
         
-        patrol_id = patrol['patrol_id'] if patrol else 1 # 기본값 1 (테스트용)
+        patrol_id = patrol['patrol_id'] if patrol else 1
 
-        # 2. 태그 바코드로 해당 위치(슬롯) 및 계획된 상품 조회
-        # slot과 waypoint_product_plan을 조인하여 '있어야 할 상품'을 찾음
+        # 2. 태그 바코드로 해당 위치 및 계획된 상품 조회
         query_plan = """
-            SELECT s.slot_id, s.waypoint_id, p.product_id as planned_product_id
-            FROM slot s
-            JOIN waypoint_product_plan p ON s.slot_id = p.slot_id
-            WHERE s.barcode_tag = %s
+            SELECT plan_id, waypoint_id, product_id as planned_product_id, row_num
+            FROM waypoint_product_plan
+            WHERE barcode_tag = %s
         """
         cursor.execute(query_plan, (data.tag_barcode,))
-        slot_plan = cursor.fetchone()
+        plan = cursor.fetchone()
         
-        if not slot_plan:
+        if not plan:
              raise HTTPException(status_code=404, detail=f"Tag barcode {data.tag_barcode} not found in plan")
         
-        slot_id = slot_plan['slot_id']
-        waypoint_id = slot_plan['waypoint_id']
-        planned_product_id = slot_plan['planned_product_id']
+        waypoint_id = plan['waypoint_id']
+        planned_product_id = plan['planned_product_id']
+        row_num = plan['row_num']
 
         # 3. 인식된 바코드로 실제 상품 ID 조회
         detected_product_id = None
@@ -287,32 +297,31 @@ async def add_detection(data: DetectionInput):
             result_status = '오진열'
 
         # 5. shelf_status 업데이트 (현재 매대 현황)
-        # 해당 슬롯에 대한 레코드가 이미 있는지 확인
-        cursor.execute("SELECT status_id FROM shelf_status WHERE slot_id = %s", (slot_id,))
+        cursor.execute("SELECT status_id FROM shelf_status WHERE barcode_tag = %s", (data.tag_barcode,))
         existing_status = cursor.fetchone()
         
         if existing_status:
-            update_status_sql = "UPDATE shelf_status SET product_id = %s, status = %s, last_updated_at = NOW() WHERE slot_id = %s"
-            cursor.execute(update_status_sql, (detected_product_id or planned_product_id, result_status, slot_id))
+            update_status_sql = "UPDATE shelf_status SET product_id = %s, status = %s, last_updated_at = NOW() WHERE barcode_tag = %s"
+            cursor.execute(update_status_sql, (detected_product_id or planned_product_id, result_status, data.tag_barcode))
         else:
-            insert_status_sql = "INSERT INTO shelf_status (waypoint_id, slot_id, product_id, status) VALUES (%s, %s, %s, %s)"
-            cursor.execute(insert_status_sql, (waypoint_id, slot_id, detected_product_id or planned_product_id, result_status))
+            insert_status_sql = "INSERT INTO shelf_status (waypoint_id, barcode_tag, product_id, status) VALUES (%s, %s, %s, %s)"
+            cursor.execute(insert_status_sql, (waypoint_id, data.tag_barcode, detected_product_id or planned_product_id, result_status))
 
-        # 6. detection_logInsert (인식 이력 기록)
+        # 6. detection_log (인식 이력 기록)
         insert_log_sql = """
-            INSERT INTO detection_log (patrol_id, waypoint_id, slot_id, product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO detection_log (patrol_id, waypoint_id, product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, slot_id, detected_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
+        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, detected_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
 
         # 7. Alert 생성 (이상 감제 시)
         if result_status != '정상':
             alert_msg = f"{data.tag_barcode} 위치: 계획된 상품과 다름" if result_status == '오진열' else f"{data.tag_barcode} 위치: 상품 없음"
             insert_alert_sql = """
-                INSERT INTO alert (patrol_id, waypoint_id, slot_id, product_id, alert_type, message)
+                INSERT INTO alert (patrol_id, waypoint_id, barcode_tag, product_id, alert_type, message)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(insert_alert_sql, (patrol_id, waypoint_id, slot_id, planned_product_id, result_status, alert_msg))
+            cursor.execute(insert_alert_sql, (patrol_id, waypoint_id, data.tag_barcode, planned_product_id, result_status, alert_msg))
 
         # 8. patrol_log 통계 업데이트
         update_patrol_sql = "UPDATE patrol_log SET scanned_slots = scanned_slots + 1, error_found = error_found + %s WHERE patrol_id = %s"
@@ -322,8 +331,8 @@ async def add_detection(data: DetectionInput):
         return {
             "status": "success", 
             "judgment": result_status, 
-            "slot_id": slot_id,
-            "slot_info": f"Waypoint {waypoint_id}, Slot {slot_id}",
+            "location": f"Waypoint {waypoint_id}, Row {row_num}",
+            "tag_barcode": data.tag_barcode,
             "patrol_id": patrol_id
         }
 
@@ -350,6 +359,8 @@ async def list_detections():
     finally:
         conn.close()
 
+# --- Config & Plan API ---
+
 @app.get("/patrol/config")
 async def get_patrol_config():
     conn = get_db_connection()
@@ -357,7 +368,6 @@ async def get_patrol_config():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        # TIME 컬럼은 스트링으로 가져와야 프론트엔드 input[time]에서 제대로 인식함
         cursor.execute("""
             SELECT 
                 config_id, avoidance_wait_time, 
@@ -369,7 +379,6 @@ async def get_patrol_config():
         """)
         config = cursor.fetchone()
         if not config:
-            # 기본 설정값 반환
             return {
                 "avoidance_wait_time": 5,
                 "patrol_start_time": "09:00:00",
@@ -413,18 +422,49 @@ async def get_patrol_plan():
         cursor = conn.cursor(dictionary=True)
         query = """
             SELECT 
-                p.plan_id, p.waypoint_id, p.slot_id, p.product_id,
+                p.plan_id, p.waypoint_id, p.barcode_tag, p.product_id,
                 w.waypoint_name, p.row_num,
                 m.product_name, m.barcode as product_barcode
             FROM waypoint_product_plan p
             LEFT JOIN waypoint w ON p.waypoint_id = w.waypoint_id
             LEFT JOIN product_master m ON p.product_id = m.product_id
-            ORDER BY w.waypoint_id, p.row_num
+            ORDER BY w.waypoint_id, p.row_num, p.barcode_tag
         """
         cursor.execute(query)
         return cursor.fetchall()
     finally:
         conn.close()
+
+@app.post("/patrol/plan/add")
+async def add_patrol_plan(plan: PlanAddInput):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE barcode_tag = %s", (plan.barcode_tag,))
+        existing_plan = cursor.fetchone()
+        
+        if existing_plan:
+            cursor.execute(
+                "UPDATE waypoint_product_plan SET product_id = %s, waypoint_id = %s, row_num = %s WHERE plan_id = %s",
+                (plan.product_id, plan.waypoint_id, plan.row_num, existing_plan['plan_id'])
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO waypoint_product_plan (waypoint_id, barcode_tag, product_id, row_num) VALUES (%s, %s, %s, %s)",
+                (plan.waypoint_id, plan.barcode_tag, plan.product_id, plan.row_num)
+            )
+        
+        conn.commit()
+        return {"message": "Planogram updated successfully"}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+# --- Inventory & Admin API ---
 
 @app.get("/inventory")
 async def list_inventory():
@@ -433,7 +473,6 @@ async def list_inventory():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        # v3.1 스키마에 맞춘 현재 매대 상태 조회
         query = """
             SELECT ss.*, p.product_name, w.waypoint_name
             FROM shelf_status ss
@@ -446,13 +485,16 @@ async def list_inventory():
     finally:
         conn.close()
 
-class UnifiedRegisterInput(BaseModel):
-    product_name: str
-    product_barcode: str
-    category: str = "General"
-    min_inventory_qty: int = 5
-    waypoint_name: str
-    row_num: int = 1
+@app.get("/waypoints")
+async def list_waypoints():
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM waypoint ORDER BY waypoint_id")
+        return cursor.fetchall()
+    finally:
+        conn.close()
 
 @app.post("/admin/unified-register")
 async def unified_register(data: UnifiedRegisterInput):
@@ -483,38 +525,27 @@ async def unified_register(data: UnifiedRegisterInput):
         if wp:
             waypoint_id = wp['waypoint_id']
         else:
-            cursor.execute("INSERT INTO waypoint (waypoint_name, patrol_order) VALUES (%s, 0)", (data.waypoint_name,))
+            cursor.execute("SELECT MAX(waypoint_no) as max_no FROM waypoint")
+            res_max = cursor.fetchone()
+            new_no = (res_max['max_no'] if res_max and res_max['max_no'] else 100) + 1
+            cursor.execute(
+                "INSERT INTO waypoint (waypoint_no, waypoint_name, loc_x, loc_y) VALUES (%s, %s, 0.0, 0.0)", 
+                (new_no, data.waypoint_name)
+            )
             waypoint_id = cursor.lastrowid
 
-        # 3. 내부 슬롯 매핑 (상품 바코드 = 슬롯 태그)
-        cursor.execute("SELECT slot_id FROM slot WHERE barcode_tag = %s", (data.product_barcode,))
-        sl = cursor.fetchone()
-        if sl:
-            slot_id = sl['slot_id']
-            cursor.execute(
-                "UPDATE slot SET waypoint_id = %s, row_num = %s WHERE slot_id = %s",
-                (waypoint_id, data.row_num, slot_id)
-            )
-        else:
-            cursor.execute(
-                "INSERT INTO slot (waypoint_id, row_num, barcode_tag) VALUES (%s, %s, %s)",
-                (waypoint_id, data.row_num, data.product_barcode)
-            )
-            slot_id = cursor.lastrowid
-
-        # 4. 진열 계획 연결 (기본계획 테이블 업데이트 포함)
-        cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE waypoint_id = %s AND row_num = %s AND product_id = %s", 
-                      (waypoint_id, data.row_num, product_id))
+        # 3. 진열 계획 업데이트
+        cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE barcode_tag = %s", (data.product_barcode,))
         p = cursor.fetchone()
-        if not p:
+        if p:
             cursor.execute(
-                "INSERT INTO waypoint_product_plan (waypoint_id, slot_id, product_id, row_num) VALUES (%s, %s, %s, %s)",
-                (waypoint_id, slot_id, product_id, data.row_num)
+                "UPDATE waypoint_product_plan SET product_id = %s, waypoint_id = %s, row_num = %s WHERE plan_id = %s",
+                (product_id, waypoint_id, data.row_num, p['plan_id'])
             )
         else:
             cursor.execute(
-               "UPDATE waypoint_product_plan SET slot_id = %s WHERE plan_id = %s",
-               (slot_id, p['plan_id'])
+                "INSERT INTO waypoint_product_plan (waypoint_id, product_id, barcode_tag, row_num) VALUES (%s, %s, %s, %s)",
+                (waypoint_id, product_id, data.product_barcode, data.row_num)
             )
 
         conn.commit()
@@ -525,71 +556,6 @@ async def unified_register(data: UnifiedRegisterInput):
     finally:
         conn.close()
 
-@app.get("/waypoints")
-async def list_waypoints():
-    conn = get_db_connection()
-    if not conn: return []
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM waypoint ORDER BY waypoint_id")
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-class PlanAddInput(BaseModel):
-    waypoint_id: int
-    barcode_tag: str
-    row_num: int = 1
-    product_id: int
-
-@app.post("/patrol/plan/add")
-async def add_patrol_plan(plan: PlanAddInput):
-    conn = get_db_connection()
-    if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed")
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT slot_id FROM slot WHERE barcode_tag = %s", (plan.barcode_tag,))
-        row = cursor.fetchone()
-        
-        slot_id = None
-        if not row:
-            cursor.execute(
-                "INSERT INTO slot (waypoint_id, row_num, barcode_tag) VALUES (%s, %s, %s)",
-                (plan.waypoint_id, plan.row_num, plan.barcode_tag)
-            )
-            slot_id = cursor.lastrowid
-        else:
-            slot_id = row['slot_id']
-            cursor.execute(
-                "UPDATE slot SET waypoint_id = %s, row_num = %s WHERE slot_id = %s",
-                (plan.waypoint_id, plan.row_num, slot_id)
-            )
-
-        cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE slot_id = %s", (slot_id,))
-        existing_plan = cursor.fetchone()
-        
-        if existing_plan:
-            cursor.execute(
-                "UPDATE waypoint_product_plan SET product_id = %s, waypoint_id = %s WHERE plan_id = %s",
-                (plan.product_id, plan.waypoint_id, existing_plan['plan_id'])
-            )
-        else:
-            cursor.execute(
-                "INSERT INTO waypoint_product_plan (waypoint_id, slot_id, product_id) VALUES (%s, %s, %s)",
-                (plan.waypoint_id, slot_id, plan.product_id)
-            )
-        
-        conn.commit()
-        return {"message": "Planogram updated successfully"}
-    except Error as e:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        conn.close()
-
-
 if __name__ == "__main__":
     import uvicorn
-    # 외부 IP 허용 및 포트 8000 실행
     uvicorn.run(app, host="0.0.0.0", port=8000)
