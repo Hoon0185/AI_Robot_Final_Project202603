@@ -46,7 +46,14 @@ function App() {
   });
   const [patrolConfigDraft, setPatrolConfigDraft] = useState(null);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
-  const [newProduct, setNewProduct] = useState({ product_name: '', category: '과자', barcode: '', standard_qty: 5 });
+  const [unifiedForm, setUnifiedForm] = useState({
+    product_name: '',
+    product_barcode: '',
+    category: '과자',
+    min_inventory_qty: 5,
+    waypoint_name: '',
+    row_num: 1
+  });
 
   const fetchGilbotData = async () => {
     try {
@@ -127,27 +134,54 @@ function App() {
   };
 
   useEffect(() => {
-    fetchStaticData(); // 설정/상품은 처음에 한 번만
+    fetchStaticData();
     fetchGilbotData();
-    const timer = setInterval(fetchGilbotData, 10000); // 10초마다 로그/상태값만 자동 갱신
-    return () => clearInterval(timer);
+  }, []);
+
+  // 대시보드일 때만 3초마다 새로고침 (실시간 감시용)
+  useEffect(() => {
+    if (view === 'dashboard') {
+      const interval = setInterval(fetchGilbotData, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [view]);
+
+  // 주기적으로 전체 데이터 갱신 (더 느린 주기로, 예를 들어 1분마다)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchStaticData();
+      fetchGilbotData();
+    }, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   // --- Admin Functions ---
-  const handleAddProduct = async (e) => {
+  const handleUnifiedRegister = async (e) => {
     e.preventDefault();
+    if (!unifiedForm.product_name || !unifiedForm.product_barcode || !unifiedForm.waypoint_name) {
+      alert("⚠️ 필수 항목들을 모두 입력해 주세요.");
+      return;
+    }
     try {
-      const res = await fetch('/api/products/add', {
+      setLoading(true);
+      const res = await fetch('/api/admin/unified-register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct)
+        body: JSON.stringify(unifiedForm)
       });
       if (res.ok) {
-        alert("상품 등록 완료!");
-        setNewProduct({ product_name: '', barcode: '', standard_qty: 0, category: 'Snack' });
+        alert("🎉 상품 및 진열 계획이 성공적으로 등록되었습니다!");
+        setUnifiedForm({
+          product_name: '', product_barcode: '', category: '과자',
+          min_inventory_qty: 5, waypoint_name: '', slot_tag: '', row_num: 1
+        });
         fetchStaticData();
+      } else {
+        const errData = await res.json();
+        alert("❌ 등록 실패: " + errData.detail);
       }
-    } catch (err) { alert("등록 실패"); }
+    } catch (err) { alert("연결 오류 발생"); }
+    finally { setLoading(false); }
   };
 
   const handleDeletePatrol = async (id) => {
@@ -369,129 +403,100 @@ function App() {
             </div>
           </div>
         ) : view === 'admin' ? (
-          /* Admin View */
-          <div className="admin-content">
-            <header>
-              <h1>데이터 본부</h1>
+          <div className="admin-dashboard">
+            <header className="admin-header">
+              <h1>⚙️ 통합 상품 및 진열 관리</h1>
               <p>상품 마스터 정보 및 데이터베이스 직접 제어</p>
             </header>
 
-            <div className="admin-grid">
+            <div className="admin-grid" style={{gridTemplateColumns: '1fr', gap: '20px'}}>
+              {/* 상단: 통합 등록 폼 */}
               <section className="apple-card">
-                <h2 className="section-title" style={{marginTop: 0}}>📦 새 상품 등록</h2>
-                <form onSubmit={handleAddProduct}>
-                  <div className="form-group">
-                    <label>상품명</label>
-                    <input type="text" placeholder="예: 신라면" value={newProduct.product_name} onChange={e => setNewProduct({...newProduct, product_name: e.target.value})} required />
-                  </div>
-                  <div className="form-group">
-                    <label>카테고리</label>
-                    <select value={newProduct.category} 
-                            style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#fff' }}
-                            onChange={e => setNewProduct({...newProduct, category: e.target.value})}>
-                      <option value="과자">과자</option>
-                      <option value="음료">음료</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>바코드</label>
-                    <input type="text" placeholder="barcode string" value={newProduct.barcode} onChange={e => setNewProduct({...newProduct, barcode: e.target.value})} required />
-                  </div>
-                  <div className="form-group">
-                    <label>최소 유지 수량</label>
-                    <input type="number" min="1" value={newProduct.standard_qty} onChange={e => setNewProduct({...newProduct, standard_qty: parseInt(e.target.value)})} required />
-                  </div>
-                  <button type="submit" className="apple-button" style={{ width: '100%' }}>마스터 DB에 등록</button>
-                </form>
-
-                <div style={{marginTop: '40px', paddingTop: '20px', borderTop: '1px solid var(--border-color)'}}>
-                  <h3 style={{fontSize: '15px', color: 'var(--accent-blue)'}}>🗄️ 고급 DB 관리</h3>
-                  <a href="http://16.184.56.119/phpmyadmin" target="_blank" rel="noreferrer" className="phpmyadmin-link">
-                    → phpMyAdmin으로 이동하여 직접 쿼리 실행
-                  </a>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+                  <h2 className="section-title" style={{margin: 0}}>✨ 통합 진열 상품 등록</h2>
+                  <span className="tag info">One-Stop Manager</span>
                 </div>
+                
+                <form onSubmit={handleUnifiedRegister}>
+                  <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px'}}>
+                    <div style={{background: 'rgba(0,0,0,0.02)', padding: '15px', borderRadius: '12px'}}>
+                      <h3 style={{fontSize: '14px', marginBottom: '12px', opacity: 0.7}}>📦 상품 기본 정보</h3>
+                      <div className="form-group">
+                        <label>상품명</label>
+                        <input type="text" placeholder="예: 신라면" value={unifiedForm.product_name} onChange={e => setUnifiedForm({...unifiedForm, product_name: e.target.value})} required />
+                      </div>
+                      <div className="form-group">
+                        <label>상품 바코드 (Barcode)</label>
+                        <input type="text" placeholder="상품에 인쇄된 바코드 입력" value={unifiedForm.product_barcode} onChange={e => setUnifiedForm({...unifiedForm, product_barcode: e.target.value})} required />
+                      </div>
+                      <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
+                        <div className="form-group">
+                          <label>카테고리</label>
+                          <select value={unifiedForm.category} onChange={e => setUnifiedForm({...unifiedForm, category: e.target.value})}>
+                            <option value="과자">과자</option>
+                            <option value="음료">음료</option>
+                            <option value="라면">라면</option>
+                            <option value="기타">기타</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>최소 수량 (목표)</label>
+                          <input type="number" min="1" value={unifiedForm.min_inventory_qty} onChange={e => setUnifiedForm({...unifiedForm, min_inventory_qty: parseInt(e.target.value)})} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{background: 'rgba(0, 122, 255, 0.03)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(0, 122, 255, 0.1)'}}>
+                      <h3 style={{fontSize: '14px', marginBottom: '12px', color: 'var(--accent-blue)'}}>📍 매대 위치 정보</h3>
+                      <div className="form-group">
+                        <label>위치/구역 이름 (Waypoint)</label>
+                        <input 
+                          type="text" 
+                          list="waypoint-list"
+                          placeholder="예: A구역 (신규 입력 시 자동 생성)" 
+                          value={unifiedForm.waypoint_name} 
+                          onChange={e => setUnifiedForm({...unifiedForm, waypoint_name: e.target.value})} 
+                          required 
+                        />
+                        <datalist id="waypoint-list">
+                          {waypoints.map(w => <option key={w.waypoint_id} value={w.waypoint_name} />)}
+                        </datalist>
+                      </div>
+                      <div className="form-group">
+                        <label>단 (Row)</label>
+                        <input type="number" min="1" value={unifiedForm.row_num} onChange={e => setUnifiedForm({...unifiedForm, row_num: parseInt(e.target.value)})} />
+                      </div>
+                      <p style={{fontSize: '12px', color: '#8E8E93', marginTop: '10px'}}>※ 매대 태그는 상품 바코드를 그대로 사용합니다.</p>
+                    </div>
+                  </div>
+
+                  <button type="submit" className="apple-button" style={{ width: '100%', marginTop: '20px', height: '48px', fontSize: '16px' }} disabled={loading}>
+                    {loading ? '등록 중...' : '마스터 정보 및 진열 계획 등록'}
+                  </button>
+                </form>
               </section>
 
-               <section className="apple-card">
-                 <h2 className="section-title" style={{marginTop: 0}}>🍭 등록 상품 조회</h2>
-                <div className="table-container" style={{maxHeight: '500px', overflowY: 'auto'}}>
+              {/* 하단 전체 폭: 상품 진열 계획 (Planogram) */}
+              <section className="apple-card">
+                <h2 className="section-title" style={{marginTop: 0}}>📋 상품 진열 계획 (Planogram) 조회</h2>
+                <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>현재 로봇이 순찰하며 점검해야 할 마스터 진열 정보입니다.</p>
+                <div className="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th>ID</th>
-                        <th>이름</th>
-                        <th>바코드</th>
-                        <th>분류</th>
+                        <th>위치(Waypoint)</th>
+                        <th>단(Row)</th>
+                        <th>진열 대상 상품</th>
+                        <th>상품 바코드 (Shelf Tag)</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {products.map(p => (
-                        <tr key={p.product_id}>
-                          <td>{p.product_id}</td>
-                          <td>{p.product_name}</td>
-                          <td><code>{p.barcode}</code></td>
-                          <td>{p.category}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-              {/* 하단 전체 폭: 상품 진열 계획 (Planogram) */}
-              <section className="apple-card" style={{gridColumn: '1 / -1', marginTop: '20px'}}>
-                <h2 className="section-title" style={{marginTop: 0}}>📋 상품 진열 계획 (Planogram) 관리</h2>
-                
-                {/* 등록 양식 추가 */}
-                <div style={{background: 'rgba(0, 122, 255, 0.05)', padding: '20px', borderRadius: '12px', marginBottom: '25px', border: '1px dashed var(--accent-blue)'}}>
-                  <h3 style={{fontSize: '15px', color: 'var(--accent-blue)', marginTop: 0, marginBottom: '15px'}}>📍 새로운 진열 배치 등록</h3>
-                  <form onSubmit={handleStorePlan} style={{display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', alignItems: 'end'}}>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '12px'}}>위치(Waypoint)</label>
-                      <select value={newPlan.waypoint_id} onChange={e => setNewPlan({...newPlan, waypoint_id: e.target.value})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}}>
-                        <option value="">위치 선택</option>
-                        {waypoints.map(w => <option key={w.waypoint_id} value={w.waypoint_id}>{w.waypoint_name}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '12px'}}>슬롯 태그(Barcode)</label>
-                      <input type="text" placeholder="Tag ID" value={newPlan.barcode_tag} onChange={e => setNewPlan({...newPlan, barcode_tag: e.target.value})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}} />
-                    </div>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '12px'}}>단(Row)</label>
-                      <input type="number" min="1" value={newPlan.row_num} onChange={e => setNewPlan({...newPlan, row_num: parseInt(e.target.value)})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}} />
-                    </div>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '12px'}}>대상 상품</label>
-                      <select value={newPlan.product_id} onChange={e => setNewPlan({...newPlan, product_id: e.target.value})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}}>
-                        <option value="">상품 선택</option>
-                        {products.map(p => <option key={p.product_id} value={p.product_id}>{p.product_name}</option>)}
-                      </select>
-                    </div>
-                    <button type="submit" className="apple-button" style={{padding: '10px', fontSize: '13px'}}>계획에 등록</button>
-                  </form>
-                </div>
-
-                <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>각 웨이포인트(위치) 및 슬롯별로 진열되어야 할 마스터 상품 정보입니다.</p>
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>위치(Waypoint)</th>
-                      <th>슬롯 태그</th>
-                      <th>단(Row)</th>
-                      <th>진열 대상 상품</th>
-                      <th>바코드</th>
-                    </tr>
-                  </thead>
                   <tbody>
                     {(!patrolPlan || patrolPlan.length === 0) ? (
-                      <tr><td colSpan="5" style={{textAlign: 'center', padding: '20px'}}>등록된 진열 계획이 없습니다.</td></tr>
+                      <tr><td colSpan="4" style={{textAlign: 'center', padding: '20px'}}>등록된 진열 계획이 없습니다.</td></tr>
                     ) : (
                       patrolPlan.map(plan => (
                         <tr key={plan.plan_id}>
-                          <td><strong>{plan.waypoint_name}</strong> (ID: {plan.waypoint_id})</td>
-                          <td><code>{plan.barcode_tag}</code></td>
+                          <td><strong>{plan.waypoint_name}</strong></td>
                           <td>{plan.row_num || 1}단</td>
                           <td>{plan.product_name}</td>
                           <td><code>{plan.product_barcode}</code></td>
@@ -503,6 +508,7 @@ function App() {
               </div>
             </section>
           </div>
+        </div>
         ) : view === 'system' ? (
           /* System View */
           <div className="system-content">
@@ -511,7 +517,7 @@ function App() {
               <p>순찰 기록 관리 및 시스템 무결성 작업</p>
             </header>
 
-            <div className="admin-grid" style={{gridTemplateColumns: '1fr 1fr'}}>
+            <div className="admin-grid" style={{gridTemplateColumns: '1fr', gap: '20px'}}>
               <section className="apple-card">
                 <h2 className="section-title" style={{marginTop: 0}}>⚙️ 순찰 시스템 설정</h2>
                 {patrolConfigDraft && (
