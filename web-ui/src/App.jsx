@@ -204,6 +204,24 @@ function App() {
     } catch (err) { alert("삭제 실패"); }
   };
 
+  const handleDeletePlan = async (id) => {
+    if (!window.confirm("정말 이 순찰 계획을 삭제하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/patrol/plan/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        alert("순찰 계획이 삭제되었습니다.");
+        fetchStaticData();
+      } else {
+        throw new Error("삭제 실패");
+      }
+    } catch (err) {
+      alert("삭제 실패: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateConfig = async (e) => {
     if (e) e.preventDefault();
     try {
@@ -632,11 +650,18 @@ function App() {
                               </div>
                             </td>
                             <td>
-                              <button className="apple-button secondary"
-                                style={{ padding: '6px 12px', fontSize: '12px' }}
-                                onClick={() => handleEditClick(plan)}>
-                                수정
-                              </button>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="apple-button secondary"
+                                  style={{ padding: '6px 12px', fontSize: '12px' }}
+                                  onClick={() => handleEditClick(plan)}>
+                                  수정
+                                </button>
+                                <button className="apple-button secondary"
+                                  style={{ padding: '6px 12px', fontSize: '12px', color: '#FF453A' }}
+                                  onClick={() => handleDeletePlan(plan.plan_id)}>
+                                  삭제
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))

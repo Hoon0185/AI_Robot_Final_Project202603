@@ -513,6 +513,19 @@ async def update_patrol_plan_order(orders: List[PlanOrderUpdate]):
     finally:
         conn.close()
 
+@app.delete("/patrol/plan/{plan_id}")
+async def delete_patrol_plan(plan_id: int):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM waypoint_product_plan WHERE plan_id = %s", (plan_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        return {"message": "Planogram record removed successfully"}
+    finally:
+        conn.close()
+
 @app.post("/waypoints/order")
 async def update_waypoints_order(orders: List[WaypointOrderUpdate]):
     conn = get_db_connection()
