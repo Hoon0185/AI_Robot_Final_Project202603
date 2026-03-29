@@ -169,6 +169,28 @@ async def delete_patrol(patrol_id: int):
     finally:
         conn.close()
 
+@app.post("/patrol/start")
+async def start_patrol():
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        # 1. 새로운 순찰 로그 생성
+        cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
+        patrol_id = cursor.lastrowid
+        
+        # 2. 로봇 명령 큐에 추가
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('START_PATROL', 'PENDING')")
+        
+        conn.commit()
+        return {"message": "Patrol started successfully", "patrol_id": patrol_id}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
 @app.post("/patrol/finish")
 async def finish_patrol():
     conn = get_db_connection()
@@ -186,6 +208,9 @@ async def finish_patrol():
             "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
             (patrol_id,)
         )
+        # 로봇 명령 큐에 복귀 추가
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
+        
         conn.commit()
         return {"message": "Patrol finished successfully", "patrol_id": patrol_id}
     finally:
@@ -208,8 +233,39 @@ async def stop_patrol():
             "UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE patrol_id = %s",
             (patrol_id,)
         )
+        # 로봇 명령 큐에 비상정지 추가
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMERGENCY_STOP', 'PENDING')")
+        
         conn.commit()
         return {"message": "Patrol stopped (Emergency)", "patrol_id": patrol_id}
+    finally:
+        conn.close()
+
+@app.get("/robot/command/latest")
+async def get_latest_command():
+    conn = get_db_connection()
+    if not conn: return {"command": "IDLE"}
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM robot_command WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT 1")
+        cmd = cursor.fetchone()
+        if cmd:
+            # 처리 중으로 변경
+            cursor.execute("UPDATE robot_command SET status = 'PROCESSING' WHERE command_id = %s", (cmd['command_id'],))
+            conn.commit()
+            return cmd
+        return {"command_type": "IDLE"}
+    finally:
+        conn.close()
+
+@app.post("/robot/command/{command_id}/complete")
+async def complete_command(command_id: int):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE robot_command SET status = 'COMPLETED' WHERE command_id = %s", (command_id,))
+        conn.commit()
+        return {"message": "Success"}
     finally:
         conn.close()
 
@@ -337,11 +393,14 @@ async def add_detection(data: DetectionInput):
         # 1. 진행 중인 최신 순찰 회차 조회
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
-        if not patrol:
-            cursor.execute("SELECT patrol_id FROM patrol_log ORDER BY start_time DESC LIMIT 1")
-            patrol = cursor.fetchone()
         
-        patrol_id = patrol['patrol_id'] if patrol else 1
+        if not patrol:
+            # 진행 중인 순찰이 없으면 자동으로 새 순찰 회차 시작
+            cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
+            conn.commit()
+            patrol_id = cursor.lastrowid
+        else:
+            patrol_id = patrol['patrol_id']
 
         # 2. 태그 바코드로 해당 위치 및 계획된 상품 조회
         query_plan = """

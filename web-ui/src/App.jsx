@@ -301,6 +301,24 @@ function App() {
     } catch (err) { alert("설정 저장 실패"); }
   };
 
+  const handleStartPatrol = async () => {
+    if (!window.confirm("매대 순찰을 시작하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch('/api/patrol/start', { method: 'POST' });
+      if (res.ok) {
+        setShowNotification(true);
+        setTimeout(() => setShowNotification(false), 3000);
+        alert("✅ 순찰 명령이 로봇에게 전달되었습니다.");
+        fetchGilbotData();
+      } else {
+        const err = await res.json();
+        alert("❌ 시작 실패: " + err.detail);
+      }
+    } catch (err) { alert("연결 오류"); }
+    finally { setLoading(false); }
+  };
+
   const handleFinishPatrol = async () => {
     if (!window.confirm("순찰을 마치고 복귀하시겠습니까? (5초 후 완료)")) return;
     try {
@@ -370,6 +388,9 @@ function App() {
           <div className="sidebar-card">
             <h4>🎮 로봇 제어</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button className="apple-button primary slim"
+                onClick={handleStartPatrol}
+                style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-blue)', color: 'white', justifyContent: 'center' }}>🚀 순찰 개시</button>
               <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
                 style={{ padding: '12px', fontSize: '13px', justifyContent: 'center' }}>🏠 기지로 복귀</button>
@@ -597,7 +618,7 @@ function App() {
             <header className="content-header">
               <div className="title-section">
                 <h1>상품 위치 관리</h1>
-                <p>이미 등록된 마스터 상품 정보를 찾아서 원하는 웨이포인트(구역)에 할당합니다.</p>
+                <p>마스터 상품 정보를 찾아서 원하는 웨이포인트에 할당합니다.</p>
               </div>
               <div className="segmented-control">
                 <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>대시보드</button>
@@ -623,7 +644,7 @@ function App() {
                   <div className="table-container" style={{ maxHeight: '440px', overflowY: 'auto', border: 'none', background: 'transparent' }}>
                     <table className="selectable-table slim">
                       <thead>
-                        <tr><th>상품명</th><th>바코드</th></tr>
+                        <tr><th style={{ textAlign: 'center' }}>상품명</th><th style={{ textAlign: 'center' }}>바코드</th></tr>
                       </thead>
                       <tbody>
                         {products
@@ -632,8 +653,8 @@ function App() {
                             <tr key={p.product_id}
                               onClick={() => setUnifiedForm({ ...unifiedForm, product_name: p.product_name, product_barcode: p.barcode, category: p.category || '기타' })}
                               className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
-                              <td style={{ fontSize: '13px' }}>{p.product_name}</td>
-                              <td style={{ fontSize: '12px' }}><code>{p.barcode}</code></td>
+                              <td style={{ fontSize: '13px', textAlign: 'center' }}>{p.product_name}</td>
+                              <td style={{ fontSize: '12px', textAlign: 'center' }}><code>{p.barcode}</code></td>
                             </tr>
                           ))}
                       </tbody>
@@ -726,12 +747,12 @@ function App() {
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: '100px', textAlign: 'center' }}>순찰 순서</th>
-                        <th>상품명 / 바코드</th>
-                        <th>부착 위치(웨이포인트)</th>
-                        <th style={{ width: '80px', textAlign: 'center' }}>진열 단수</th>
-                        <th style={{ width: '150px', textAlign: 'center' }}>순서 조정</th>
-                        <th style={{ width: '80px' }}>관리</th>
+                        <th style={{ width: '80px', textAlign: 'center' }}>순찰 순서</th>
+                        <th style={{ textAlign: 'center' }}>상품명 / 바코드</th>
+                        <th style={{ width: '120px', textAlign: 'center', lineHeight: '1.2' }}>부착 위치<br/>(웨이포인트)</th>
+                        <th style={{ width: '60px', textAlign: 'center', lineHeight: '1.2' }}>진열<br/>단수</th>
+                        <th style={{ width: '80px', textAlign: 'center' }}>순서 조정</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>관리</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -745,14 +766,14 @@ function App() {
                                 #{index + 1}
                               </span>
                             </td>
-                            <td>
+                            <td style={{ textAlign: 'center' }}>
                               <div style={{ fontWeight: '600', fontSize: '15px' }}>{plan.product_name}</div>
                               <div style={{ fontSize: '12px', color: '#86868B' }}><code>{plan.product_barcode}</code></div>
                             </td>
-                            <td>
+                            <td style={{ textAlign: 'center' }}>
                               <span className="tag info">{plan.waypoint_name}</span>
                             </td>
-                            <td style={{ textAlign: 'center' }}>{plan.row_num || 1}</td>
+                            <td style={{ textAlign: 'right', paddingRight: '20px' }}>{plan.row_num || 1}</td>
                             <td style={{ textAlign: 'center' }}>
                               <div className="reorder-controls" style={{ justifyContent: 'center' }}>
                                 <button className="ghost-btn"
@@ -836,55 +857,47 @@ function App() {
                 </div>
 
                 <div className="table-container">
-                  <table className="fixed-table">
+                  <table>
                     <thead>
                       <tr>
                         <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
-                        <th>상품명 / 바코드</th>
-                        <th>분류</th>
-                        <th style={{ width: '120px', textAlign: 'center' }}>최소 유지량</th>
-                        <th style={{ width: '120px', textAlign: 'center' }}>현재 재고</th>
-                        <th style={{ width: '250px' }}>상태 / 알림</th>
-                        <th style={{ width: '100px', textAlign: 'center' }}>조치</th>
+                        <th style={{ textAlign: 'left' }}>상품 정보</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>카테고리</th>
+                        <th style={{ width: '80px', textAlign: 'center' }}>최소 재고</th>
+                        <th style={{ width: '80px', textAlign: 'center' }}>현재 재고</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>상태</th>
                       </tr>
                     </thead>
                     <tbody>
                       {products.length === 0 ? (
-                        <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#8E8E93' }}>등록된 마스터 상품 정보가 없습니다.</td></tr>
+                        <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#8E8E93' }}>등록된 마스터 상품 정보가 없습니다.</td></tr>
                       ) : (
-                        products.map(p => {
+                        products.map((p, index) => {
                           const isShortage = p.current_inventory_qty < p.min_inventory_qty;
-                          const hasAlert = p.alert_log && !p.is_alert_resolved;
-
                           return (
-                            <tr key={p.product_id} style={{ background: hasAlert ? 'rgba(255, 69, 58, 0.05)' : 'transparent' }}>
-                              <td style={{ textAlign: 'center' }}>#{p.product_id}</td>
-                              <td>
-                                <div style={{ fontWeight: '600' }}>{p.product_name}</div>
-                                <div style={{ fontSize: '12px', color: '#86868B' }}><code>{p.barcode}</code></div>
+                            <tr key={p.product_id}>
+                              <td style={{ textAlign: 'center' }}>
+                                <span style={{ background: '#86868B', color: 'white', padding: '4px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' }}>
+                                  #{p.product_id}
+                                </span>
                               </td>
-                              <td style={{ textAlign: 'center' }}>{p.category}</td>
-                              <td style={{ textAlign: 'center' }}>{p.min_inventory_qty}개</td>
-                              <td style={{ textAlign: 'center', fontWeight: 'bold', color: isShortage ? '#FF453A' : 'inherit' }}>
-                                {p.current_inventory_qty}개
-                              </td>
-                              <td>
-                                {hasAlert ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ background: '#FF453A', color: 'white', padding: '4px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold' }}>재고 부족</span>
-                                    <span style={{ fontSize: '13px', color: '#FF453A' }}>{p.alert_log}</span>
-                                  </div>
-                                ) : (
-                                  <span style={{ background: '#34C759', color: 'white', padding: '4px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold' }}>정상</span>
-                                )}
+                              <td style={{ textAlign: 'left' }}>
+                                <div style={{ fontWeight: '600', fontSize: '15px' }}>{p.product_name}</div>
                               </td>
                               <td style={{ textAlign: 'center' }}>
-                                {hasAlert && (
-                                  <button className="apple-button secondary" 
-                                    style={{ padding: '6px 12px', fontSize: '12px', borderColor: '#34C759', color: '#34C759' }}
-                                    onClick={() => handleResolveInventoryAlert(p.product_id)}>
-                                    해결
-                                  </button>
+                                <span className="tag info">{p.category}</span>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>{p.min_inventory_qty}개</td>
+                              <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                                <span style={{ color: isShortage ? '#FF453A' : 'inherit' }}>
+                                  {p.current_inventory_qty}개
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {isShortage ? (
+                                  <div style={{ background: '#FF453A', color: 'white', padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', display: 'inline-block' }}>재고부족</div>
+                                ) : (
+                                  <div style={{ background: '#34C759', color: 'white', padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', display: 'inline-block' }}>정상</div>
                                 )}
                               </td>
                             </tr>

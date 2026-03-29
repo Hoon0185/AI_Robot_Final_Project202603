@@ -144,6 +144,14 @@ erDiagram
         INT interval_minute "순찰 반복 주기 (분)"
     }
 
+    robot_command {
+        INT command_id PK
+        ENUM command_type "계시 / 복귀 / 비상정지"
+        ENUM status "대기 / 처리중 / 완료 / 실패"
+        DATETIME created_at
+        DATETIME updated_at
+    }
+
     waypoint          ||--o{ slot                 : "식별"
     product_master    ||--o{ slot                 : "진열"
     waypoint          ||--o{ waypoint_product_plan : "계획"
