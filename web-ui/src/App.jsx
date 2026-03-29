@@ -473,8 +473,6 @@ function App() {
               </div>
             </section>
 
-            <div className="dashboard-grid no-vision">
-              <div className="main-column full-width">
                 <section className="apple-card">
                   <h2 className="section-title" style={{ marginTop: 0 }}>📊 최근 순찰 기록</h2>
                   <div className="table-container">
@@ -509,11 +507,7 @@ function App() {
                       </tbody>
                     </table>
                   </div>
-                </section>
-              </div>
-
-              {/* 오른쪽 (원래는 별도였던 섹션들, 이제는 grid에 맞춰 조정 가능) */}
-            </div>
+              </section>
 
             <section className="apple-card">
               <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
