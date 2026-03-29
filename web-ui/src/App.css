@@ -309,3 +309,64 @@ code {
   .dashboard-grid, .admin-grid { grid-template-columns: 1fr; }
   .content { padding: 32px; }
 }
+
+/* Notification Banner */
+.notification-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: white;
+  border: 1px solid rgba(255, 59, 48, 0.2);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.1);
+  animation: slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.notification-banner.anomaly {
+  background: linear-gradient(to right, #fff5f5, #ffffff);
+  border-left: 4px solid var(--accent-red);
+}
+
+.notif-icon {
+  font-size: 24px;
+}
+
+.notif-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-body strong {
+  font-size: 15px;
+  color: var(--accent-red);
+}
+
+.notif-body span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.notification-banner button {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

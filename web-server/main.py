@@ -49,13 +49,13 @@ class PatrolConfig(BaseModel):
     interval_minute: int
     is_active: bool = True
 
-class PatrolConfig(BaseModel):
-    avoidance_wait_time: int
-    patrol_start_time: str
-    patrol_end_time: str
-    interval_hour: int
-    interval_minute: int
-    is_active: bool = True
+class DetectionInput(BaseModel):
+    tag_barcode: str
+    detected_barcode: Optional[str] = None
+    confidence: float = 0.0
+    odom_x: float = 0.0
+    odom_y: float = 0.0
+    timestamp: str
 
 # 데이터베이스 연결 함수
 def get_db_connection():
@@ -186,6 +186,99 @@ async def list_alerts():
         """
         cursor.execute(query)
         return cursor.fetchall()
+    finally:
+        conn.close()
+
+@app.post("/detections/add")
+async def add_detection(data: DetectionInput):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. 진행 중인 최신 순찰 회차 조회
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
+        patrol = cursor.fetchone()
+        if not patrol:
+            # 진행중인 게 없으면 그냥 '완료'된 최신이라도 찾거나 에러
+            cursor.execute("SELECT patrol_id FROM patrol_log ORDER BY start_time DESC LIMIT 1")
+            patrol = cursor.fetchone()
+        
+        patrol_id = patrol['patrol_id'] if patrol else 1 # 기본값 1 (테스트용)
+
+        # 2. 태그 바코드로 해당 위치(슬롯) 및 계획된 상품 조회
+        # slot과 waypoint_product_plan을 조인하여 '있어야 할 상품'을 찾음
+        query_plan = """
+            SELECT s.slot_id, s.waypoint_id, p.product_id as planned_product_id
+            FROM slot s
+            JOIN waypoint_product_plan p ON s.slot_id = p.slot_id
+            WHERE s.barcode_tag = %s
+        """
+        cursor.execute(query_plan, (data.tag_barcode,))
+        slot_plan = cursor.fetchone()
+        
+        if not slot_plan:
+             raise HTTPException(status_code=404, detail=f"Tag barcode {data.tag_barcode} not found in plan")
+        
+        slot_id = slot_plan['slot_id']
+        waypoint_id = slot_plan['waypoint_id']
+        planned_product_id = slot_plan['planned_product_id']
+
+        # 3. 인식된 바코드로 실제 상품 ID 조회
+        detected_product_id = None
+        if data.detected_barcode:
+            cursor.execute("SELECT product_id FROM product_master WHERE barcode = %s", (data.detected_barcode,))
+            prod = cursor.fetchone()
+            if prod:
+                detected_product_id = prod['product_id']
+
+        # 4. 판독 로직 (정상 / 없음 / 오진열)
+        result_status = '정상'
+        if not data.detected_barcode:
+            result_status = '없음'
+        elif detected_product_id != planned_product_id:
+            result_status = '오진열'
+
+        # 5. shelf_status 업데이트 (현재 매대 현황)
+        # 해당 슬롯에 대한 레코드가 이미 있는지 확인
+        cursor.execute("SELECT status_id FROM shelf_status WHERE slot_id = %s", (slot_id,))
+        existing_status = cursor.fetchone()
+        
+        if existing_status:
+            update_status_sql = "UPDATE shelf_status SET product_id = %s, status = %s, last_updated_at = NOW() WHERE slot_id = %s"
+            cursor.execute(update_status_sql, (detected_product_id or planned_product_id, result_status, slot_id))
+        else:
+            insert_status_sql = "INSERT INTO shelf_status (waypoint_id, slot_id, product_id, status) VALUES (%s, %s, %s, %s)"
+            cursor.execute(insert_status_sql, (waypoint_id, slot_id, detected_product_id or planned_product_id, result_status))
+
+        # 6. detection_logInsert (인식 이력 기록)
+        insert_log_sql = """
+            INSERT INTO detection_log (patrol_id, waypoint_id, slot_id, product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, slot_id, detected_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
+
+        # 7. Alert 생성 (이상 감제 시)
+        if result_status != '정상':
+            alert_msg = f"{data.tag_barcode} 위치: 계획된 상품과 다름" if result_status == '오진열' else f"{data.tag_barcode} 위치: 상품 없음"
+            insert_alert_sql = """
+                INSERT INTO alert (patrol_id, waypoint_id, slot_id, product_id, alert_type, message)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(insert_alert_sql, (patrol_id, waypoint_id, slot_id, planned_product_id, result_status, alert_msg))
+
+        # 8. patrol_log 통계 업데이트
+        update_patrol_sql = "UPDATE patrol_log SET scanned_slots = scanned_slots + 1, error_found = error_found + %s WHERE patrol_id = %s"
+        cursor.execute(update_patrol_sql, (1 if result_status != '정상' else 0, patrol_id))
+
+        conn.commit()
+        return {"status": "success", "result": result_status, "slot_id": slot_id}
+
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 

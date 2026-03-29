@@ -8,7 +8,31 @@ function App() {
   const [products, setProducts] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [detections, setDetections] = useState([]);
-  // 데이터 상태 관리
+  const [loading, setLoading] = useState(false);
+  const [lastAlertCount, setLastAlertCount] = useState(0);
+  const [showNotification, setShowNotification] = useState(false);
+  
+  // 알림 사운드 재생 함수 (내장 오디오 객체 사용)
+  const playAlertSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (e) {
+      console.warn("Audio playback failed", e);
+    }
+  };
   const [patrolConfig, setPatrolConfig] = useState({
     avoidance_wait_time: 5,
     patrol_start_time: '09:00:00',
@@ -42,7 +66,16 @@ function App() {
       const alertRes = await fetch('/api/alerts');
       if (alertRes.ok) {
         const alertData = await alertRes.json();
-        if (Array.isArray(alertData)) setAlerts(alertData);
+        if (Array.isArray(alertData)) {
+          // 새로운 알림이 발생했는지 체크
+          if (alertData.length > lastAlertCount && lastAlertCount !== 0) {
+            playAlertSound();
+            setShowNotification(true);
+            setTimeout(() => setShowNotification(false), 5000); // 5초 후 자동 닫힘
+          }
+          setAlerts(alertData);
+          setLastAlertCount(alertData.length);
+        }
       }
 
       // 3. 인식 로그 (Detection log)
@@ -148,6 +181,18 @@ function App() {
               <h1>관제 상황판</h1>
               <p>실시간 패트롤 결과 및 이상 탐지 현황</p>
             </header>
+
+            {/* 실시간 알림 배너 */}
+            {showNotification && (
+              <div className="notification-banner anomaly">
+                <div className="notif-icon">🚨</div>
+                <div className="notif-body">
+                  <strong>새로운 이상 탐지!</strong>
+                  <span>매대 점검이 필요한 항목이 발견되었습니다.</span>
+                </div>
+                <button onClick={() => setShowNotification(false)}>×</button>
+              </div>
+            )}
 
             <div className="status-grid">
               <div className="status-card">
