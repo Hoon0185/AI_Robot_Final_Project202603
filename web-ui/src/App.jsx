@@ -521,36 +521,97 @@ function App() {
                 </form>
               </section>
 
-              {/* 하단 전체 폭: 현재 상품 위치 현황 */}
+              {/* 하단 전체 폭: 현재 등록된 상품 및 순찰 순서 관리 */}
               <section className="apple-card" style={{ gridColumn: '1 / -1' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 className="section-title" style={{ margin: 0 }}>📋 실시간 상품 위치 현황</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <div>
+                    <h2 className="section-title" style={{ margin: 0 }}>📋 순찰 제품 및 경로 시퀀스 관리</h2>
+                    <p style={{ color: '#86868B', fontSize: '14px', marginTop: '4px' }}>로봇이 방문할 상품 태그 순서를 화살표 버튼으로 조정하세요.</p>
+                  </div>
+                  <div className="tag 완료">실시간 정렬됨</div>
                 </div>
                 
                 <div className="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th>위치(Waypoint)</th>
-                        <th>단(Row)</th>
-                        <th>진열 상품명</th>
-                        <th>바코드 (Shelf Tag)</th>
-                        <th>관리</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>순찰 순서</th>
+                        <th>상품명 / 바코드</th>
+                        <th>부착 위치(웨이포인트)</th>
+                        <th>진열 단</th>
+                        <th style={{ width: '150px', textAlign: 'center' }}>순서 조정</th>
+                        <th style={{ width: '80px' }}>관리</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(!patrolPlan || patrolPlan.length === 0) ? (
-                        <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>현재 등록된 위치 정보가 없습니다.</td></tr>
+                        <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#8E8E93' }}>등록된 제품 위치 정보가 없습니다. 상단에서 연동해 주세요.</td></tr>
                       ) : (
-                        patrolPlan.map(plan => (
+                        patrolPlan.map((plan, index) => (
                           <tr key={plan.plan_id}>
-                            <td><strong>{plan.waypoint_name}</strong></td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span style={{ background: '#007AFF', color: 'white', padding: '4px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' }}>
+                                #{index + 1}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: '600', fontSize: '15px' }}>{plan.product_name}</div>
+                              <div style={{ fontSize: '12px', color: '#86868B' }}><code>{plan.product_barcode}</code></div>
+                            </td>
+                            <td>
+                              <span className="tag info">{plan.waypoint_name}</span>
+                            </td>
                             <td>{plan.row_num || 1}단</td>
-                            <td>{plan.product_name}</td>
-                            <td><code>{plan.product_barcode}</code></td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                <button 
+                                  className="apple-button secondary" 
+                                  style={{ padding: '4px 10px', width: '40px' }}
+                                  disabled={index === 0 || loading}
+                                  onClick={async () => {
+                                    const newPlan = [...patrolPlan];
+                                    const tempOrder = newPlan[index].plan_order;
+                                    // 순서 값을 인덱스 기반으로 재조정하여 전송
+                                    const orders = newPlan.map((p, idx) => {
+                                      if (idx === index) return { plan_id: p.plan_id, plan_order: index - 1 };
+                                      if (idx === index - 1) return { plan_id: p.plan_id, plan_order: index };
+                                      return { plan_id: p.plan_id, plan_order: idx };
+                                    });
+                                    try {
+                                      setLoading(true);
+                                      await fetch('/api/patrol/plan/order', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(orders)
+                                      });
+                                      fetchStaticData();
+                                    } finally { setLoading(false); }
+                                  }}>▲</button>
+                                <button 
+                                  className="apple-button secondary" 
+                                  style={{ padding: '4px 10px', width: '40px' }}
+                                  disabled={index === patrolPlan.length - 1 || loading}
+                                  onClick={async () => {
+                                    const orders = patrolPlan.map((p, idx) => {
+                                      if (idx === index) return { plan_id: p.plan_id, plan_order: index + 1 };
+                                      if (idx === index + 1) return { plan_id: p.plan_id, plan_order: index };
+                                      return { plan_id: p.plan_id, plan_order: idx };
+                                    });
+                                    try {
+                                      setLoading(true);
+                                      await fetch('/api/patrol/plan/order', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(orders)
+                                      });
+                                      fetchStaticData();
+                                    } finally { setLoading(false); }
+                                  }}>▼</button>
+                              </div>
+                            </td>
                             <td>
                               <button className="apple-button secondary" 
-                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                style={{ padding: '6px 12px', fontSize: '12px' }}
                                 onClick={() => handleEditClick(plan)}>
                                 수정
                               </button>

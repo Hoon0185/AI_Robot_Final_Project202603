@@ -71,6 +71,14 @@ class PlanAddInput(BaseModel):
     row_num: int = 1
     product_id: int
 
+class WaypointOrderUpdate(BaseModel):
+    waypoint_id: int
+    visit_order: int
+
+class PlanOrderUpdate(BaseModel):
+    plan_id: int
+    plan_order: int
+
 # 데이터베이스 연결 함수
 def get_db_connection():
     try:
@@ -423,12 +431,12 @@ async def get_patrol_plan():
         query = """
             SELECT 
                 p.plan_id, p.waypoint_id, p.barcode_tag, p.product_id,
-                w.waypoint_name, p.row_num,
+                p.plan_order, w.waypoint_name, p.row_num,
                 m.product_name, m.barcode as product_barcode
             FROM waypoint_product_plan p
             LEFT JOIN waypoint w ON p.waypoint_id = w.waypoint_id
             LEFT JOIN product_master m ON p.product_id = m.product_id
-            ORDER BY w.waypoint_id, p.row_num, p.barcode_tag
+            ORDER BY p.plan_order, p.plan_id
         """
         cursor.execute(query)
         return cursor.fetchall()
@@ -482,6 +490,46 @@ async def list_inventory():
         """
         cursor.execute(query)
         return cursor.fetchall()
+    finally:
+        conn.close()
+
+@app.post("/patrol/plan/order")
+async def update_patrol_plan_order(orders: List[PlanOrderUpdate]):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        for item in orders:
+            cursor.execute(
+                "UPDATE waypoint_product_plan SET plan_order = %s WHERE plan_id = %s",
+                (item.plan_order, item.plan_id)
+            )
+        conn.commit()
+        return {"message": "Patrol sequences optimized successfully"}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/waypoints/order")
+async def update_waypoints_order(orders: List[WaypointOrderUpdate]):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        for item in orders:
+            cursor.execute(
+                "UPDATE waypoint SET visit_order = %s WHERE waypoint_id = %s",
+                (item.visit_order, item.waypoint_id)
+            )
+        conn.commit()
+        return {"message": "Waypoint orders updated successfully"}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 
