@@ -283,6 +283,24 @@ td {
   color: var(--text-primary);
 }
 
+/* System Table Alignment Fix */
+.fixed-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.fixed-table thead tr {
+  background-color: #F9F9FB; /* Subtle gray background for headers */
+}
+
+.fixed-table th, .fixed-table td {
+  text-align: left;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 tr:last-child td {
   border-bottom: none;
 }

@@ -424,7 +424,7 @@ function App() {
           <div className="admin-dashboard">
             <header className="content-header">
               <div className="title-section">
-                <h1>상품 위치 관리 (기존 상품 연결)</h1>
+                <h1>상품 위치 관리</h1>
                 <p>이미 등록된 마스터 상품 정보를 찾아서 원하는 웨이포인트(구역)에 할당합니다.</p>
               </div>
               <div className="segmented-control">
@@ -498,7 +498,7 @@ function App() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                       <div className="form-group">
-                        <label>방문화 웨이포인트 (Waypoint)</label>
+                        <label>웨이포인트 (Waypoint)</label>
                         <input
                           type="text"
                           list="waypoint-list"
@@ -729,25 +729,25 @@ function App() {
                 <h2 className="section-title" style={{ marginTop: 0 }}>⚙️ 시스템 작업 로그 관리</h2>
                 <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>순찰 기록의 무결성을 위해 필요한 경우 기록을 삭제할 수 있습니다.</p>
                 <div className="table-container">
-                  <table>
+                  <table className="fixed-table">
                     <thead>
                       <tr>
-                        <th>ID</th>
+                        <th style={{ width: '80px' }}>ID</th>
                         <th>시작 시간</th>
-                        <th>상태</th>
-                        <th>스캔</th>
-                        <th>조치</th>
+                        <th style={{ width: '120px' }}>상태</th>
+                        <th style={{ width: '120px' }}>스캔</th>
+                        <th style={{ width: '100px' }}>조치</th>
                       </tr>
                     </thead>
                     <tbody>
                       {patrolList.map(log => (
                         <tr key={log.patrol_id}>
-                          <td>{log.patrol_id}</td>
-                          <td>{new Date(log.start_time).toLocaleString()}</td>
-                          <td>{log.status}</td>
+                          <td style={{ fontWeight: '600' }}>#{log.patrol_id}</td>
+                          <td style={{ color: '#424245' }}>{new Date(log.start_time).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                          <td style={{ color: log.status === '완료' ? 'var(--accent-green)' : 'var(--text-primary)' }}>{log.status}</td>
                           <td>{log.scanned_slots} 슬롯</td>
                           <td>
-                            <button className="apple-button secondary" style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A' }}
+                            <button className="apple-button secondary" style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
                               onClick={() => handleDeletePatrol(log.patrol_id)}>삭제</button>
                           </td>
                         </tr>
