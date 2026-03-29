@@ -334,13 +334,52 @@ function App() {
           </div>
         </header>
 
-        <div style={{ padding: '0 8px', marginTop: '20px' }}>
+        <div className="sidebar-section">
           <div className="status-indicator">
             <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online' : 'offline'}`}></span>
             <div>
               <div style={{ fontWeight: '600', fontSize: '13px' }}>Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>DB: {status.database}</div>
             </div>
+          </div>
+        </div>
+
+        {/* 로봇 제어 센터 (사이드바) */}
+        <div className="sidebar-section">
+          <div className="sidebar-card">
+            <h4>🎮 로봇 제어</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button className="apple-button secondary slim"
+                onClick={handleFinishPatrol}
+                style={{ padding: '12px', fontSize: '13px', justifyContent: 'center' }}>🏠 기지로 복귀</button>
+              <button className="apple-button slim"
+                onClick={handleEmergencyStop}
+                style={{ padding: '12px', fontSize: '13px', background: '#FF453A', color: 'white', justifyContent: 'center' }}>🛑 비상 정지</button>
+            </div>
+          </div>
+        </div>
+
+        {/* 긴급 알림 (사이드바) */}
+        <div className="sidebar-section" style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="sidebar-card" style={{ padding: '12px' }}>
+            <h4>🚨 긴급 알림</h4>
+            {alerts.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#8E8E93', fontSize: '12px' }}>이상 없음</div>
+            ) : (
+              alerts.slice(0, 10).map(alert => (
+                <div key={alert.alert_id} className="sidebar-alert-item" style={{ padding: '8px' }}>
+                  <h5 style={{ fontSize: '12px' }}>{alert.alert_type}</h5>
+                  <p style={{ margin: '2px 0 6px', fontSize: '11px' }}>{alert.waypoint_name || '매대'}</p>
+                  <button 
+                    className="apple-button secondary slim" 
+                    style={{ width: '100%', fontSize: '10px', height: '22px', padding: '0' }}
+                    onClick={() => handleResolveAlert(alert.alert_id)}
+                  >
+                    조치 완료
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </aside>
@@ -387,23 +426,11 @@ function App() {
               </div>
             </div>
 
-            {/* 로봇 제어 센터 */}
-            <div className="control-panel apple-card">
-              <h2 className="section-title" style={{ marginTop: 0 }}>🎮 로봇 제어 센터</h2>
-              <div style={{ display: 'flex', gap: '15px' }}>
-                <button className="apple-button secondary"
-                  onClick={handleFinishPatrol}
-                  style={{ flex: 1, height: '50px', fontSize: '16px' }}>🏠 기지로 복귀</button>
-                <button className="apple-button"
-                  onClick={handleEmergencyStop}
-                  style={{ flex: 1, height: '50px', fontSize: '16px', background: '#FF453A' }}>🛑 비상 정지</button>
-              </div>
-            </div>
 
-            <div className="dashboard-grid">
+            <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr' }}>
               {/* 왼쪽: Patrol Log */}
               <section className="apple-card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>📋 최근 순찰 기록</h2>
+                <h2 className="section-title" style={{ marginTop: 0 }}>📊 최근 순찰 기록</h2>
                 <div className="table-container">
                   <table>
                     <thead>
@@ -430,36 +457,8 @@ function App() {
                 </div>
               </section>
 
-              {/* 오른쪽: 실시간 알림 */}
-              <section className="apple-card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>🚨 긴급 알림</h2>
-                <div className="alert-list">
-                  {alerts.length === 0 ? <p style={{ color: '#8E8E93', textAlign: 'center', padding: '20px' }}>현재 발견된 이상이 없습니다.</p> :
-                    alerts.slice(0, 5).map(alert => (
-                      <div key={alert.alert_id} className="alert-item">
-                        <div className="alert-content">
-                          <h4>{alert.alert_type} 감지</h4>
-                          <p>{alert.waypoint_name || '매대'} - {alert.product_name || '상품미확인'}</p>
-                        </div>
-                        <div className="alert-actions" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-                          <span className="tag" style={{ background: 'rgba(255, 69, 58, 0.1)', color: '#FF453A', border: '1px solid rgba(255, 69, 58, 0.2)' }}>미처리</span>
-                          <button 
-                            className="apple-button secondary slim" 
-                            style={{ fontSize: '12px', padding: '4px 10px', height: 'auto', background: 'rgba(52, 199, 89, 0.1)', color: '#34C759', borderColor: 'rgba(52, 199, 89, 0.3)' }}
-                            onClick={() => handleResolveAlert(alert.alert_id)}
-                          >
-                            조치 완료
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-                {alerts.length > 5 && <p style={{ fontSize: '12px', textAlign: 'right', marginTop: '10px', color: '#8E8E93' }}>그외 {alerts.length - 5}건 더 있음...</p>}
-              </section>
-
               {/* 하단: 전체 폭 Recognition Log */}
-              <section className="apple-card" style={{ gridColumn: '1 / -1' }}>
+              <section className="apple-card">
                 <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 로그 (Detection)</h2>
                 <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
                   <table>
