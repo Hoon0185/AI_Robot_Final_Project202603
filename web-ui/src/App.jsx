@@ -411,6 +411,39 @@ function App() {
                 </div>
               </section>
             </div>
+            {/* 하단 전체 폭: 상품 진열 계획 (Planogram) */}
+            <section className="apple-card" style={{gridColumn: '1 / -1', marginTop: '20px'}}>
+              <h2 className="section-title" style={{marginTop: 0}}>📋 상품 진열 계획 (Planogram)</h2>
+              <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>각 웨이포인트(위치) 및 슬롯별로 진열되어야 할 마스터 상품 정보입니다.</p>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>위치(Waypoint)</th>
+                      <th>슬롯 태그</th>
+                      <th>단(Row)</th>
+                      <th>진열 대상 상품</th>
+                      <th>바코드</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(!patrolPlan || patrolPlan.length === 0) ? (
+                      <tr><td colSpan="5" style={{textAlign: 'center', padding: '20px'}}>등록된 진열 계획이 없습니다.</td></tr>
+                    ) : (
+                      patrolPlan.map(plan => (
+                        <tr key={plan.plan_id}>
+                          <td><strong>{plan.waypoint_name}</strong> (ID: {plan.waypoint_id})</td>
+                          <td><code>{plan.barcode_tag}</code></td>
+                          <td>{plan.row_num || 1}단</td>
+                          <td>{plan.product_name}</td>
+                          <td><code>{plan.product_barcode}</code></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         ) : view === 'system' ? (
           /* System View */
