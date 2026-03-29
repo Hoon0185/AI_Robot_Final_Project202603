@@ -467,7 +467,7 @@ function App() {
                       shelfStatus.map(item => (
                         <tr key={item.status_id}>
                           <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.waypoint_name}</td>
-                          <td style={{ textAlign: 'center' }}>{item.row_num}단</td>
+                          <td style={{ textAlign: 'center' }}>{item.row_num || 1}</td>
                           <td style={{ textAlign: 'center' }}><code>{item.barcode_tag}</code></td>
                           <td style={{ textAlign: 'center' }}>
                             <span className={`tag ${item.status}`}>{item.status}</span>
@@ -712,7 +712,7 @@ function App() {
                         <th style={{ width: '100px', textAlign: 'center' }}>순찰 순서</th>
                         <th>상품명 / 바코드</th>
                         <th>부착 위치(웨이포인트)</th>
-                        <th>진열 단</th>
+                        <th style={{ width: '80px', textAlign: 'center' }}>진열 단수</th>
                         <th style={{ width: '150px', textAlign: 'center' }}>순서 조정</th>
                         <th style={{ width: '80px' }}>관리</th>
                       </tr>
@@ -735,7 +735,7 @@ function App() {
                             <td>
                               <span className="tag info">{plan.waypoint_name}</span>
                             </td>
-                            <td>{plan.row_num || 1}단</td>
+                            <td style={{ textAlign: 'center' }}>{plan.row_num || 1}</td>
                             <td style={{ textAlign: 'center' }}>
                               <div className="reorder-controls" style={{ justifyContent: 'center' }}>
                                 <button className="ghost-btn"
