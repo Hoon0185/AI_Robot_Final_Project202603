@@ -255,7 +255,24 @@ async def list_alerts():
     finally:
         conn.close()
 
-@app.post("/detections/add")
+@app.post("/alerts/{alert_id}/resolve")
+async def resolve_alert(alert_id: int):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE alert SET is_resolved = TRUE WHERE alert_id = %s", (alert_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Alert not found")
+        return {"message": "Alert marked as resolved"}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
 async def add_detection(data: DetectionInput):
     conn = get_db_connection()
     if not conn:

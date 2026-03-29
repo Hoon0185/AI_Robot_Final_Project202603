@@ -204,6 +204,30 @@ function App() {
     } catch (err) { alert("삭제 실패"); }
   };
 
+  const handleResolveAlert = async (alertId) => {
+    if (!window.confirm("이 알림을 해결 상태로 변경하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/alerts/${alertId}/resolve`, { method: 'POST' });
+      if (res.ok) {
+        // 알림 목록 새로고침
+        const alertRes = await fetch('/api/alerts');
+        if (alertRes.ok) {
+          const alertData = await alertRes.json();
+          setAlerts(alertData);
+          setLastAlertCount(alertData.length);
+        }
+      } else {
+        const errorData = await res.json();
+        alert(`해결 실패: ${errorData.detail}`);
+      }
+    } catch (err) {
+      console.error("Error resolving alert:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeletePlan = async (id) => {
     if (!window.confirm("정말 이 순찰 계획을 삭제하시겠습니까?")) return;
     try {
@@ -417,7 +441,16 @@ function App() {
                           <h4>{alert.alert_type} 감지</h4>
                           <p>{alert.waypoint_name || '매대'} - {alert.product_name || '상품미확인'}</p>
                         </div>
-                        <span className="tag" style={{ background: 'rgba(255, 69, 58, 0.2)', color: '#FF453A' }}>미처리</span>
+                        <div className="alert-actions" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+                          <span className="tag" style={{ background: 'rgba(255, 69, 58, 0.1)', color: '#FF453A', border: '1px solid rgba(255, 69, 58, 0.2)' }}>미처리</span>
+                          <button 
+                            className="apple-button secondary slim" 
+                            style={{ fontSize: '12px', padding: '4px 10px', height: 'auto', background: 'rgba(52, 199, 89, 0.1)', color: '#34C759', borderColor: 'rgba(52, 199, 89, 0.3)' }}
+                            onClick={() => handleResolveAlert(alert.alert_id)}
+                          >
+                            조치 완료
+                          </button>
+                        </div>
                       </div>
                     ))
                   }
