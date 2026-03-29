@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import './App.css'
-import robotView from './assets/robot_view.png'
 
 function App() {
   const [view, setView] = useState('dashboard'); // 'dashboard' or 'admin'
@@ -474,26 +473,8 @@ function App() {
               </div>
             </section>
 
-            <div className="dashboard-grid">
-              {/* 왼쪽: Live Vision & Analysis */}
-              <div className="main-column">
-                <section className="apple-card vision-card">
-                  <div className="v-header">
-                    <h2>👁️ 실시간 로봇 비전 (Live Feed)</h2>
-                    <span className="live-tag">LIVE</span>
-                  </div>
-                  <div className="video-placeholder">
-                    <img src={robotView} alt="Robot Perspective" className="vision-stream" />
-                    <div className="scan-overlay">
-                      <div className="scan-line"></div>
-                      <div className="corner tr"></div>
-                      <div className="corner tl"></div>
-                      <div className="corner br"></div>
-                      <div className="corner bl"></div>
-                    </div>
-                  </div>
-                </section>
-                
+            <div className="dashboard-grid no-vision">
+              <div className="main-column full-width">
                 <section className="apple-card">
                   <h2 className="section-title" style={{ marginTop: 0 }}>📊 최근 순찰 기록</h2>
                   <div className="table-container">

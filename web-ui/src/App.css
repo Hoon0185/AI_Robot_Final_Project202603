@@ -573,83 +573,9 @@ tr:last-child td {
   color: #991b1b;
 }
 
-/* Live Vision Card */
-.vision-card {
-  margin-bottom: 24px;
-}
-
-.main-column {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.live-tag {
-  background: var(--accent-red);
-  color: white;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.05em;
-}
-
-.video-placeholder {
-  position: relative;
+.main-column.full-width {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5);
 }
-
-.vision-stream {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.9;
-}
-
-/* Scan Overlay Effects */
-.scan-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.scan-line {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(to bottom, transparent, var(--accent-green), transparent);
-  box-shadow: 0 0 15px var(--accent-green);
-  opacity: 0.7;
-  animation: scanMove 4s linear infinite;
-}
-
-@keyframes scanMove {
-  0% { top: 0; }
-  100% { top: 100%; }
-}
-
-.corner {
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--accent-green);
-  opacity: 0.6;
-}
-
-.corner.tl { top: 20px; left: 20px; border-right: none; border-bottom: none; }
-.corner.tr { top: 20px; right: 20px; border-left: none; border-bottom: none; }
-.corner.bl { bottom: 20px; left: 20px; border-right: none; border-top: none; }
-.corner.br { bottom: 20px; right: 20px; border-left: none; border-top: none; }
 
 /* Alert List Enhancements */
 .alert-list {
