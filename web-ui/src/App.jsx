@@ -37,7 +37,7 @@ function App() {
     }
   };
   const [patrolConfig, setPatrolConfig] = useState({
-    avoidance_wait_time: 5,
+    avoidance_wait_time: 10,
     patrol_start_time: '09:00:00',
     patrol_end_time: '22:00:00',
     interval_hour: 1,
