@@ -273,7 +273,7 @@ function App() {
           </div>
         </header>
 
-        <div style={{ padding: '0 8px' }}>
+        <div style={{ padding: '0 8px', marginTop: '20px' }}>
           <div className="status-indicator">
             <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online' : 'offline'}`}></span>
             <div>
@@ -287,9 +287,9 @@ function App() {
       <main className="content">
         {view === 'dashboard' ? (
           <div className="dashboard-content">
-            <header>
-              <div>
-                <h1>관제 상황판</h1>
+            <header className="content-header">
+              <div className="title-section">
+                <h1>관제상황판</h1>
                 <p>실시간 패트롤 결과 및 이상 탐지 현황</p>
               </div>
               <div className="segmented-control">
@@ -422,8 +422,8 @@ function App() {
           </div>
         ) : view === 'admin' ? (
           <div className="admin-dashboard">
-            <header>
-              <div>
+            <header className="content-header">
+              <div className="title-section">
                 <h1>상품 위치 관리 (기존 상품 연결)</h1>
                 <p>이미 등록된 마스터 상품 정보를 찾아서 원하는 웨이포인트(구역)에 할당합니다.</p>
               </div>
@@ -650,8 +650,8 @@ function App() {
         ) : view === 'system' ? (
           /* System View */
           <div className="system-content">
-            <header>
-              <div>
+            <header className="content-header">
+              <div className="title-section">
                 <h1>시스템 관리</h1>
                 <p>순찰 기록 관리 및 시스템 무결성 작업</p>
               </div>

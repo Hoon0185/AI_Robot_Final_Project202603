@@ -1,33 +1,43 @@
 :root {
   /* Apple System Light Mode Colors (High Contrast) */
-  --bg-color: #F2F2F7; /* System Light Grey */
+  --bg-color: #F2F2F7;
+  /* System Light Grey */
   --sidebar-bg: #F2F2F7;
-  --panel-bg: #FFFFFF; /* White for cards */
-  
-  --accent-blue: #007AFF; /* System Blue */
+  --panel-bg: #FFFFFF;
+  /* White for cards */
+
+  --accent-blue: #007AFF;
+  /* System Blue */
   --accent-blue-hover: #0056B3;
   --accent-blue-soft: rgba(0, 122, 255, 0.08);
-  --accent-green: #28CD41; /* System Green */
-  --accent-red: #FF3B30; /* System Red */
+  --accent-green: #28CD41;
+  /* System Green */
+  --accent-red: #FF3B30;
+  /* System Red */
   --accent-orange: #FF9500;
   --accent-gold: #FFCC00;
-  
-  --text-primary: #1D1D1F; /* High Contrast Black */
-  --text-secondary: #6E6E73; /* Clear Gray label */
-  --border-color: #D2D2D7; /* System Gray 4 */
-  --divider-color: #E5E5EA; /* System Gray 5 */
-  
+
+  --text-primary: #1D1D1F;
+  /* High Contrast Black */
+  --text-secondary: #6E6E73;
+  /* Clear Gray label */
+  --border-color: #D2D2D7;
+  /* System Gray 4 */
+  --divider-color: #E5E5EA;
+  /* System Gray 5 */
+
   /* Typography & Radius */
   --font-main: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", sans-serif;
   --radius-lg: 16px;
   --radius-md: 12px;
   --radius-sm: 8px;
-  
+
   --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-medium: 0 4px 14px rgba(0, 0, 0, 0.1);
 }
 
-body, html {
+body,
+html {
   margin: 0;
   padding: 0;
   background-color: var(--bg-color);
@@ -40,8 +50,10 @@ body, html {
 .app-container {
   display: flex;
   min-height: 100vh;
-  min-width: 1024px; /* Base layout width */
-  min-height: 768px; /* Base layout height */
+  min-width: 1024px;
+  /* Base layout width */
+  min-height: 768px;
+  /* Base layout height */
 }
 
 /* Sidebar - Slim Apple Style */
@@ -49,7 +61,7 @@ body, html {
   width: 180px;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--divider-color);
-  padding: 40px 10px;
+  padding: 30px 10px;
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -62,7 +74,7 @@ body, html {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-bottom: 40px;
+  margin-bottom: 24px;
   text-align: center;
 }
 
@@ -118,7 +130,8 @@ body, html {
 .status-indicator {
   margin-top: auto;
   padding: 14px;
-  background: #ffffff; /* Contrast white in light mode */
+  background: #ffffff;
+  /* Contrast white in light mode */
   border-radius: var(--radius-lg);
   font-size: 13px;
   display: flex;
@@ -134,38 +147,50 @@ body, html {
   border-radius: 50%;
   box-shadow: 0 0 8px currentColor;
 }
-.dot.online { background-color: var(--accent-green); color: var(--accent-green); }
-.dot.offline { background-color: var(--accent-red); color: var(--accent-red); }
+
+.dot.online {
+  background-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+.dot.offline {
+  background-color: var(--accent-red);
+  color: var(--accent-red);
+}
 
 /* Main Content */
 .content {
-  margin-left: 180px; /* Aligned with slime sidebar */
-  padding: 32px 40px; 
+  margin-left: 180px;
+  /* Aligned with slime sidebar */
+  padding: 32px 40px;
   width: calc(100% - 180px);
-  min-width: 844px; /* 1024 - 180 = 844 */
+  min-width: 844px;
+  /* 1024 - 180 = 844 */
   max-width: 1200px;
   box-sizing: border-box;
 }
 
-header {
-  margin-bottom: 32px;
+.content-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  margin-bottom: 32px;
 }
 
-header h1 {
-  font-size: 28px;
-  font-weight: 700;
+.title-section h1 {
   margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
-  letter-spacing: -0.025em;
+  text-align: left;
 }
 
-header p {
+.title-section p {
+  margin: 4px 0 0 0;
   color: var(--text-secondary);
   font-size: 15px;
-  margin-top: 4px;
+  text-align: left;
 }
 
 /* Section Title & Cards */
@@ -258,7 +283,9 @@ td {
   color: var(--text-primary);
 }
 
-tr:last-child td { border-bottom: none; }
+tr:last-child td {
+  border-bottom: none;
+}
 
 /* Selectable Table Flow */
 .selectable-table tr {
@@ -295,9 +322,23 @@ tr:last-child td { border-bottom: none; }
   gap: 6px;
 }
 
-.tag.정상, .tag.완료 { background: var(--accent-green-soft); color: #065f46; }
-.tag.진행중 { background: var(--accent-blue-soft); color: #1e40af; }
-.tag.없음, .tag.오진열, .tag.중단 { background: var(--accent-red-soft); color: #991b1b; }
+.tag.정상,
+.tag.완료 {
+  background: var(--accent-green-soft);
+  color: #065f46;
+}
+
+.tag.진행중 {
+  background: var(--accent-blue-soft);
+  color: #1e40af;
+}
+
+.tag.없음,
+.tag.오진열,
+.tag.중단 {
+  background: var(--accent-red-soft);
+  color: #991b1b;
+}
 
 /* Alert List Enhancements */
 .alert-list {
@@ -318,15 +359,16 @@ tr:last-child td { border-bottom: none; }
   border-left: 6px solid var(--accent-red);
 }
 
-.alert-content h4 { 
-  margin: 0; 
+.alert-content h4 {
+  margin: 0;
   font-family: var(--font-heading);
-  font-size: 16px; 
-  color: var(--text-primary); 
+  font-size: 16px;
+  color: var(--text-primary);
 }
-.alert-content p { 
-  margin: 4px 0 0; 
-  font-size: 14px; 
+
+.alert-content p {
+  margin: 4px 0 0;
+  font-size: 14px;
   color: var(--text-secondary);
 }
 
@@ -366,7 +408,8 @@ tr:last-child td { border-bottom: none; }
 .unified-sidebar {
   padding: 24px;
   overflow-y: auto;
-  background: #F9F9FB; /* Very light grey */
+  background: #F9F9FB;
+  /* Very light grey */
 }
 
 .unified-divider {
@@ -392,10 +435,11 @@ label {
   margin-bottom: 8px;
 }
 
-input, select {
+input,
+select {
   width: 100%;
   box-sizing: border-box;
-  background: #FFFFFF; 
+  background: #FFFFFF;
   border: 1px solid var(--border-color);
   padding: 12px 14px;
   border-radius: var(--radius-md);
@@ -404,7 +448,8 @@ input, select {
   transition: all 0.2s ease;
 }
 
-input:focus, select:focus {
+input:focus,
+select:focus {
   outline: none;
   border-color: var(--accent-blue);
 }
@@ -452,6 +497,7 @@ input:focus, select:focus {
   display: flex;
   gap: 2px;
   border: 0.5px solid rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px; /* Space between controls and title below it */
 }
 
 .segmented-control button {
@@ -521,8 +567,15 @@ input:focus, select:focus {
 }
 
 @keyframes slideIn {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .notif-body strong {
@@ -539,24 +592,63 @@ input:focus, select:focus {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.apple-card, .status-card, table tr {
+.apple-card,
+.status-card,
+table tr {
   animation: fadeIn 0.4s ease-out forwards;
 }
 
 @media (max-width: 1024px) {
-  .sidebar { width: 180px; }
-  .content { margin-left: 180px; padding: 24px; width: calc(100% - 180px); }
-  .dashboard-grid { grid-template-columns: 1.5fr 1fr; gap: 16px; }
-  header h1 { font-size: 30px; }
+  .sidebar {
+    width: 180px;
+  }
+
+  .content {
+    margin-left: 180px;
+    padding: 24px;
+    width: calc(100% - 180px);
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1.5fr 1fr;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-size: 30px;
+  }
 }
 
 @media (max-width: 800px) {
-  .dashboard-grid, .admin-grid { grid-template-columns: 1fr; }
-  .sidebar { transform: translateX(-100%); width: 0; }
-  .content { margin-left: 0; width: 100%; padding: 24px; }
-  header h1 { font-size: 28px; }
+
+  .dashboard-grid,
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    width: 0;
+  }
+
+  .content {
+    margin-left: 0;
+    width: 100%;
+    padding: 24px;
+  }
+
+  header h1 {
+    font-size: 28px;
+  }
 }
