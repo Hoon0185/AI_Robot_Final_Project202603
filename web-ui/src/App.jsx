@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import robotView from './assets/robot_view.png'
 
 function App() {
   const [view, setView] = useState('dashboard'); // 'dashboard' or 'admin'
@@ -8,6 +9,7 @@ function App() {
   const [products, setProducts] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [detections, setDetections] = useState([]);
+  const [shelfStatus, setShelfStatus] = useState([]);
   const [patrolPlan, setPatrolPlan] = useState([]);
   const [waypoints, setWaypoints] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -55,8 +57,6 @@ function App() {
     row_num: 1
   });
   const [searchTerm, setSearchTerm] = useState('');
-  const [itemsPerPage, setItemsPerPage] = useState(5);
-  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchGilbotData = async () => {
     try {
@@ -98,6 +98,13 @@ function App() {
       if (detectionRes.ok) {
         const detectionData = await detectionRes.json();
         if (Array.isArray(detectionData)) setDetections(detectionData);
+      }
+      
+      // 4. 현재 매대 현황 (Shelf Status)
+      const inventoryRes = await fetch('/api/inventory');
+      if (inventoryRes.ok) {
+        const inventoryData = await inventoryRes.json();
+        if (Array.isArray(inventoryData)) setShelfStatus(inventoryData);
       }
 
     } catch (error) {
@@ -336,10 +343,10 @@ function App() {
 
         <div className="sidebar-section">
           <div className="status-indicator">
-            <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online' : 'offline'}`}></span>
+            <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online pulsing' : 'offline'}`}></span>
             <div>
-              <div style={{ fontWeight: '600', fontSize: '13px' }}>Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>DB: {status.database}</div>
+              <div className="robot-status-text">Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
+              <div className="db-status-text">DB: {status.database}</div>
             </div>
           </div>
         </div>
@@ -413,81 +420,154 @@ function App() {
 
             <div className="status-grid">
               <div className="status-card">
-                <h3>순찰 회차</h3>
-                <div className="value">{patrolList.length > 0 ? `#${patrolList[0].patrol_id}` : '-'} 회</div>
+                <div className="card-icon">🌀</div>
+                <div>
+                  <h3>순찰 회차</h3>
+                  <div className="value">{patrolList.length > 0 ? `#${patrolList[0].patrol_id}` : '-'} 회</div>
+                </div>
               </div>
               <div className="status-card">
-                <h3>미해결 알림</h3>
-                <div className="value" style={{ color: alerts.length > 0 ? '#FF453A' : 'inherit' }}>{alerts.length} 건</div>
+                <div className="card-icon warning">🚨</div>
+                <div>
+                  <h3>미해결 알림</h3>
+                  <div className="value red">{alerts.length} 건</div>
+                </div>
               </div>
               <div className="status-card">
-                <h3>스캔 슬롯 (최근)</h3>
-                <div className="value">{patrolList.length > 0 ? patrolList[0].scanned_slots : 0} 개</div>
+                <div className="card-icon info">📦</div>
+                <div>
+                  <h3>스캔 슬롯 (최근)</h3>
+                  <div className="value">{patrolList.length > 0 ? patrolList[0].scanned_slots : 0} 개</div>
+                </div>
               </div>
             </div>
 
-
-            <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr' }}>
-              {/* 왼쪽: Patrol Log */}
-              <section className="apple-card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>📊 최근 순찰 기록</h2>
-                <div className="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>시간</th>
-                        <th>상태</th>
-                        <th>스캔수</th>
-                        <th>오류</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {patrolList.map(log => (
-                        <tr key={log.patrol_id}>
-                          <td>{log.patrol_id}</td>
-                          <td>{new Date(log.start_time).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' })}</td>
-                          <td><span className={`tag ${log.status}`}>{log.status}</span></td>
-                          <td>{log.scanned_slots}</td>
-                          <td><span style={{ color: log.error_found > 0 ? '#FF453A' : 'inherit' }}>{log.error_found}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <section className="apple-card shelf-visualizer-section">
+              <div className="v-header">
+                <h2>🏬 실시간 매대 진열 현황</h2>
+                <div className="shelf-legend">
+                  <span className="legend-item"><span className="legend-dot normal"></span> 정상</span>
+                  <span className="legend-item"><span className="legend-dot missing"></span> 결품</span>
+                  <span className="legend-item"><span className="legend-dot wrong"></span> 오진열</span>
                 </div>
-              </section>
+              </div>
+              <div className="shelf-grid">
+                {shelfStatus.length === 0 ? (
+                  <div className="empty-shelf">데이터를 수집 중입니다...</div>
+                ) : (
+                  shelfStatus.map(item => (
+                    <div key={item.status_id} className={`shelf-slot ${item.status}`}>
+                      <div className="slot-header">
+                        <span className="waypoint-badge">{item.waypoint_name}</span>
+                        <span className="row-badge">{item.row_num}단</span>
+                      </div>
+                      <div className="product-info">
+                        <div className="p-name">{item.product_name}</div>
+                        <div className="p-barcode"><code>{item.barcode_tag}</code></div>
+                      </div>
+                      <div className="slot-status">
+                        {item.status === '정상' ? '✅' : item.status === '상품 없음' ? '❌ 결품' : '⚠️ 오진열'}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
 
-              {/* 하단: 전체 폭 Recognition Log */}
-              <section className="apple-card">
-                <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 로그 (Detection)</h2>
-                <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>시간</th>
-                        <th>ID</th>
-                        <th>내용</th>
-                        <th>결과</th>
-                        <th>신뢰도</th>
-                        <th>좌표(X,Y)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detections.map(d => (
-                        <tr key={d.log_id}>
-                          <td>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
-                          <td><code>{d.tag_barcode}</code></td>
-                          <td>{d.product_name || d.detected_barcode}</td>
-                          <td><span className={`tag ${d.result}`}>{d.result}</span></td>
-                          <td>{(d.confidence * 100).toFixed(0)}%</td>
-                          <td style={{ fontSize: '12px', color: '#8E8E93' }}>{d.odom_x?.toFixed(2)}, {d.odom_y?.toFixed(2)}</td>
+            <div className="dashboard-grid">
+              {/* 왼쪽: Live Vision & Analysis */}
+              <div className="main-column">
+                <section className="apple-card vision-card">
+                  <div className="v-header">
+                    <h2>👁️ 실시간 로봇 비전 (Live Feed)</h2>
+                    <span className="live-tag">LIVE</span>
+                  </div>
+                  <div className="video-placeholder">
+                    <img src={robotView} alt="Robot Perspective" className="vision-stream" />
+                    <div className="scan-overlay">
+                      <div className="scan-line"></div>
+                      <div className="corner tr"></div>
+                      <div className="corner tl"></div>
+                      <div className="corner br"></div>
+                      <div className="corner bl"></div>
+                    </div>
+                  </div>
+                </section>
+                
+                <section className="apple-card">
+                  <h2 className="section-title" style={{ marginTop: 0 }}>📊 최근 순찰 기록</h2>
+                  <div className="table-container">
+                    <table className="fixed-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
+                          <th style={{ width: '150px', textAlign: 'center' }}>시작 시간</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>상태</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>스캔</th>
+                          <th style={{ textAlign: 'center' }}>발견 오류</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+                      </thead>
+                      <tbody>
+                        {patrolList.map(log => (
+                          <tr key={log.patrol_id}>
+                            <td style={{ fontWeight: '600', textAlign: 'center' }}>#{log.patrol_id}</td>
+                            <td style={{ textAlign: 'center' }}>{new Date(log.start_time).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                            <td style={{ textAlign: 'center' }}><span className={`tag ${log.status}`}>{log.status}</span></td>
+                            <td style={{ textAlign: 'center' }}>{log.scanned_slots}개</td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className="tag" style={{ 
+                                background: log.error_found > 0 ? 'var(--accent-red-soft)' : 'var(--accent-green-soft)',
+                                color: log.error_found > 0 ? '#991b1b' : '#065f46',
+                                fontWeight: '600'
+                              }}>
+                                {log.error_found > 0 ? `🚨 ${log.error_found}건` : '✅ 건강함'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+
+              {/* 오른쪽 (원래는 별도였던 섹션들, 이제는 grid에 맞춰 조정 가능) */}
             </div>
+
+            <section className="apple-card">
+              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
+              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="fixed-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '100px', textAlign: 'center' }}>시각</th>
+                      <th style={{ width: '140px', textAlign: 'center' }}>태그</th>
+                      <th>인식 (바코드)</th>
+                      <th style={{ width: '100px', textAlign: 'center' }}>결과</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>신뢰도</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detections.map(d => (
+                      <tr key={d.log_id}>
+                        <td style={{ color: '#8E8E93', textAlign: 'center' }}>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
+                        <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
+                        <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
+                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
+                              <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         ) : view === 'admin' ? (
           <div className="admin-dashboard">
@@ -840,19 +920,19 @@ function App() {
                    <table className="fixed-table">
                      <thead>
                        <tr>
-                         <th style={{ width: '80px' }}>ID</th>
+                         <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
                          <th>웨이포인트 이름</th>
-                         <th style={{ width: '100px' }}>번호</th>
-                         <th style={{ width: '100px' }}>조치</th>
+                         <th style={{ width: '100px', textAlign: 'center' }}>번호</th>
+                         <th style={{ width: '120px', textAlign: 'center' }}>조치</th>
                        </tr>
                      </thead>
                      <tbody>
                        {waypoints.map(wp => (
                          <tr key={wp.waypoint_id}>
-                           <td>#{wp.waypoint_id}</td>
+                           <td style={{ textAlign: 'center' }}>#{wp.waypoint_id}</td>
                            <td style={{ fontWeight: '600' }}>{wp.waypoint_name}</td>
-                           <td>{wp.waypoint_no}</td>
-                           <td>
+                           <td style={{ textAlign: 'center' }}>{wp.waypoint_no}</td>
+                           <td style={{ textAlign: 'center' }}>
                              <button className="apple-button secondary" 
                                style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
                                onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>

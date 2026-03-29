@@ -315,10 +315,10 @@ async def add_detection(data: DetectionInput):
             if prod:
                 detected_product_id = prod['product_id']
 
-        # 4. 판독 로직 (정상 / 상품 없음 / 오진열)
+        # 4. 판독 로직 (정상 / 상품 미진열 / 오진열)
         result_status = '정상'
         if not data.detected_barcode:
-            result_status = '상품 없음'
+            result_status = '상품 미진열'
         elif detected_product_id != planned_product_id:
             result_status = '오진열'
 
@@ -342,7 +342,7 @@ async def add_detection(data: DetectionInput):
 
         # 7. Alert 생성 (이상 감제 시)
         if result_status != '정상':
-            alert_msg = f"{data.tag_barcode} 위치: 계획된 상품과 다름" if result_status == '오진열' else f"{data.tag_barcode} 위치: 상품 없음"
+            alert_msg = f"{data.tag_barcode} 위치: 계획된 상품과 다름" if result_status == '오진열' else f"{data.tag_barcode} 위치: 상품 미진열"
             insert_alert_sql = """
                 INSERT INTO alert (patrol_id, waypoint_id, barcode_tag, product_id, alert_type, message)
                 VALUES (%s, %s, %s, %s, %s, %s)
