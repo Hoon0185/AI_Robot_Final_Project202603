@@ -1,28 +1,29 @@
 :root {
-  /* Dynamic Color Palette */
-  --bg-color: #f8fafc;
-  --sidebar-bg: rgba(255, 255, 255, 0.82);
-  --panel-bg: #ffffff;
+  /* Apple System Colors */
+  --bg-color: #F5F5F7; /* System Gray 6 */
+  --sidebar-bg: #F5F5F7;
+  --panel-bg: #FFFFFF;
   
-  --accent-blue: #2563eb;
-  --accent-blue-soft: #dbeafe;
-  --accent-green: #10b981;
-  --accent-green-soft: #d1fae5;
-  --accent-red: #ef4444;
-  --accent-red-soft: #fee2e2;
-  --accent-gold: #f59e0b;
+  --accent-blue: #007AFF;
+  --accent-blue-hover: #0063CC;
+  --accent-blue-soft: #E5F1FF;
+  --accent-green: #34C759;
+  --accent-red: #FF3B30;
+  --accent-orange: #FF9500;
   
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --border-color: #e2e8f0;
+  --text-primary: #1D1D1F;
+  --text-secondary: #86868B;
+  --border-color: #D2D2D7;
+  --divider-color: #E5E5EA;
   
-  /* Typography & Effects */
-  --font-main: 'Inter', sans-serif;
-  --font-heading: 'Outfit', sans-serif;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --glass-effect: saturate(180%) blur(12px);
+  /* Typography & Radius */
+  --font-main: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  
+  --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-medium: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
 body, html {
@@ -42,73 +43,57 @@ body, html {
   min-height: 768px; /* Base layout height */
 }
 
-/* Glassmorphism Sidebar */
+/* Sidebar - Flat Apple Style */
 .sidebar {
-  width: 260px; /* Base width for 1024 layout */
+  width: 200px;
   background-color: var(--sidebar-bg);
-  backdrop-filter: var(--glass-effect);
-  -webkit-backdrop-filter: var(--glass-effect);
-  border-right: 1px solid var(--border-color);
-  padding: 40px 16px;
+  border-right: 1px solid var(--divider-color);
+  padding: 48px 12px;
   display: flex;
   flex-direction: column;
   position: fixed;
   height: 100vh;
   z-index: 100;
-  transition: all 0.3s ease;
 }
 
 .logo {
-  font-family: var(--font-heading);
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
-  margin-bottom: 48px;
-  color: var(--accent-blue);
+  margin-bottom: 40px;
+  color: var(--text-primary);
   text-align: center;
   letter-spacing: -0.02em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.logo::before {
-  content: '🤖';
 }
 
 .sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .sidebar button {
   background: transparent;
   border: none;
-  padding: 12px 16px;
-  border-radius: 12px;
-  color: var(--text-secondary);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   text-align: left;
-  font-family: var(--font-main);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   gap: 10px;
+  transition: background 0.2s ease;
 }
 
 .sidebar button:hover {
-  background: var(--accent-blue-soft);
-  color: var(--accent-blue);
-  transform: translateX(4px);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .sidebar button.active {
   background: var(--accent-blue);
   color: white;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
 
 .status-indicator {
@@ -135,32 +120,30 @@ body, html {
 
 /* Main Content */
 .content {
-  margin-left: 260px; /* Aligned with sidebar */
-  padding: 40px 64px; /* Balanced padding for 1024 layout */
-  width: calc(100% - 260px);
-  min-width: 764px; /* 1024 - 260 = 764 */
+  margin-left: 200px; /* Aligned with sidebar */
+  padding: 40px 48px; /* Balanced padding */
+  width: calc(100% - 200px);
+  min-width: 824px; /* 1024 - 200 = 824 */
   max-width: 1400px;
   box-sizing: border-box;
 }
 
 header {
-  margin-bottom: 56px;
+  margin-bottom: 40px;
 }
 
 header h1 {
-  font-family: var(--font-heading);
-  font-size: 42px;
+  font-size: 34px;
   font-weight: 700;
   margin: 0;
   color: var(--text-primary);
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
 
 header p {
   color: var(--text-secondary);
-  font-size: 18px;
-  margin-top: 8px;
-  font-weight: 400;
+  font-size: 17px;
+  margin-top: 4px;
 }
 
 /* Section Title & Cards */
@@ -177,16 +160,10 @@ header p {
 
 .apple-card {
   background: var(--panel-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  padding: 32px;
-  margin-bottom: 32px;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.apple-card:hover {
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-subtle);
 }
 
 /* Stats Dashboard */
@@ -241,26 +218,40 @@ table {
 }
 
 th {
-  background: #f8fafc;
+  background: transparent;
   text-align: left;
-  padding: 16px 20px;
+  padding: 12px 16px;
   font-size: 13px;
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-color);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--divider-color);
 }
 
 td {
-  padding: 18px 20px;
+  padding: 14px 16px;
   font-size: 15px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--divider-color);
   color: var(--text-primary);
 }
 
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fefeff; }
+
+/* Selectable Table Flow */
+.selectable-table tr {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.selectable-table tr:hover td {
+  background: var(--accent-blue-soft);
+  color: var(--accent-blue);
+}
+
+.selectable-table tr.selected-row td {
+  background: var(--accent-blue-soft);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
 
 /* Dashboard Layout */
 .dashboard-grid {
@@ -326,8 +317,8 @@ tr:hover td { background: #fefeff; }
 /* Form Styles */
 .admin-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 32px;
+  grid-template-columns: 1fr 1.2fr; /* Optimized for Select -> Assign flow */
+  gap: 24px;
 }
 
 .form-group {
@@ -342,47 +333,37 @@ label {
   margin-bottom: 8px;
 }
 
-input {
+input, select {
   width: 100%;
   box-sizing: border-box;
-  background: #f8fafc;
-  border: 2px solid var(--border-color);
-  padding: 14px 16px;
-  border-radius: 12px;
+  background: var(--bg-color);
+  border: 1px solid var(--divider-color);
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
   font-size: 15px;
-  font-family: var(--font-main);
   color: var(--text-primary);
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 
-input:focus {
+input:focus, select:focus {
   outline: none;
   border-color: var(--accent-blue);
-  background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
 }
 
 .apple-button {
   background: var(--accent-blue);
   color: white;
   border: none;
-  padding: 16px 24px;
-  border-radius: 14px;
-  font-family: var(--font-main);
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  transition: background 0.2s ease;
 }
 
 .apple-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
-}
-
-.apple-button:active {
-  transform: translateY(0);
+  background: var(--accent-blue-hover);
 }
 
 .apple-button.secondary {
@@ -440,10 +421,10 @@ input:focus {
 }
 
 @media (max-width: 1024px) {
-  .sidebar { width: 220px; }
-  .content { margin-left: 220px; padding: 32px; width: calc(100% - 220px); }
-  .dashboard-grid { grid-template-columns: 1.5fr 1fr; gap: 20px; }
-  header h1 { font-size: 32px; }
+  .sidebar { width: 180px; }
+  .content { margin-left: 180px; padding: 24px; width: calc(100% - 180px); }
+  .dashboard-grid { grid-template-columns: 1.5fr 1fr; gap: 16px; }
+  header h1 { font-size: 30px; }
 }
 
 @media (max-width: 800px) {
