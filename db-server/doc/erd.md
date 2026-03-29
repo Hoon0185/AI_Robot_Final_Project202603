@@ -155,7 +155,7 @@ erDiagram
 
 ```json
 {
-  "tag_barcode": "TAG-S1-R2",         // [어떤 매대에서] 스캔된 매대 하단 식별 태그
+  "tag_barcode": "1000000000012",         // [어떤 매대에서] 스캔된 매대 하단 식별 태그
   "detected_barcode": "8801111222233", // [무엇을 보았는가] YOLO가 인식한 상품 바코드 (없으면 null)
   "confidence": 0.98,                 // [신뢰도] YOLO 분석 정확도
   "odom_x": 2.45,                     // [위치] 인식 시점 로봇 좌표 X
