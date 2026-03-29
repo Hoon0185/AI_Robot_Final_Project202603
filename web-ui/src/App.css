@@ -141,6 +141,17 @@ html {
   box-shadow: var(--shadow-subtle);
 }
 
+.success-btn {
+  background: var(--accent-green) !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  border: none !important;
+}
+
+.success-btn:hover {
+  filter: brightness(0.9);
+}
+
 .dot {
   width: 10px;
   height: 10px;
@@ -403,6 +414,7 @@ tr:last-child td {
 }
 
 .tag.없음,
+.tag.상품\ 없음,
 .tag.오진열,
 .tag.중단 {
   background: var(--accent-red-soft);

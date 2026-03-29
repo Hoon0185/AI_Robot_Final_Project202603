@@ -315,10 +315,10 @@ async def add_detection(data: DetectionInput):
             if prod:
                 detected_product_id = prod['product_id']
 
-        # 4. 판독 로직 (정상 / 없음 / 오진열)
+        # 4. 판독 로직 (정상 / 상품 없음 / 오진열)
         result_status = '정상'
         if not data.detected_barcode:
-            result_status = '없음'
+            result_status = '상품 없음'
         elif detected_product_id != planned_product_id:
             result_status = '오진열'
 

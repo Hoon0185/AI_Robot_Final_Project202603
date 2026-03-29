@@ -349,7 +349,7 @@ function App() {
           <div className="sidebar-card">
             <h4>🎮 로봇 제어</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button className="apple-button secondary slim"
+              <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
                 style={{ padding: '12px', fontSize: '13px', justifyContent: 'center' }}>🏠 기지로 복귀</button>
               <button className="apple-button slim"
