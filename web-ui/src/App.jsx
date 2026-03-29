@@ -266,22 +266,21 @@ function App() {
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <div className="logo">GILBOT</div>
-        <nav>
-          <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>
-            <span style={{ marginRight: '8px' }}>📊</span> 대시보드
-          </button>
-          <button className={view === 'admin' ? 'active' : ''} onClick={() => setView('admin')}>
-            <span style={{ marginRight: '8px' }}>🛠️</span> 관리 대시보드
-          </button>
-          <button className={view === 'system' ? 'active' : ''} onClick={() => setView('system')}>
-            <span style={{ marginRight: '8px' }}>⚙️</span> 시스템 관리
-          </button>
-        </nav>
+        <header className="sidebar-header">
+          <div className="logo-container">
+            <div className="logo">GILBOT</div>
+            <div className="logo-sub">당신의 길 벗</div>
+          </div>
+        </header>
 
-        <div className="status-indicator">
-          <span className={`dot ${status.status === 'running' ? 'online' : 'offline'}`}></span>
-          <span style={{ fontSize: '12px', opacity: 0.8 }}>{status.status.toUpperCase()} (DB: {status.database})</span>
+        <div style={{ padding: '0 8px' }}>
+          <div className="status-indicator">
+            <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online' : 'offline'}`}></span>
+            <div>
+              <div style={{ fontWeight: '600', fontSize: '13px' }}>Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>DB: {status.database}</div>
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -289,8 +288,15 @@ function App() {
         {view === 'dashboard' ? (
           <div className="dashboard-content">
             <header>
-              <h1>관제 상황판</h1>
-              <p>실시간 패트롤 결과 및 이상 탐지 현황</p>
+              <div>
+                <h1>관제 상황판</h1>
+                <p>실시간 패트롤 결과 및 이상 탐지 현황</p>
+              </div>
+              <div className="segmented-control">
+                <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>대시보드</button>
+                <button className={view === 'admin' ? 'active' : ''} onClick={() => setView('admin')}>상품/위치 관리</button>
+                <button className={view === 'system' ? 'active' : ''} onClick={() => setView('system')}>시스템</button>
+              </div>
             </header>
 
             {/* 실시간 알림 배너 */}
@@ -416,109 +422,122 @@ function App() {
           </div>
         ) : view === 'admin' ? (
           <div className="admin-dashboard">
-            <header className="admin-header">
-              <h1>⚙️ 상품 위치 관리 (기존 상품 연결)</h1>
-              <p>이미 등록된 마스터 상품 정보를 찾아서 원하는 웨이포인트(구역)에 할당합니다.</p>
+            <header>
+              <div>
+                <h1>상품 위치 관리 (기존 상품 연결)</h1>
+                <p>이미 등록된 마스터 상품 정보를 찾아서 원하는 웨이포인트(구역)에 할당합니다.</p>
+              </div>
+              <div className="segmented-control">
+                <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>대시보드</button>
+                <button className={view === 'admin' ? 'active' : ''} onClick={() => setView('admin')}>상품/위치 관리</button>
+                <button className={view === 'system' ? 'active' : ''} onClick={() => setView('system')}>시스템</button>
+              </div>
             </header>
 
-            <div className="admin-grid">
-              
-              {/* 왼쪽: 상품 마스터 리스트 (검색 및 선택) */}
-              <section className="apple-card" style={{ height: 'fit-content' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 className="section-title" style={{ margin: 0 }}>🔍 1. 상품 선택</h2>
-                </div>
-                
-                <div className="form-group">
-                  <input 
-                    type="text" 
-                    placeholder="상품명 또는 바코드 검색..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    style={{ marginBottom: '16px', background: '#fff' }}
-                  />
-                </div>
-                
-                <div className="table-container" style={{ maxHeight: '420px', overflowY: 'auto', border: 'none' }}>
-                  <table className="selectable-table">
-                    <thead>
-                      <tr><th>상품명</th><th>바코드</th></tr>
-                    </thead>
-                    <tbody>
-                      {products
-                        .filter(p => !searchTerm || p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) || p.barcode.includes(searchTerm))
-                        .map(p => (
-                        <tr key={p.product_id} 
-                            onClick={() => setUnifiedForm({...unifiedForm, product_name: p.product_name, product_barcode: p.barcode, category: p.category || '기타'})}
-                            className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
-                          <td style={{ padding: '12px 16px' }}>{p.product_name}</td>
-                          <td style={{ padding: '12px 16px' }}><code>{p.barcode}</code></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+            <div className="admin-grid-unified">
+              <section className="unified-manager">
+                {/* 1. 왼쪽 슬림 사이드바: 상품 마스터 목록 */}
+                <div className="unified-sidebar">
+                  <h3 style={{ fontSize: '15px', fontWeight: '600', marginBottom: '16px' }}>📦 마스터 상품 선택</h3>
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <input
+                      type="text"
+                      placeholder="상품명/바코드 검색..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
 
-              {/* 오른쪽: 위치 및 웨이포인트 연결 */}
-              <section className="apple-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 className="section-title" style={{ margin: 0 }}>📍 2. 위치 및 웨이포인트 연결</h2>
-                  {unifiedForm.product_barcode ? <span className="tag 완료">선택 완료</span> : <span className="tag 진행중">선택 대기</span>}
+                  <div className="table-container" style={{ maxHeight: '440px', overflowY: 'auto', border: 'none', background: 'transparent' }}>
+                    <table className="selectable-table slim">
+                      <thead>
+                        <tr><th>상품명</th><th>바코드</th></tr>
+                      </thead>
+                      <tbody>
+                        {products
+                          .filter(p => !searchTerm || p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) || p.barcode.includes(searchTerm))
+                          .map(p => (
+                            <tr key={p.product_id}
+                              onClick={() => setUnifiedForm({ ...unifiedForm, product_name: p.product_name, product_barcode: p.barcode, category: p.category || '기타' })}
+                              className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
+                              <td style={{ fontSize: '13px' }}>{p.product_name}</td>
+                              <td style={{ fontSize: '12px' }}><code>{p.barcode}</code></td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                
-                <form onSubmit={handleUnifiedRegister}>
-                  <div style={{ background: 'rgba(0, 122, 255, 0.05)', padding: '20px', borderRadius: '16px', marginBottom: '24px', border: '1px dashed var(--accent-blue-soft)' }}>
-                    <h3 style={{ fontSize: '13px', marginBottom: '12px', opacity: 0.7, color: 'var(--accent-blue)' }}>선택된 마스터 상품 정보</h3>
-                    {unifiedForm.product_barcode ? (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+                {/* 중앙 구분선 */}
+                <div className="unified-divider"></div>
+
+                {/* 2. 오른쪽 메인: 상세 연결 설정 */}
+                <div className="unified-content">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                    <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>📍 상품 위치 매핑 관리</h2>
+                    {unifiedForm.product_barcode && <span className="tag 완료">상품 선택됨</span>}
+                  </div>
+
+                  <form onSubmit={handleUnifiedRegister}>
+                    <div style={{ background: 'rgba(10, 132, 255, 0.05)', padding: '24px', borderRadius: '16px', marginBottom: '32px', border: '1px solid rgba(10, 132, 255, 0.2)' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selected Product</h3>
+                      {unifiedForm.product_barcode ? (
                         <div>
-                          <div style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>{unifiedForm.product_name}</div>
-                          <div style={{ fontSize: '14px', color: '#8E8E93' }}>바코드: <code>{unifiedForm.product_barcode}</code> | 분류: {unifiedForm.category}</div>
+                          <div style={{ fontSize: '28px', fontWeight: '800', marginBottom: '8px', letterSpacing: '-0.02em' }}>{unifiedForm.product_name}</div>
+                          <div style={{ fontSize: '16px', color: 'var(--text-secondary)' }}>
+                            바코드 <code>{unifiedForm.product_barcode}</code> | 카테고리 <strong>{unifiedForm.category}</strong>
+                          </div>
                         </div>
+                      ) : (
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '18px', fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>
+                          왼쪽 목록에서 연결할 마스터 상품을 먼저 선택하세요.
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                      <div className="form-group">
+                        <label>방문화 웨이포인트 (Waypoint)</label>
+                        <input
+                          type="text"
+                          list="waypoint-list"
+                          placeholder="구역 또는 웨이포인트 이름"
+                          value={unifiedForm.waypoint_name}
+                          onChange={e => setUnifiedForm({ ...unifiedForm, waypoint_name: e.target.value })}
+                          disabled={!unifiedForm.product_barcode}
+                          required
+                        />
+                        <datalist id="waypoint-list">
+                          {waypoints.map(w => <option key={w.waypoint_id} value={w.waypoint_name} />)}
+                        </datalist>
                       </div>
-                    ) : (
-                      <div style={{ color: '#8E8E93', fontSize: '14px', fontStyle: 'italic' }}>좌측 리스트에서 상품을 선택하세요.</div>
-                    )}
-                  </div>
 
-                  <div className="form-group">
-                    <label>위치/구역 이름 (Waypoint)</label>
-                    <input 
-                      type="text" 
-                      list="waypoint-list"
-                      placeholder="예: A구역 (목표 웨이포인트)" 
-                      value={unifiedForm.waypoint_name}
-                      onChange={e => setUnifiedForm({...unifiedForm, waypoint_name: e.target.value})}
-                      disabled={!unifiedForm.product_barcode}
-                      required 
-                    />
-                    <datalist id="waypoint-list">
-                      {waypoints.map(w => <option key={w.waypoint_id} value={w.waypoint_name} />)}
-                    </datalist>
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>진열 단 (Row)</label>
-                    <input 
-                      type="number" min="1" 
-                      value={unifiedForm.row_num}
-                      onChange={e => setUnifiedForm({...unifiedForm, row_num: parseInt(e.target.value)})}
-                      disabled={!unifiedForm.product_barcode}
-                    />
-                  </div>
+                      <div className="form-group">
+                        <label>진열 단 (Shelf Level)</label>
+                        <input
+                          type="number" min="1"
+                          value={unifiedForm.row_num}
+                          onChange={e => setUnifiedForm({ ...unifiedForm, row_num: parseInt(e.target.value) })}
+                          disabled={!unifiedForm.product_barcode}
+                        />
+                      </div>
+                    </div>
 
-                  <button type="submit" className="apple-button" style={{ width: '100%', marginTop: '10px' }} disabled={!unifiedForm.product_barcode || loading}>
-                    {loading ? '연결 중...' : '선택한 위치에 상품 할당하기'}
-                  </button>
-                  {unifiedForm.product_barcode && (
-                    <button type="button" className="apple-button secondary" 
-                      style={{ width: '100%', marginTop: '12px', height: 'auto', padding: '10px' }} 
-                      onClick={() => setUnifiedForm({product_name: '', product_barcode: '', category: '과자', min_inventory_qty: 5, waypoint_name: '', row_num: 1})}>
-                      선택 취소
-                    </button>
-                  )}
-                </form>
+                    <div style={{ marginTop: 'auto', paddingTop: '24px', display: 'flex', gap: '16px' }}>
+                      <button type="submit" className="apple-button" style={{ flex: 2, height: '54px', fontSize: '16px' }} disabled={!unifiedForm.product_barcode || loading}>
+                        {loading ? '연결 처리 중...' : '선택한 상품을 이 위치에 연결하기'}
+                      </button>
+                      {unifiedForm.product_barcode && (
+                        <button type="button" className="apple-button secondary"
+                          style={{ flex: 1, height: '54px' }}
+                          onClick={() => setUnifiedForm({ product_name: '', product_barcode: '', category: '과자', min_inventory_qty: 5, waypoint_name: '', row_num: 1 })}>
+                          재선택
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
               </section>
 
               {/* 하단 전체 폭: 현재 등록된 상품 및 순찰 순서 관리 */}
@@ -530,7 +549,7 @@ function App() {
                   </div>
                   <div className="tag 완료">실시간 정렬됨</div>
                 </div>
-                
+
                 <div className="table-container">
                   <table>
                     <thead>
@@ -563,33 +582,31 @@ function App() {
                             </td>
                             <td>{plan.row_num || 1}단</td>
                             <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                <button 
-                                  className="apple-button secondary" 
-                                  style={{ padding: '4px 10px', width: '40px' }}
+                              <div className="reorder-controls" style={{ justifyContent: 'center' }}>
+                                <button className="ghost-btn"
                                   disabled={index === 0 || loading}
                                   onClick={async () => {
-                                    const newPlan = [...patrolPlan];
-                                    const tempOrder = newPlan[index].plan_order;
-                                    // 순서 값을 인덱스 기반으로 재조정하여 전송
-                                    const orders = newPlan.map((p, idx) => {
+                                    const orders = patrolPlan.map((p, idx) => {
                                       if (idx === index) return { plan_id: p.plan_id, plan_order: index - 1 };
                                       if (idx === index - 1) return { plan_id: p.plan_id, plan_order: index };
                                       return { plan_id: p.plan_id, plan_order: idx };
                                     });
                                     try {
                                       setLoading(true);
-                                      await fetch('/api/patrol/plan/order', {
+                                      const res = await fetch('/api/patrol/plan/order', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(orders)
                                       });
-                                      fetchStaticData();
-                                    } finally { setLoading(false); }
+                                      if (!res.ok) throw new Error("Update failed");
+                                      await fetchStaticData();
+                                    } catch (e) {
+                                      alert("순서 변경 실패: " + e.message);
+                                    } finally {
+                                      setLoading(false);
+                                    }
                                   }}>▲</button>
-                                <button 
-                                  className="apple-button secondary" 
-                                  style={{ padding: '4px 10px', width: '40px' }}
+                                <button className="ghost-btn"
                                   disabled={index === patrolPlan.length - 1 || loading}
                                   onClick={async () => {
                                     const orders = patrolPlan.map((p, idx) => {
@@ -599,18 +616,23 @@ function App() {
                                     });
                                     try {
                                       setLoading(true);
-                                      await fetch('/api/patrol/plan/order', {
+                                      const res = await fetch('/api/patrol/plan/order', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(orders)
                                       });
-                                      fetchStaticData();
-                                    } finally { setLoading(false); }
+                                      if (!res.ok) throw new Error("Update failed");
+                                      await fetchStaticData();
+                                    } catch (e) {
+                                      alert("순서 변경 실패: " + e.message);
+                                    } finally {
+                                      setLoading(false);
+                                    }
                                   }}>▼</button>
                               </div>
                             </td>
                             <td>
-                              <button className="apple-button secondary" 
+                              <button className="apple-button secondary"
                                 style={{ padding: '6px 12px', fontSize: '12px' }}
                                 onClick={() => handleEditClick(plan)}>
                                 수정
@@ -629,8 +651,15 @@ function App() {
           /* System View */
           <div className="system-content">
             <header>
-              <h1>시스템 관리</h1>
-              <p>순찰 기록 관리 및 시스템 무결성 작업</p>
+              <div>
+                <h1>시스템 관리</h1>
+                <p>순찰 기록 관리 및 시스템 무결성 작업</p>
+              </div>
+              <div className="segmented-control">
+                <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>대시보드</button>
+                <button className={view === 'admin' ? 'active' : ''} onClick={() => setView('admin')}>상품/위치 관리</button>
+                <button className={view === 'system' ? 'active' : ''} onClick={() => setView('system')}>시스템</button>
+              </div>
             </header>
 
             <div className="admin-grid" style={{ gridTemplateColumns: '1fr', gap: '20px' }}>
