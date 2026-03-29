@@ -233,6 +233,22 @@ function App() {
     }
   };
 
+  const handleResolveInventoryAlert = async (productId) => {
+    if (!window.confirm("이 재고 부족 알림을 해결 상태로 변경하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/products/${productId}/resolve_alert`, { method: 'PUT' });
+      if (res.ok) {
+        alert("✅ 재고 부족 알림이 해결 처리되었습니다.");
+        fetchStaticData();
+      } else {
+        const errData = await res.json();
+        alert("❌ 처리 실패: " + errData.detail);
+      }
+    } catch (err) { alert("연결 오류 발생"); }
+    finally { setLoading(false); }
+  };
+
   const handleDeletePlan = async (id) => {
     if (!window.confirm("정말 이 순찰 계획을 삭제하시겠습니까?")) return;
     try {
@@ -373,7 +389,7 @@ function App() {
             ) : (
               alerts.slice(0, 10).map(alert => (
                 <div key={alert.alert_id} className="sidebar-alert-item" style={{ padding: '8px' }}>
-                  <h5 style={{ fontSize: '12px' }}>{alert.alert_type === '없음' ? '결품' : alert.alert_type}</h5>
+                  <h5 style={{ fontSize: '12px' }}>{alert.alert_type}</h5>
                   <p style={{ margin: '2px 0 6px', fontSize: '11px' }}>{alert.waypoint_name || '매대'}</p>
                   <button 
                     className="apple-button secondary slim" 
@@ -559,7 +575,7 @@ function App() {
                         <td style={{ color: '#8E8E93', textAlign: 'center' }}>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
                         <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
                         <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
-                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result === '없음' ? '결품' : d.result}`}>{d.result === '없음' ? '결품' : d.result}</span></td>
+                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
@@ -802,6 +818,77 @@ function App() {
                             </td>
                           </tr>
                         ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              {/* 추가된 구간: 재고 리스트 및 알림 관리 */}
+              <section className="apple-card" style={{ gridColumn: '1 / -1' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <div>
+                    <h2 className="section-title" style={{ margin: 0 }}>📊 재고 현황 및 알림 관리</h2>
+                    <p style={{ color: '#86868B', fontSize: '14px', marginTop: '4px' }}>마스터 상품별 현재 재고 상태를 확인하고 부족 알림을 관리하세요.</p>
+                  </div>
+                  <div className="tag info">총 {products.length}종</div>
+                </div>
+
+                <div className="table-container">
+                  <table className="fixed-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
+                        <th>상품명 / 바코드</th>
+                        <th>분류</th>
+                        <th style={{ width: '120px', textAlign: 'center' }}>최소 유지량</th>
+                        <th style={{ width: '120px', textAlign: 'center' }}>현재 재고</th>
+                        <th style={{ width: '250px' }}>상태 / 알림</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>조치</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.length === 0 ? (
+                        <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#8E8E93' }}>등록된 마스터 상품 정보가 없습니다.</td></tr>
+                      ) : (
+                        products.map(p => {
+                          const isShortage = p.current_inventory_qty < p.min_inventory_qty;
+                          const hasAlert = p.alert_log && !p.is_alert_resolved;
+
+                          return (
+                            <tr key={p.product_id} style={{ background: hasAlert ? 'rgba(255, 69, 58, 0.05)' : 'transparent' }}>
+                              <td style={{ textAlign: 'center' }}>#{p.product_id}</td>
+                              <td>
+                                <div style={{ fontWeight: '600' }}>{p.product_name}</div>
+                                <div style={{ fontSize: '12px', color: '#86868B' }}><code>{p.barcode}</code></div>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>{p.category}</td>
+                              <td style={{ textAlign: 'center' }}>{p.min_inventory_qty}개</td>
+                              <td style={{ textAlign: 'center', fontWeight: 'bold', color: isShortage ? '#FF453A' : 'inherit' }}>
+                                {p.current_inventory_qty}개
+                              </td>
+                              <td>
+                                {hasAlert ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ background: '#FF453A', color: 'white', padding: '4px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold' }}>재고 부족</span>
+                                    <span style={{ fontSize: '13px', color: '#FF453A' }}>{p.alert_log}</span>
+                                  </div>
+                                ) : (
+                                  <span style={{ background: '#34C759', color: 'white', padding: '4px 8px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold' }}>정상</span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {hasAlert && (
+                                  <button className="apple-button secondary" 
+                                    style={{ padding: '6px 12px', fontSize: '12px', borderColor: '#34C759', color: '#34C759' }}
+                                    onClick={() => handleResolveInventoryAlert(p.product_id)}>
+                                    해결
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

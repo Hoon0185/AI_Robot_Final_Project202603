@@ -108,6 +108,7 @@ CREATE TABLE alert (
     alert_id    INT AUTO_INCREMENT PRIMARY KEY,
     patrol_id   INT NOT NULL,
     waypoint_id INT NOT NULL,
+    barcode_tag VARCHAR(50),
     slot_id     INT,
     product_id  INT NOT NULL,
     alert_type  ENUM('결품','오진열','수정필요') NOT NULL,

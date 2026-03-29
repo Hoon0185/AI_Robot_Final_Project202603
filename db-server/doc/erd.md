@@ -41,6 +41,16 @@
 
 ---
 
+## 재고 부족 탐지 및 해결 프로세스 (v3.2)
+
+1.  **재고 업데이트**: 운영자가 대시보드 또는 물류 시스템을 통해 `current_inventory_qty`를 업데이트 (`PUT /products/{product_id}/inventory`)
+2.  **부족 탐지**: 시스템은 `current_inventory_qty < min_inventory_qty` 조건을 즉시 체크
+3.  **경고 발생**: 조건 충족 시 `alert_log`에 경고 메시지 기록 및 `is_alert_resolved = FALSE` 설정
+4.  **조치**: 운영자가 대시보드의 '재고 현황 및 알림 관리' 섹션에서 내역 확인 후, 물건을 보충하거나 '해결' 버튼 클릭
+5.  **해결 처리**: `is_alert_resolved = TRUE`로 변경되어 대시보드에서 경고 사라짐 (`PUT /products/{product_id}/resolve_alert`)
+
+---
+
 ## ERD 다이어그램
 
 ```mermaid
