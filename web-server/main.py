@@ -13,7 +13,7 @@ load_dotenv()
 app = FastAPI(
     title="Gilbot API Server",
     description="편의점 매대 관리 로봇(Gilbot) 제어를 위한 백엔드 서버",
-    version="0.2.3",
+    version="0.2.4",
     root_path="/api"
 )
 
@@ -141,6 +141,51 @@ async def delete_patrol(patrol_id: int):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Log not found")
         return {"message": "Patrol log deleted successfully"}
+    finally:
+        conn.close()
+
+@app.post("/patrol/finish")
+async def finish_patrol():
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # 진행 중인 가장 최근 순찰 찾기
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
+        patrol = cursor.fetchone()
+        if not patrol:
+            raise HTTPException(status_code=404, detail="No active patrol found to finish")
+        
+        patrol_id = patrol['patrol_id']
+        cursor.execute(
+            "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
+            (patrol_id,)
+        )
+        conn.commit()
+        return {"message": "Patrol finished successfully", "patrol_id": patrol_id}
+    finally:
+        conn.close()
+
+@app.post("/patrol/stop")
+async def stop_patrol():
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
+        patrol = cursor.fetchone()
+        if not patrol:
+            raise HTTPException(status_code=404, detail="No active patrol found to stop")
+        
+        patrol_id = patrol['patrol_id']
+        cursor.execute(
+            "UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE patrol_id = %s",
+            (patrol_id,)
+        )
+        conn.commit()
+        return {"message": "Patrol stopped (Emergency)", "patrol_id": patrol_id}
     finally:
         conn.close()
 
@@ -274,7 +319,13 @@ async def add_detection(data: DetectionInput):
         cursor.execute(update_patrol_sql, (1 if result_status != '정상' else 0, patrol_id))
 
         conn.commit()
-        return {"status": "success", "result": result_status, "slot_id": slot_id}
+        return {
+            "status": "success", 
+            "judgment": result_status, 
+            "slot_id": slot_id,
+            "slot_info": f"Waypoint {waypoint_id}, Slot {slot_id}",
+            "patrol_id": patrol_id
+        }
 
     except Error as e:
         conn.rollback()
@@ -293,6 +344,83 @@ async def list_detections():
             FROM detection_log d
             LEFT JOIN product_master p ON d.product_id = p.product_id
             ORDER BY d.log_id DESC LIMIT 50
+        """
+        cursor.execute(query)
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+@app.get("/patrol/config")
+async def get_patrol_config():
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # TIME 컬럼은 스트링으로 가져와야 프론트엔드 input[time]에서 제대로 인식함
+        cursor.execute("""
+            SELECT 
+                config_id, avoidance_wait_time, 
+                CAST(patrol_start_time AS CHAR) as patrol_start_time, 
+                CAST(patrol_end_time AS CHAR) as patrol_end_time,
+                interval_hour, interval_minute, is_active
+            FROM patrol_config 
+            ORDER BY config_id DESC LIMIT 1
+        """)
+        config = cursor.fetchone()
+        if not config:
+            # 기본 설정값 반환
+            return {
+                "avoidance_wait_time": 5,
+                "patrol_start_time": "09:00:00",
+                "patrol_end_time": "22:00:00",
+                "interval_hour": 1,
+                "interval_minute": 0,
+                "is_active": True
+            }
+        return config
+    finally:
+        conn.close()
+
+@app.post("/patrol/config")
+async def update_patrol_config(config: PatrolConfig):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO patrol_config 
+            (avoidance_wait_time, patrol_start_time, patrol_end_time, interval_hour, interval_minute, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        values = (
+            config.avoidance_wait_time, config.patrol_start_time, 
+            config.patrol_end_time, config.interval_hour, 
+            config.interval_minute, config.is_active
+        )
+        cursor.execute(query, values)
+        conn.commit()
+        return {"message": "Config updated successfully", "id": cursor.lastrowid}
+    finally:
+        conn.close()
+
+@app.get("/patrol/plan")
+async def get_patrol_plan():
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT 
+                p.plan_id, p.waypoint_id, p.slot_id, p.product_id,
+                w.waypoint_name, s.barcode_tag, s.row_num,
+                m.product_name, m.barcode as product_barcode
+            FROM waypoint_product_plan p
+            LEFT JOIN waypoint w ON p.waypoint_id = w.waypoint_id
+            LEFT JOIN slot s ON p.slot_id = s.slot_id
+            LEFT JOIN product_master m ON p.product_id = m.product_id
+            ORDER BY w.waypoint_id, s.slot_id
         """
         cursor.execute(query)
         return cursor.fetchall()

@@ -8,6 +8,7 @@ function App() {
   const [products, setProducts] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [detections, setDetections] = useState([]);
+  const [patrolPlan, setPatrolPlan] = useState([]);
   const [loading, setLoading] = useState(false);
   const [lastAlertCount, setLastAlertCount] = useState(0);
   const [showNotification, setShowNotification] = useState(false);
@@ -41,6 +42,8 @@ function App() {
     interval_minute: 0,
     is_active: true
   });
+  const [patrolConfigDraft, setPatrolConfigDraft] = useState(null);
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [newProduct, setNewProduct] = useState({ product_name: '', category: '과자', barcode: '', standard_qty: 10 });
 
   const fetchGilbotData = async () => {
@@ -85,20 +88,6 @@ function App() {
         if (Array.isArray(detectionData)) setDetections(detectionData);
       }
 
-      // 4. 상품 마스터 (Admin용)
-      const productRes = await fetch('/api/products');
-      if (productRes.ok) {
-        const productData = await productRes.json();
-        if (Array.isArray(productData)) setProducts(productData);
-      }
-
-      // 5. 순찰 설정 (Patrol Config)
-      const configRes = await fetch('/api/patrol/config');
-      if (configRes.ok) {
-        const configData = await configRes.json();
-        setPatrolConfig(configData);
-      }
-
     } catch (error) {
       console.error("데이터 로딩 실패:", error);
     } finally {
@@ -106,9 +95,34 @@ function App() {
     }
   };
 
+  const fetchStaticData = async () => {
+    try {
+      const configRes = await fetch('/api/patrol/config');
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        setPatrolConfig(configData);
+        setPatrolConfigDraft(configData);
+        setIsEditingConfig(false);
+      }
+      const productRes = await fetch('/api/products');
+      if (productRes.ok) {
+        const productData = await productRes.json();
+        if (Array.isArray(productData)) setProducts(productData);
+      }
+      const planRes = await fetch('/api/patrol/plan');
+      if (planRes.ok) {
+        const planData = await planRes.json();
+        if (Array.isArray(planData)) setPatrolPlan(planData);
+      }
+    } catch (error) {
+      console.error("데이터(정적) 로컬 로딩 실패:", error);
+    }
+  };
+
   useEffect(() => {
+    fetchStaticData(); // 설정/상품은 처음에 한 번만
     fetchGilbotData();
-    const timer = setInterval(fetchGilbotData, 10000); // 10초마다 자동 갱신
+    const timer = setInterval(fetchGilbotData, 10000); // 10초마다 로그/상태값만 자동 갱신
     return () => clearInterval(timer);
   }, []);
 
@@ -124,7 +138,7 @@ function App() {
       if (res.ok) {
         alert("상품 등록 완료!");
         setNewProduct({ product_name: '', barcode: '', standard_qty: 0, category: 'Snack' });
-        fetchGilbotData();
+        fetchStaticData();
       }
     } catch (err) { alert("등록 실패"); }
   };
@@ -138,18 +152,42 @@ function App() {
   };
 
   const handleUpdateConfig = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     try {
       const res = await fetch('/api/patrol/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patrolConfig)
+        body: JSON.stringify(patrolConfigDraft)
       });
       if (res.ok) {
         alert("순찰 설정이 저장되었습니다.");
-        fetchGilbotData();
+        fetchStaticData(); // 저장 성공 시에만 최신 데이터 다시 가져옴
       }
     } catch (err) { alert("설정 저장 실패"); }
+  };
+
+  const handleFinishPatrol = async () => {
+    if (!window.confirm("순찰을 마치고 복귀하시겠습니까? (5초 후 완료)")) return;
+    try {
+      setTimeout(async () => {
+        const res = await fetch('/api/patrol/finish', { method: 'POST' });
+        if (res.ok) {
+          alert("성공적으로 복귀 완료되었습니다.");
+          fetchGilbotData();
+        } else { alert("복귀 실패 (진행중인 순찰 없음)"); }
+      }, 5000);
+    } catch (err) { alert("연결 오류"); }
+  };
+
+  const handleEmergencyStop = async () => {
+    if (!window.confirm("🚨 비상 정지 하시겠습니까?")) return;
+    try {
+      const res = await fetch('/api/patrol/stop', { method: 'POST' });
+      if (res.ok) {
+        alert("순찰이 즉시 중단되었습니다.");
+        fetchGilbotData();
+      }
+    } catch (err) { alert("명령 전달 실패"); }
   };
 
   return (
@@ -206,6 +244,19 @@ function App() {
               <div className="status-card">
                 <h3>스캔 슬롯 (최근)</h3>
                 <div className="value">{patrolList.length > 0 ? patrolList[0].scanned_slots : 0} 개</div>
+              </div>
+            </div>
+
+            {/* 로봇 제어 센터 */}
+            <div className="control-panel apple-card">
+              <h2 className="section-title" style={{marginTop: 0}}>🎮 로봇 제어 센터</h2>
+              <div style={{display: 'flex', gap: '15px'}}>
+                <button className="apple-button secondary" 
+                        onClick={handleFinishPatrol}
+                        style={{flex: 1, height: '50px', fontSize: '16px'}}>🏠 기지로 복귀</button>
+                <button className="apple-button" 
+                        onClick={handleEmergencyStop}
+                        style={{flex: 1, height: '50px', fontSize: '16px', background: '#FF453A'}}>🛑 비상 정지</button>
               </div>
             </div>
 
@@ -334,49 +385,8 @@ function App() {
                 </div>
               </section>
 
-              <section className="apple-card">
-                <h2 className="section-title" style={{marginTop: 0}}>⚙️ 순찰 시스템 설정</h2>
-                <form onSubmit={handleUpdateConfig}>
-                  <div className="form-group">
-                    <label>회피 대기 시간 (초)</label>
-                    <input type="number" value={patrolConfig.avoidance_wait_time} 
-                           onChange={e => setPatrolConfig({...patrolConfig, avoidance_wait_time: parseInt(e.target.value)})} />
-                  </div>
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
-                    <div className="form-group">
-                      <label>순찰 시작 가능 시각</label>
-                      <input type="time" step="1" value={patrolConfig.patrol_start_time} 
-                             onChange={e => setPatrolConfig({...patrolConfig, patrol_start_time: e.target.value})} />
-                    </div>
-                    <div className="form-group">
-                      <label>순찰 종료/복귀 시각</label>
-                      <input type="time" step="1" value={patrolConfig.patrol_end_time} 
-                             onChange={e => setPatrolConfig({...patrolConfig, patrol_end_time: e.target.value})} />
-                    </div>
-                  </div>
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
-                    <div className="form-group">
-                      <label>반복 주기 (시간)</label>
-                      <input type="number" min="0" max="23" value={patrolConfig.interval_hour} 
-                             onChange={e => setPatrolConfig({...patrolConfig, interval_hour: parseInt(e.target.value)})} />
-                    </div>
-                    <div className="form-group">
-                      <label>반복 주기 (분)</label>
-                      <input type="number" min="0" max="59" value={patrolConfig.interval_minute} 
-                             onChange={e => setPatrolConfig({...patrolConfig, interval_minute: parseInt(e.target.value)})} />
-                    </div>
-                  </div>
-                  <div className="form-group" style={{flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px'}}>
-                    <input type="checkbox" checked={patrolConfig.is_active} style={{width: 'auto'}}
-                           onChange={e => setPatrolConfig({...patrolConfig, is_active: e.target.checked})} />
-                    <label style={{marginBottom: 0}}>순찰 활성화 상태</label>
-                  </div>
-                  <button type="submit" className="apple-button" style={{width: '100%', marginTop: '15px'}}>설정 값 저장하기</button>
-                </form>
-              </section>
-
-              <section className="apple-card">
-                <h2 className="section-title" style={{marginTop: 0}}>🍭 등록 상품 조회</h2>
+               <section className="apple-card">
+                 <h2 className="section-title" style={{marginTop: 0}}>🍭 등록 상품 조회</h2>
                 <div className="table-container" style={{maxHeight: '500px', overflowY: 'auto'}}>
                   <table>
                     <thead>
@@ -410,8 +420,70 @@ function App() {
               <p>순찰 기록 관리 및 시스템 무결성 작업</p>
             </header>
 
-            <div className="admin-grid">
-              <section className="apple-card" style={{gridColumn: '1 / -1'}}>
+            <div className="admin-grid" style={{gridTemplateColumns: '1fr 1fr'}}>
+              <section className="apple-card">
+                <h2 className="section-title" style={{marginTop: 0}}>⚙️ 순찰 시스템 설정</h2>
+                {patrolConfigDraft && (
+                <form onSubmit={handleUpdateConfig}>
+                  <div className="form-group">
+                    <label>회피 대기 시간 (초)</label>
+                    <input type="number" 
+                           value={patrolConfigDraft.avoidance_wait_time} 
+                           onFocus={() => setIsEditingConfig(true)}
+                           onChange={e => setPatrolConfigDraft({...patrolConfigDraft, avoidance_wait_time: parseInt(e.target.value)})} />
+                  </div>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
+                    <div className="form-group">
+                      <label>순찰 시작 가능 시각</label>
+                      <input type="time" step="1" 
+                             value={patrolConfigDraft.patrol_start_time} 
+                             onFocus={() => setIsEditingConfig(true)}
+                             onChange={e => setPatrolConfigDraft({...patrolConfigDraft, patrol_start_time: e.target.value})} />
+                    </div>
+                    <div className="form-group">
+                      <label>순찰 종료/복귀 시각</label>
+                      <input type="time" step="1" 
+                             value={patrolConfigDraft.patrol_end_time} 
+                             onFocus={() => setIsEditingConfig(true)}
+                             onChange={e => setPatrolConfigDraft({...patrolConfigDraft, patrol_end_time: e.target.value})} />
+                    </div>
+                  </div>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
+                    <div className="form-group">
+                      <label>반복 주기 (시간)</label>
+                      <input type="number" min="0" max="23" 
+                             value={patrolConfigDraft.interval_hour} 
+                             onFocus={() => setIsEditingConfig(true)}
+                             onChange={e => setPatrolConfigDraft({...patrolConfigDraft, interval_hour: parseInt(e.target.value)})} />
+                    </div>
+                    <div className="form-group">
+                      <label>반복 주기 (분)</label>
+                      <input type="number" min="0" max="59" 
+                             value={patrolConfigDraft.interval_minute} 
+                             onFocus={() => setIsEditingConfig(true)}
+                             onChange={e => setPatrolConfigDraft({...patrolConfigDraft, interval_minute: parseInt(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px'}}>
+                    <input type="checkbox" 
+                           checked={patrolConfigDraft.is_active} 
+                           style={{width: 'auto'}}
+                           onFocus={() => setIsEditingConfig(true)}
+                           onChange={e => setPatrolConfigDraft({...patrolConfigDraft, is_active: e.target.checked})} />
+                    <label style={{marginBottom: 0}}>순찰 활성화 상태</label>
+                  </div>
+                  <div style={{display: 'flex', gap: '10px', marginTop: '15px'}}>
+                    <button type="submit" className="apple-button" style={{flex: 2}}>설정 값 저장하기</button>
+                    {isEditingConfig && (
+                      <button type="button" className="apple-button secondary" style={{flex: 1}} 
+                              onClick={() => { setIsEditingConfig(false); setPatrolConfigDraft(patrolConfig); }}>취소</button>
+                    )}
+                  </div>
+                </form>
+                )}
+              </section>
+
+              <section className="apple-card">
                 <h2 className="section-title" style={{marginTop: 0}}>⚙️ 시스템 작업 로그 관리</h2>
                 <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '20px'}}>순찰 기록의 무결성을 위해 필요한 경우 기록을 삭제할 수 있습니다.</p>
                 <div className="table-container">
