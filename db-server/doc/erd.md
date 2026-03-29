@@ -53,6 +53,8 @@ erDiagram
         VARCHAR barcode "제품 바코드 (UNIQUE)"
         INT min_inventory_qty "최소 유지 갯수 (창고 기준)"
         INT current_inventory_qty "현재 창고 재고 수량"
+        VARCHAR alert_log "재고 부족 경고 메시지"
+        BOOLEAN is_alert_resolved "경고 확인 여부"
     }
 
     waypoint {

@@ -41,6 +41,9 @@ class Product(BaseModel):
     category: str = "General"
     min_inventory_qty: int = 5
 
+class InventoryUpdate(BaseModel):
+    current_inventory_qty: int
+
 class PatrolConfig(BaseModel):
     avoidance_wait_time: int
     patrol_start_time: str
@@ -231,6 +234,55 @@ async def add_product(product: Product):
         cursor.execute(query, (product.product_name, product.barcode, product.category, product.min_inventory_qty))
         conn.commit()
         return {"message": "Product added successfully", "id": cursor.lastrowid}
+    finally:
+        conn.close()
+
+@app.put("/products/{product_id}/inventory")
+async def update_inventory(product_id: int, data: InventoryUpdate):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # Check current min inventory qty
+        cursor.execute("SELECT min_inventory_qty FROM product_master WHERE product_id = %s", (product_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        min_qty = row['min_inventory_qty']
+        alert_log = "재고 부족 (최소 유지 수량 미달)" if data.current_inventory_qty < min_qty else None
+        is_alert_resolved = False if data.current_inventory_qty < min_qty else True
+        
+        query = """
+            UPDATE product_master 
+            SET current_inventory_qty = %s, alert_log = %s, is_alert_resolved = %s
+            WHERE product_id = %s
+        """
+        cursor.execute(query, (data.current_inventory_qty, alert_log, is_alert_resolved, product_id))
+        conn.commit()
+        return {"message": "Inventory updated successfully"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.put("/products/{product_id}/resolve_alert")
+async def resolve_inventory_alert(product_id: int):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE product_master SET is_alert_resolved = TRUE WHERE product_id = %s", (product_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return {"message": "Inventory alert resolved successfully"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 

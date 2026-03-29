@@ -22,7 +22,9 @@ CREATE TABLE product_master (
     category       VARCHAR(50)  NOT NULL  COMMENT '분류 (snack, drink 등)',
     barcode        VARCHAR(50)  UNIQUE    COMMENT '제품 자체의 바코드',
     min_inventory_qty INT DEFAULT 0        COMMENT '최소 유지 갯수 (창고 기준)',
-    current_inventory_qty INT DEFAULT 0    COMMENT '현재 창고 재고 수량'
+    current_inventory_qty INT DEFAULT 0    COMMENT '현재 창고 재고 수량',
+    alert_log       VARCHAR(255) DEFAULT NULL COMMENT '재고 부족 경고 메시지',
+    is_alert_resolved BOOLEAN DEFAULT 0    COMMENT '경고 확인 여부'
 ) ENGINE=InnoDB CHARACTER SET utf8mb4;
 
 -- 2. waypoint (로봇 정지 및 스캔 위치)
