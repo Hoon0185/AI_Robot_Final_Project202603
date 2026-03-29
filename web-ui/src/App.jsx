@@ -520,6 +520,41 @@ function App() {
               </div>
             </section>
 
+            <section className="apple-card">
+              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
+              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="fixed-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '100px', textAlign: 'center' }}>시각</th>
+                      <th style={{ width: '140px', textAlign: 'center' }}>태그</th>
+                      <th>인식 (바코드)</th>
+                      <th style={{ width: '100px', textAlign: 'center' }}>결과</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>신뢰도</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detections.map(d => (
+                      <tr key={d.log_id}>
+                        <td style={{ color: '#8E8E93', textAlign: 'center' }}>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
+                        <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
+                        <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
+                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
+                              <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
                 <section className="apple-card">
                   <h2 className="section-title" style={{ marginTop: 0 }}>📊 최근 순찰 기록</h2>
                   <div className="table-container">
@@ -556,40 +591,6 @@ function App() {
                   </div>
               </section>
 
-            <section className="apple-card">
-              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
-              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <table className="fixed-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '100px', textAlign: 'center' }}>시각</th>
-                      <th style={{ width: '140px', textAlign: 'center' }}>태그</th>
-                      <th>인식 (바코드)</th>
-                      <th style={{ width: '100px', textAlign: 'center' }}>결과</th>
-                      <th style={{ width: '120px', textAlign: 'center' }}>신뢰도</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detections.map(d => (
-                      <tr key={d.log_id}>
-                        <td style={{ color: '#8E8E93', textAlign: 'center' }}>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
-                        <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
-                        <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
-                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
-                            </div>
-                            <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
           </div>
         ) : view === 'admin' ? (
           <div className="admin-dashboard">
