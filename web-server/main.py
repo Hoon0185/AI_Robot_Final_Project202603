@@ -39,7 +39,7 @@ class Product(BaseModel):
     product_name: str
     barcode: str
     category: str = "General"
-    standard_qty: int = 0
+    standard_qty: int = 5
 
 class PatrolConfig(BaseModel):
     avoidance_wait_time: int
@@ -444,6 +444,70 @@ async def list_inventory():
         """
         cursor.execute(query)
         return cursor.fetchall()
+    finally:
+        conn.close()
+
+
+@app.get("/waypoints")
+async def list_waypoints():
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM waypoint ORDER BY waypoint_id")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+class PlanAddInput(BaseModel):
+    waypoint_id: int
+    barcode_tag: str
+    row_num: int = 1
+    product_id: int
+
+@app.post("/patrol/plan/add")
+async def add_patrol_plan(plan: PlanAddInput):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT slot_id FROM slot WHERE barcode_tag = %s", (plan.barcode_tag,))
+        row = cursor.fetchone()
+        
+        slot_id = None
+        if not row:
+            cursor.execute(
+                "INSERT INTO slot (waypoint_id, row_num, barcode_tag) VALUES (%s, %s, %s)",
+                (plan.waypoint_id, plan.row_num, plan.barcode_tag)
+            )
+            slot_id = cursor.lastrowid
+        else:
+            slot_id = row['slot_id']
+            cursor.execute(
+                "UPDATE slot SET waypoint_id = %s, row_num = %s WHERE slot_id = %s",
+                (plan.waypoint_id, plan.row_num, slot_id)
+            )
+
+        cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE slot_id = %s", (slot_id,))
+        existing_plan = cursor.fetchone()
+        
+        if existing_plan:
+            cursor.execute(
+                "UPDATE waypoint_product_plan SET product_id = %s, waypoint_id = %s WHERE plan_id = %s",
+                (plan.product_id, plan.waypoint_id, existing_plan['plan_id'])
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO waypoint_product_plan (waypoint_id, slot_id, product_id) VALUES (%s, %s, %s)",
+                (plan.waypoint_id, slot_id, plan.product_id)
+            )
+        
+        conn.commit()
+        return {"message": "Planogram updated successfully"}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 

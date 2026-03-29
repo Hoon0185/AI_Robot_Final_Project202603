@@ -9,7 +9,9 @@ function App() {
   const [alerts, setAlerts] = useState([]);
   const [detections, setDetections] = useState([]);
   const [patrolPlan, setPatrolPlan] = useState([]);
+  const [waypoints, setWaypoints] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [newPlan, setNewPlan] = useState({ waypoint_id: '', barcode_tag: '', row_num: 1, product_id: '' });
   const [lastAlertCount, setLastAlertCount] = useState(0);
   const [showNotification, setShowNotification] = useState(false);
   
@@ -44,7 +46,7 @@ function App() {
   });
   const [patrolConfigDraft, setPatrolConfigDraft] = useState(null);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
-  const [newProduct, setNewProduct] = useState({ product_name: '', category: '과자', barcode: '', standard_qty: 10 });
+  const [newProduct, setNewProduct] = useState({ product_name: '', category: '과자', barcode: '', standard_qty: 5 });
 
   const fetchGilbotData = async () => {
     try {
@@ -113,6 +115,11 @@ function App() {
       if (planRes.ok) {
         const planData = await planRes.json();
         if (Array.isArray(planData)) setPatrolPlan(planData);
+      }
+      const waypointRes = await fetch('/api/waypoints');
+      if (waypointRes.ok) {
+        const waypointData = await waypointRes.json();
+        if (Array.isArray(waypointData)) setWaypoints(waypointData);
       }
     } catch (error) {
       console.error("데이터(정적) 로컬 로딩 실패:", error);
@@ -188,6 +195,26 @@ function App() {
         fetchGilbotData();
       }
     } catch (err) { alert("명령 전달 실패"); }
+  };
+
+  const handleStorePlan = async (e) => {
+    e.preventDefault();
+    if (!newPlan.waypoint_id || !newPlan.product_id || !newPlan.barcode_tag) {
+      alert("모든 필드를 입력해 주세요.");
+      return;
+    }
+    try {
+      const res = await fetch('/api/patrol/plan/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPlan)
+      });
+      if (res.ok) {
+        alert("진열 계획이 성공적으로 등록되었습니다.");
+        setNewPlan({ waypoint_id: '', barcode_tag: '', row_num: 1, product_id: '' });
+        fetchStaticData();
+      }
+    } catch (err) { alert("계획 등록 실패"); }
   };
 
   return (
@@ -411,10 +438,41 @@ function App() {
                 </div>
               </section>
             </div>
-            {/* 하단 전체 폭: 상품 진열 계획 (Planogram) */}
-            <section className="apple-card" style={{gridColumn: '1 / -1', marginTop: '20px'}}>
-              <h2 className="section-title" style={{marginTop: 0}}>📋 상품 진열 계획 (Planogram)</h2>
-              <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>각 웨이포인트(위치) 및 슬롯별로 진열되어야 할 마스터 상품 정보입니다.</p>
+              {/* 하단 전체 폭: 상품 진열 계획 (Planogram) */}
+              <section className="apple-card" style={{gridColumn: '1 / -1', marginTop: '20px'}}>
+                <h2 className="section-title" style={{marginTop: 0}}>📋 상품 진열 계획 (Planogram) 관리</h2>
+                
+                {/* 등록 양식 추가 */}
+                <div style={{background: 'rgba(0, 122, 255, 0.05)', padding: '20px', borderRadius: '12px', marginBottom: '25px', border: '1px dashed var(--accent-blue)'}}>
+                  <h3 style={{fontSize: '15px', color: 'var(--accent-blue)', marginTop: 0, marginBottom: '15px'}}>📍 새로운 진열 배치 등록</h3>
+                  <form onSubmit={handleStorePlan} style={{display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', alignItems: 'end'}}>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '12px'}}>위치(Waypoint)</label>
+                      <select value={newPlan.waypoint_id} onChange={e => setNewPlan({...newPlan, waypoint_id: e.target.value})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}}>
+                        <option value="">위치 선택</option>
+                        {waypoints.map(w => <option key={w.waypoint_id} value={w.waypoint_id}>{w.waypoint_name}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '12px'}}>슬롯 태그(Barcode)</label>
+                      <input type="text" placeholder="Tag ID" value={newPlan.barcode_tag} onChange={e => setNewPlan({...newPlan, barcode_tag: e.target.value})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}} />
+                    </div>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '12px'}}>단(Row)</label>
+                      <input type="number" min="1" value={newPlan.row_num} onChange={e => setNewPlan({...newPlan, row_num: parseInt(e.target.value)})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}} />
+                    </div>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '12px'}}>대상 상품</label>
+                      <select value={newPlan.product_id} onChange={e => setNewPlan({...newPlan, product_id: e.target.value})} style={{padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)'}}>
+                        <option value="">상품 선택</option>
+                        {products.map(p => <option key={p.product_id} value={p.product_id}>{p.product_name}</option>)}
+                      </select>
+                    </div>
+                    <button type="submit" className="apple-button" style={{padding: '10px', fontSize: '13px'}}>계획에 등록</button>
+                  </form>
+                </div>
+
+                <p style={{color: '#8E8E93', fontSize: '14px', marginBottom: '15px'}}>각 웨이포인트(위치) 및 슬롯별로 진열되어야 할 마스터 상품 정보입니다.</p>
               <div className="table-container">
                 <table>
                   <thead>
