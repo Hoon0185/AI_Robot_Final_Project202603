@@ -273,6 +273,7 @@ async def resolve_alert(alert_id: int):
     finally:
         conn.close()
 
+@app.post("/detections/add")
 async def add_detection(data: DetectionInput):
     conn = get_db_connection()
     if not conn:

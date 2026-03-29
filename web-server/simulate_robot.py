@@ -4,7 +4,8 @@ from datetime import datetime
 import time
 
 # 서버 주소 (FastAPI 포트: 8000)
-SERVER_URL = "http://localhost:8000/api/detections/add"
+SERVER_URL = "http://localhost:8000/detections/add"
+RESOLVE_URL = "http://localhost:8000/alerts"
 
 def send_detection(tag, detected, confidence=0.98):
     payload = {
@@ -58,7 +59,7 @@ def run_menu():
         elif choice == '5':
             # 미해결 알림 목록 조회
             try:
-                res = requests.get("http://localhost:8000/api/alerts")
+                res = requests.get(RESOLVE_URL)
                 if res.status_code == 200:
                     alerts = res.json()
                     if not alerts:
@@ -76,7 +77,7 @@ def run_menu():
                     target_id = alerts[idx]['alert_id']
                     
                     # 해결 요청
-                    solve_res = requests.post(f"http://localhost:8000/api/alerts/{target_id}/resolve")
+                    solve_res = requests.post(f"{RESOLVE_URL}/{target_id}/resolve")
                     if solve_res.status_code == 200:
                         print(f"✅ 알림 {target_id}번이 성공적으로 해결 처리되었습니다.")
                     else:
