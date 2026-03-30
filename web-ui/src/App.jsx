@@ -554,31 +554,35 @@ function App() {
                   <thead>
                     <tr>
                       <th style={{ width: '100px', textAlign: 'center' }}>시각</th>
-                      <th style={{ width: '140px', textAlign: 'center' }}>태그</th>
-                      <th>인식 (바코드)</th>
+                      <th style={{ width: '140px', textAlign: 'center' }}>정상 상품</th>
+                      <th>인식 상품</th>
                       <th style={{ width: '100px', textAlign: 'center' }}>결과</th>
                       <th style={{ width: '120px', textAlign: 'center' }}>신뢰도</th>
                     </tr>
                   </thead>
                   <tbody>
-                      {detections.map(d => (
+                    {detections.length === 0 ? (
+                      <tr><td colSpan="5" className="empty-shelf">진행 중인 순찰이 없거나 데이터가 없습니다.</td></tr>
+                    ) : (
+                      detections.map(d => (
                         <tr key={d.log_id}>
                           <td style={{ color: '#8E8E93', textAlign: 'center' }}>
                             {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </td>
-                        <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
-                        <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
-                        <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
+                          <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
+                          <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
+                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
+                                <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
+                              </div>
+                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
                             </div>
-                            <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

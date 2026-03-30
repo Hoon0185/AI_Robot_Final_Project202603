@@ -485,13 +485,22 @@ async def list_detections():
     if not conn: return []
     try:
         cursor = conn.cursor(dictionary=True)
+        # 현재 '진행중'인 최신 순찰 ID를 가져옴
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY patrol_id DESC LIMIT 1")
+        active_patrol = cursor.fetchone()
+        
+        if not active_patrol:
+            return []  # 진행 중인 순찰이 없으면 클리어
+            
+        active_id = active_patrol['patrol_id']
         query = """
             SELECT d.*, p.product_name 
             FROM detection_log d
             LEFT JOIN product_master p ON d.product_id = p.product_id
-            ORDER BY d.log_id DESC LIMIT 50
+            WHERE d.patrol_id = %s
+            ORDER BY d.log_id DESC LIMIT 100
         """
-        cursor.execute(query)
+        cursor.execute(query, (active_id,))
         return cursor.fetchall()
     finally:
         conn.close()
