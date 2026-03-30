@@ -10,7 +10,7 @@
 *   **ROS 2 Humble**: 로봇 제어 및 통신을 위해 필요합니다.
 *   **FastAPI 백엔드**: 재고 데이터 및 알림 처리를 위해 실행 중이어야 합니다 (기본 포트: 8000).
 *   **Navigation2 Stack**: 순찰 및 복귀 기능을 위해 반드시 실행 중이어야 합니다.
-*   **의존성**: `PyQt6`, `requests`, `rclpy`, `nav2_msgs` 등이 설치되어 있어야 합니다.
+*   **의존성**: `PyQt6`, `requests`, `rclpy`, `nav2_msgs`, `uvicorn` 등이 설치되어 있어야 합니다.
 
 ---
 
@@ -41,10 +41,19 @@ source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
 
-### 2단계: 관리용 UI 실행 (PyQt6)
-로봇을 제어하고 상태를 모니터링할 UI를 실행합니다.
+### 2단계: FastAPI 백엔드 서버 실행
+재고 데이터 동기화 및 알림 기능을 위해 백엔드 서버를 먼저 실행합니다.
 ```bash
 # 리포지토리 루트에서 실행
+cd web-server
+pip install -r requirements.txt  # 최초 실행 시 의존성 설치
+uvicorn main:app --reload --port 8000
+```
+
+### 3단계: 관리용 UI 실행 (PyQt6)
+로봇을 제어하고 상태를 모니터링할 UI를 실행합니다.
+```bash
+# 리포지토리 루트에서 실행 (새 터미널)
 python3 main.py
 ```
 
