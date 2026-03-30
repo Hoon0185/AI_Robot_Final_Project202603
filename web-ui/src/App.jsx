@@ -300,6 +300,25 @@ function App() {
     }
   };
 
+  const handleClearWaypointPlans = async (id) => {
+    if (!window.confirm("정말 이 웨이포인트의 모든 등록 상품 연결을 해제하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/waypoints/${id}/clear_plans`, { method: 'DELETE' });
+      if (res.ok) {
+        alert("웨이포인트의 상품 연결이 모두 해제되었습니다.");
+        fetchStaticData();
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "해제 실패");
+      }
+    } catch (err) {
+      alert("해제 실패: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateConfig = async (e) => {
     if (e) e.preventDefault();
     try {
@@ -1065,36 +1084,60 @@ function App() {
                  </div>
                </section>
 
-               <section className="apple-card">
-                 <h2 className="section-title" style={{ marginTop: 0 }}>📍 등록된 웨이포인트(구역) 관리</h2>
-                 <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없어야 가능합니다.)</p>
-                 <div className="table-container">
-                   <table className="fixed-table">
-                     <thead>
-                       <tr>
-                         <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
-                         <th>웨이포인트 이름</th>
-                         <th style={{ width: '100px', textAlign: 'center' }}>번호</th>
-                         <th style={{ width: '120px', textAlign: 'center' }}>조치</th>
-                       </tr>
-                     </thead>
-                     <tbody>
-                       {waypoints.map(wp => (
-                         <tr key={wp.waypoint_id}>
-                           <td style={{ textAlign: 'center' }}>#{wp.waypoint_id}</td>
-                           <td style={{ fontWeight: '600' }}>{wp.waypoint_name}</td>
-                           <td style={{ textAlign: 'center' }}>{wp.waypoint_no}</td>
-                           <td style={{ textAlign: 'center' }}>
-                             <button className="apple-button secondary" 
-                               style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
-                               onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>
-                           </td>
-                         </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                 </div>
-               </section>
+                <section className="apple-card">
+                  <h2 className="section-title" style={{ marginTop: 0 }}>📍 등록된 웨이포인트(구역) 관리</h2>
+                  <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없어야 가능합니다.)</p>
+                  <div className="table-container">
+                    <table className="fixed-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '60px', textAlign: 'center' }}>ID</th>
+                          <th style={{ textAlign: 'center' }}>웨이포인트 이름</th>
+                          <th style={{ textAlign: 'center' }}>등록 상품</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>번호</th>
+                          <th style={{ width: '150px', textAlign: 'center' }}>조치</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {waypoints.map(wp => {
+                          const linkedProducts = (patrolPlan || []).filter(plan => plan.waypoint_id === wp.waypoint_id);
+                          return (
+                            <tr key={wp.waypoint_id}>
+                              <td style={{ textAlign: 'center' }}>#{wp.waypoint_id}</td>
+                              <td style={{ fontWeight: '600', textAlign: 'center' }}>{wp.waypoint_name}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                {linkedProducts.length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
+                                    {linkedProducts.map(p => (
+                                      <span key={p.plan_id} className="tag info" style={{ fontSize: '10px', padding: '2px 6px' }}>
+                                        {p.product_name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#8E8E93', fontSize: '12px' }}>없음</span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>{wp.waypoint_no}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                  {linkedProducts.length > 0 && (
+                                    <button className="apple-button secondary" 
+                                      style={{ padding: '6px 10px', fontSize: '12px', color: 'var(--accent-orange)', borderRadius: '8px' }}
+                                      onClick={() => handleClearWaypointPlans(wp.waypoint_id)}>비우기</button>
+                                  )}
+                                  <button className="apple-button secondary" 
+                                    style={{ padding: '6px 10px', fontSize: '12px', color: '#FF453A', borderRadius: '8px' }}
+                                    onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
             </div>
           </div>
         ) : (

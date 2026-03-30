@@ -742,6 +742,17 @@ async def delete_waypoint(waypoint_id: int):
     finally:
         conn.close()
 
+@app.delete("/waypoints/{waypoint_id}/clear_plans")
+async def clear_waypoint_plans(waypoint_id: int):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM waypoint_product_plan WHERE waypoint_id = %s", (waypoint_id,))
+        conn.commit()
+        return {"message": "All product plans for this waypoint have been cleared."}
+    finally:
+        conn.close()
+
 @app.post("/admin/unified-register")
 async def unified_register(data: UnifiedRegisterInput):
     conn = get_db_connection()
