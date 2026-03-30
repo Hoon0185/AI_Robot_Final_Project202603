@@ -9,6 +9,7 @@
 
 *   **ROS 2 Humble**: 로봇 제어 및 통신을 위해 필요합니다.
 *   **FastAPI 백엔드**: 재고 데이터 및 알림 처리를 위해 실행 중이어야 합니다 (기본 포트: 8000).
+*   **Navigation2 Stack**: 순찰 및 복귀 기능을 위해 반드시 실행 중이어야 합니다.
 *   **의존성**: `PyQt6`, `requests`, `rclpy`, `nav2_msgs` 등이 설치되어 있어야 합니다.
 
 ---
@@ -16,6 +17,18 @@
 ## 2. 시스템 실행 순서
 
 각 단계는 별도의 터미널에서 실행하는 것을 권장합니다.
+
+### 0단계: 내비게이션 및 맵 실행 (Nav2)
+순찰 및 복귀 기능이 정상적으로 작동하려면 먼저 내비게이션 스택과 맵이 로드되어 있어야 합니다.
+```bash
+# 터미널 1: 내비게이션 실행
+# <MAP_NAME> 자리에 저장한 맵 파일 이름을 입력하세요.
+ros2 launch turtlebot3_navigation2 navigation2.launch.py \
+  use_sim_time:=false \
+  autostart:=true \
+  map:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/maps/my_store_map_01.yaml \
+  params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/nav2_params.yaml
+```
 
 ### 1단계: ROS 2 환경 설정 및 노드 실행
 먼저 ROS 2 워크스페이스를 빌드하고 순찰 메인 노드를 실행합니다.
