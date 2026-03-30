@@ -553,11 +553,11 @@ function App() {
                 <table className="fixed-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '100px', textAlign: 'center' }}>시각</th>
-                      <th style={{ width: '180px', textAlign: 'center' }}>정상 상품 / 바코드</th>
-                      <th style={{ width: '180px', textAlign: 'center' }}>인식 상품 / 바코드</th>
-                      <th style={{ width: '100px', textAlign: 'center' }}>결과</th>
-                      <th style={{ width: '120px', textAlign: 'center' }}>신뢰도</th>
+                      <th style={{ width: '85px', textAlign: 'center' }}>시각</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>정상 상품 / 바코드</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>인식 상품 / 바코드</th>
+                      <th style={{ width: '70px', textAlign: 'center' }}>결과</th>
+                      <th style={{ width: '90px', textAlign: 'center' }}>신뢰도</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -566,18 +566,18 @@ function App() {
                     ) : (
                       detections.map(d => (
                         <tr key={d.log_id}>
-                          <td style={{ color: '#8E8E93', textAlign: 'center' }}>
+                          <td style={{ color: '#8E8E93', textAlign: 'center', fontSize: '12px' }}>
                             {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{d.p_name_target}</div>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_target}</div>
                             <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.tag_barcode}</div>
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{d.p_name_detected || "미지정"}</div>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_detected || "미지정"}</div>
                             <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.detected_barcode || "-"}</div>
                           </td>
-                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
+                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`} style={{ padding: '2px 8px', fontSize: '11px' }}>{d.result}</span></td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
