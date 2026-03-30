@@ -99,35 +99,50 @@ ros2 launch patrol_main patrol.launch.py
 - **비차단형 지연(Non-blocking Delay)**: 선반 도착 후 2초간 정차할 때 `timer`를 사용하여 노드가 멈추지 않고 상시 통신 가능 상태를 유지합니다.
 - **장애 대응(Fault Tolerance)**: 특정 선반으로의 경로가 막혔을 경우, 순찰을 중단하지 않고 자동으로 해당 지점을 건너뛰고(Skipping) 다음 목표로 진행합니다.
 
-## 7. 순찰 스케줄링 및 모드 설정 (Dynamic Parameter)
-순찰 스케줄러는 실시간으로 파라미터를 변경하여 즉시 적용할 수 있습니다.
+## 7. 순찰 스케줄링 및 모드 설정 (CLI vs Python API)
+순찰 스케줄러는 실시간으로 파라미터를 변경하여 즉시 적용할 수 있습니다. 터미널 명령(CLI)과 파이썬 코드(API) 중 편한 방법을 사용하세요.
 
 ### 모드 1: 주기 순찰 (Periodic)
 특정 기준 시점부터 일정한 간격(분 단위)으로 순찰을 반복합니다.
-```bash
-# 모드 설정
-ros2 param set /patrol_scheduler patrol_mode "periodic"
-# 간격 설정 (예: 60분 간격)
-ros2 param set /patrol_scheduler patrol_interval_min 60.0
-# 기준 시점 설정 (HH:MM 형식)
-ros2 param set /patrol_scheduler reference_time "00:00"
-```
+
+*   **터미널 (CLI)**:
+    ```bash
+    ros2 param set /patrol_scheduler patrol_mode "periodic"
+    ros2 param set /patrol_scheduler patrol_interval_min 60.0
+    ros2 param set /patrol_scheduler reference_time "00:00"
+    ```
+*   **파이썬 (API)**:
+    ```python
+    patrol.set_patrol_mode("periodic")
+    patrol.set_patrol_interval(60.0)
+    patrol.set_start_time("00:00")
+    ```
 
 ### 모드 2: 특정 시각 목록 순찰 (Scheduled)
 미리 정의된 시간 목록에 무조건 순찰을 시작합니다.
-```bash
-# 모드 설정
-ros2 param set /patrol_scheduler patrol_mode "scheduled"
-# 순찰 시각 목록 설정
-ros2 param set /patrol_scheduler scheduled_times ["09:00", "13:00", "18:00"]
-```
+
+*   **터미널 (CLI)**:
+    ```bash
+    ros2 param set /patrol_scheduler patrol_mode "scheduled"
+    ros2 param set /patrol_scheduler scheduled_times ["09:00", "13:00", "18:00"]
+    ```
+*   **파이썬 (API)**:
+    ```python
+    patrol.set_patrol_mode("scheduled")
+    patrol.set_scheduled_times(["09:00", "13:00", "18:00"])
+    ```
 
 ### 모드 3: 수동 순찰 실행 (Manual Trigger)
-스케줄과 상관없이 UI 또는 터미널에서 즉시 순찰을 시작합니다.
-```bash
-# 터미널에서 즉시 순찰 시작 명령
-ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
-```
+스케줄과 상관없이 즉시 순찰을 시작합니다.
+
+*   **터미널 (CLI)**:
+    ```bash
+    ros2 service call /trigger_manual_patrol std_srvs/srv/Trigger {}
+    ```
+*   **파이썬 (API)**:
+    ```python
+    patrol.trigger_manual_patrol()
+    ```
 
 ## 8. 문제 해결 (Troubleshooting)
 
