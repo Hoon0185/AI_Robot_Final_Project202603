@@ -25,6 +25,8 @@ class RobotLogicHandler:
             self.ros_interface = None
             
         self._setup_connections()
+        self.current_patrol_min = 60
+        self.current_obstacle_sec = 10
         self._load_initial_data()
         
         # UI 업데이트용 타이머 (ROS 상태 반영)
@@ -64,15 +66,18 @@ class RobotLogicHandler:
             if config:
                 print(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
                 try:
-                    # 1. 순찰 간격 (UI 값 설정 및 ROS 파라미터 적용)
-                    interval = config.get('interval_hour', 0) * 60 + config.get('interval_minute', 0)
-                    if interval > 0:
-                        self.ui.patrol_row['slider'].setValue(interval)
-                        self.ros_interface.set_patrol_interval(interval)
+                    # 1. 장애물 대기 시간 (UI 값 설정)
+                    self.current_obstacle_sec = config.get('avoidance_wait_time', 10)
+                    self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
+
+                    # 2. 순찰 간격 (UI 값 설정 및 ROS 파라미터 적용)
+                    h = config.get('interval_hour', 0)
+                    m = config.get('interval_minute', 0)
+                    self.current_patrol_min = h * 60 + m
+                    if self.current_patrol_min > 0:
+                        self.ui.patrol_row['slider'].setValue(self.current_patrol_min)
+                        self.ros_interface.set_patrol_interval(float(self.current_patrol_min))
                     
-                    # 2. 장애물 대기 시간 (UI 값 설정)
-                    avoidance_wait = config.get('avoidance_wait_time', 10)
-                    self.ui.obstacle_row['slider'].setValue(avoidance_wait)
                 except Exception as e:
                     print(f"[ERROR] 초기 설정 반영 중 오류: {e}")
 
@@ -98,22 +103,34 @@ class RobotLogicHandler:
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 
     def on_patrol_set(self, val):
-        """순찰 간격 설정 (분 -> 시/분 변환 후 동기화)"""
-        h, m = divmod(int(val), 60)
+        """순찰 간격 설정 (상태 유지하며 DB 동기화)"""
+        self.current_patrol_min = int(val)
+        h, m = divmod(self.current_patrol_min, 60)
         print(f"[LOGIC] 순찰 간격 {val}분 설정 ({h}시간 {m}분)")
         
         if self.ros_interface:
-            # 1. ROS 파라미터 업데이트 (분 단위 유지)
+            # 1. ROS 파라미터 업데이트
             self.ros_interface.set_patrol_interval(float(val))
-            # 2. DB 서버 업데이트 (시/분 분리)
-            self.ros_interface.sync_config_to_db(hour=h, minute=m)
+            # 2. DB 서버 업데이트 (현재 장애물 대기 시간 유지)
+            self.ros_interface.sync_config_to_db(
+                avoidance_wait=self.current_obstacle_sec, 
+                hour=h, 
+                minute=m
+            )
 
     def on_obstacle_set(self, val):
-        """장애물 대기 시간 설정 (DB 동기화)"""
-        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정")
+        """장애물 대기 시간 설정 (상태 유지하며 DB 동기화)"""
+        self.current_obstacle_sec = int(val)
+        h, m = divmod(self.current_patrol_min, 60)
+        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (순찰 간격 {h}:{m} 유지)")
+        
         if self.ros_interface:
-            # DB 서버 업데이트 (기존 시/분 값 유지하며 대기 시간만 변경하기 위해 현재값 참조 가능하나 단순화)
-            self.ros_interface.sync_config_to_db(avoidance_wait=val)
+            # DB 서버 업데이트 (현재 순찰 간격 유지)
+            self.ros_interface.sync_config_to_db(
+                avoidance_wait=self.current_obstacle_sec, 
+                hour=h, 
+                minute=m
+            )
 
     def on_move_command(self, direction):
         print(f"[LOGIC] 수동 이동: {direction}")
