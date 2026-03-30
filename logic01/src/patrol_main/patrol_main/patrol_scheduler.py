@@ -28,35 +28,43 @@ class PatrolScheduler(Node):
         self.last_triggered_time = -1
         self.get_logger().info('Patrol Scheduler Node enhanced. Ready for UI integration.')
 
-    def update_config(self):
-        self.mode = self.get_parameter('patrol_mode').get_parameter_value().string_value
-        self.interval_sec = self.get_parameter('patrol_interval_min').get_parameter_value().double_value * 60.0
-        self.ref_time_str = self.get_parameter('reference_time').get_parameter_value().string_value
-        self.sched_times = self.get_parameter('scheduled_times').get_parameter_value().string_array_value
-        
-        # 기준 시점을 초 단위로 변환 (당일 00:00:00 기준 경과 초)
-        try:
-            h, m = map(int, self.ref_time_str.split(':'))
-            self.ref_offset_sec = h * 3600 + m * 60
-        except:
-            self.ref_offset_sec = 0
-            self.get_logger().error('Invalid reference_time format. Use HH:MM')
+    def update_config(self, params=None):
+        if params:
+            for param in params:
+                if param.name == 'patrol_mode':
+                    self.mode = param.value
+                elif param.name == 'patrol_interval_min':
+                    self.interval_sec = float(param.value) * 60.0
+                elif param.name == 'reference_time':
+                    self.ref_time_str = param.value
+                    try:
+                        h, m = map(int, self.ref_time_str.split(':'))
+                        self.ref_offset_sec = h * 3600 + m * 60
+                    except:
+                        self.ref_offset_sec = 0
+                elif param.name == 'scheduled_times':
+                    self.sched_times = param.value
+        else:
+            self.mode = self.get_parameter('patrol_mode').get_parameter_value().string_value
+            self.interval_sec = self.get_parameter('patrol_interval_min').get_parameter_value().double_value * 60.0
+            self.ref_time_str = self.get_parameter('reference_time').get_parameter_value().string_value
+            self.sched_times = self.get_parameter('scheduled_times').get_parameter_value().string_array_value
+            
+            try:
+                h, m = map(int, self.ref_time_str.split(':'))
+                self.ref_offset_sec = h * 3600 + m * 60
+            except:
+                self.ref_offset_sec = 0
+                self.get_logger().error('Invalid reference_time format. Use HH:MM')
 
     def parameter_callback(self, params):
-        for param in params:
-            # 실시간 파라미터 업데이트 반영
-            self.get_logger().info(f'Parameter {param.name} changing to {param.value}')
-        
-        # 콜백이 끝난 후 값을 즉시 업데이트
-        # (주의: SetParametersResult가 True여야 실제 값이 바뀜)
-        self.update_config()
+        self.get_logger().info('Updating parameters dynamically...')
+        self.update_config(params)
         return rclpy.node.SetParametersResult(successful=True)
 
     def clock_check_callback(self):
-        # 파라미터 실시간 반영을 위해 매번 읽어오지 않고 update_config로 관리
-        # (실제 구현 시에는 parameter_callback에서 처리하는 것이 효율적이지만 가독성을 위해 분리)
-        self.update_config() 
-
+        # 파 라이터 실시간 반영을 위해 매번 읽어오지 않고 update_config로 관리
+        # 더 이상 타이머에서 매번 읽어오지 않아 데드락을 방지합니다.
         now = time.localtime()
         current_time_str = time.strftime("%H:%M", now)
         current_timestamp = int(time.time())
