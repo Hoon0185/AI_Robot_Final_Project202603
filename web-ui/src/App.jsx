@@ -3,7 +3,7 @@ import './App.css'
 
 function App() {
   const [view, setView] = useState('dashboard'); // 'dashboard' or 'admin'
-  const [status, setStatus] = useState({ status: 'offline', database: 'unknown' });
+  const [status, setStatus] = useState({ status: 'offline', robot_status: '휴식중', database: 'unknown' });
   const [patrolList, setPatrolList] = useState([]);
   const [products, setProducts] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -73,6 +73,7 @@ function App() {
         const statusData = await statusRes.json();
         setStatus({
           status: statusData.status || 'offline',
+          robot_status: statusData.robot_status || '휴식중',
           database: statusData.database || 'unknown'
         });
       }
@@ -396,6 +397,15 @@ function App() {
             <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online pulsing' : 'offline'}`}></span>
             <div>
               <div className="robot-status-text">Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
+              <div className="robot-mode-text" style={{ 
+                fontSize: '12px', 
+                fontWeight: '600', 
+                color: status.robot_status === '순찰중' ? 'var(--accent-blue)' : 
+                       status.robot_status === '비상정지' ? 'var(--accent-red)' : '#8E8E93',
+                marginTop: '2px'
+              }}>
+                ● Robot {status.robot_status}
+              </div>
               <div className="db-status-text">DB: {status.database}</div>
             </div>
           </div>

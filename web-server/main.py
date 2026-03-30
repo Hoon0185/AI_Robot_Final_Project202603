@@ -110,11 +110,29 @@ async def root():
 async def get_status():
     conn = get_db_connection()
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
+    robot_mode = "휴식중"
+    
     if conn:
-        conn.close()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            # 가장 최근 순찰 상태 확인
+            cursor.execute("SELECT status FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
+            last_patrol = cursor.fetchone()
+            if last_patrol:
+                if last_patrol['status'] == '진행중':
+                    robot_mode = "순찰중"
+                elif last_patrol['status'] == '중단':
+                    robot_mode = "비상정지"
+                else:
+                    robot_mode = "휴식중"
+        except Exception as e:
+            print(f"Error fetching robot status: {e}")
+        finally:
+            conn.close()
 
     return {
-        "status": "running",
+        "status": "online",
+        "robot_status": robot_mode,
         "database": db_status,
         "db_host": os.getenv("DB_HOST")
     }
