@@ -554,8 +554,8 @@ function App() {
                   <thead>
                     <tr>
                       <th style={{ width: '100px', textAlign: 'center' }}>시각</th>
-                      <th style={{ width: '140px', textAlign: 'center' }}>정상 상품</th>
-                      <th>인식 상품</th>
+                      <th style={{ width: '180px', textAlign: 'center' }}>정상 상품 / 바코드</th>
+                      <th style={{ width: '180px', textAlign: 'center' }}>인식 상품 / 바코드</th>
                       <th style={{ width: '100px', textAlign: 'center' }}>결과</th>
                       <th style={{ width: '120px', textAlign: 'center' }}>신뢰도</th>
                     </tr>
@@ -569,8 +569,14 @@ function App() {
                           <td style={{ color: '#8E8E93', textAlign: 'center' }}>
                             {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </td>
-                          <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
-                          <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{d.p_name_target}</div>
+                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.tag_barcode}</div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{d.p_name_detected || "미지정"}</div>
+                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.detected_barcode || "-"}</div>
+                          </td>
                           <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

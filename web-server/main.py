@@ -494,9 +494,12 @@ async def list_detections():
             
         active_id = active_patrol['patrol_id']
         query = """
-            SELECT d.*, p.product_name 
+            SELECT d.*, 
+                   p1.product_name as p_name_target,
+                   p2.product_name as p_name_detected
             FROM detection_log d
-            LEFT JOIN product_master p ON d.product_id = p.product_id
+            LEFT JOIN product_master p1 ON d.product_id = p1.product_id
+            LEFT JOIN product_master p2 ON d.detected_barcode = p2.barcode
             WHERE d.patrol_id = %s
             ORDER BY d.log_id DESC LIMIT 100
         """
