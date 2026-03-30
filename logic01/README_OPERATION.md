@@ -21,23 +21,31 @@
 ### 0단계: 내비게이션 및 맵 실행 (Nav2)
 순찰 및 복귀 기능이 정상적으로 작동하려면 먼저 내비게이션 스택과 맵이 로드되어 있어야 합니다.
 ```bash
-# 터미널 1: 내비게이션 실행
-# <MAP_NAME> 자리에 저장한 맵 파일 이름을 입력하세요.
+# 터미널 1: 내비게이션 실행 (cmd_vel을 cmd_vel_nav로 리맵핑하여 멀티플렉서에 연결)
 ros2 launch turtlebot3_navigation2 navigation2.launch.py \
   use_sim_time:=false \
   autostart:=true \
   map:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/maps/my_store_map_01.yaml \
-  params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/nav2_params.yaml
+  params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/nav2_params.yaml \
+  cmd_vel:=cmd_vel_nav
 ```
 
 ### 1단계: ROS 2 환경 설정 및 노드 실행
-먼저 ROS 2 워크스페이스를 빌드하고 순찰 시스템(스케줄러, 메인 노드 등)을 실행합니다.
+먼저 ROS 2 워크스페이스를 빌드하고 전체 시스템을 실행합니다. 기본적으로 네임스페이스 없이 실행되지만, 팀 프로젝트 등 하드웨어 환경에 따라 네임스페이스가 필요한 경우 `namespace:=이름` 인자를 추가할 수 있습니다.
+
 ```bash
 # 워크스페이스 루트에서 실행
-colcon build --packages-select patrol_main
+colcon build --packages-select patrol_main logic2_pkg
 source install/setup.bash
 
-# 순찰 전체 시스템 실행 (스케줄러 포함)
+# 터미널 2: 멀티플렉서 및 장애물 회피 실행 (수동 이동/부저 활성화)
+# [기본] ros2 launch logic2_pkg obstacle.launch.py
+# [네임스페이스 사용 시] ros2 launch logic2_pkg obstacle.launch.py namespace:=TB3_2
+ros2 launch logic2_pkg obstacle.launch.py
+
+# 터미널 3: 순찰 전체 시스템 실행 (스케줄러/메인 노드)
+# [기본] ros2 launch patrol_main patrol.launch.py
+# [네임스페이스 사용 시] ros2 launch patrol_main patrol.launch.py namespace:=TB3_2
 ros2 launch patrol_main patrol.launch.py
 ```
 
@@ -54,6 +62,8 @@ uvicorn main:app --reload --port 8000
 로봇을 제어하고 상태를 모니터링할 UI를 실행합니다.
 ```bash
 # 리포지토리 루트에서 실행 (새 터미널)
+# [기본] python3 main.py
+# [네임스페이스 사용 시] python3 main.py --ros-args --remap __ns:=/TB3_2
 python3 main.py
 ```
 
