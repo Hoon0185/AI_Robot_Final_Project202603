@@ -49,14 +49,9 @@ ros2 launch logic2_pkg obstacle.launch.py
 ros2 launch patrol_main patrol.launch.py
 ```
 
-### 2단계: FastAPI 백엔드 서버 실행
-재고 데이터 동기화 및 알림 기능을 위해 백엔드 서버를 먼저 실행합니다.
-```bash
-# 리포지토리 루트에서 실행
-cd web-server
-pip install -r requirements.txt  # 최초 실행 시 의존성 설치
-uvicorn main:app --reload --port 8000
-```
+### 2단계: 백엔드 서버 상태 확인 (Remote)
+데이터 동기화 및 알림 기능을 위해 원격 서버(`http://16.184.56.119`)가 작동하고 있어야 합니다. 로봇과 PC가 해당 IP에 접속 가능한 네트워크에 있는지 확인하세요.
+*(로컬 서버를 직접 실행할 필요는 없으나, 필요한 경우 `web-server` 폴더에서 `uvicorn`으로 실행할 수 있습니다.)*
 
 ### 3단계: 관리용 UI 실행 (PyQt6)
 로봇을 제어하고 상태를 모니터링할 UI를 실행합니다.
