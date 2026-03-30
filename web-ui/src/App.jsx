@@ -1094,7 +1094,7 @@ function App() {
                           <th style={{ width: '60px', textAlign: 'center' }}>ID</th>
                           <th style={{ textAlign: 'center' }}>웨이포인트 이름</th>
                           <th style={{ textAlign: 'center' }}>등록 상품</th>
-                          <th style={{ width: '100px', textAlign: 'center' }}>번호</th>
+                          <th style={{ width: '120px', textAlign: 'center' }}>제어 번호(No.)</th>
                           <th style={{ width: '150px', textAlign: 'center' }}>조치</th>
                         </tr>
                       </thead>
