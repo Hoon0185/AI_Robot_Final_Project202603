@@ -662,19 +662,36 @@ function App() {
                   <div className="table-container" style={{ maxHeight: '440px', overflowY: 'auto', border: 'none', background: 'transparent' }}>
                     <table className="selectable-table slim">
                       <thead>
-                        <tr><th style={{ textAlign: 'center' }}>상품명</th><th style={{ textAlign: 'center' }}>바코드</th></tr>
+                        <tr>
+                          <th style={{ textAlign: 'center' }}>상품명</th>
+                          <th style={{ textAlign: 'center' }}>바코드</th>
+                          <th style={{ textAlign: 'center' }}>위치(웨이포인트)</th>
+                        </tr>
                       </thead>
                       <tbody>
                         {products
                           .filter(p => !searchTerm || p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) || p.barcode.includes(searchTerm))
-                          .map(p => (
-                            <tr key={p.product_id}
-                              onClick={() => setUnifiedForm({ ...unifiedForm, product_name: p.product_name, product_barcode: p.barcode, category: p.category || '기타' })}
-                              className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
-                              <td style={{ fontSize: '13px', textAlign: 'center' }}>{p.product_name}</td>
-                              <td style={{ fontSize: '12px', textAlign: 'center' }}><code>{p.barcode}</code></td>
-                            </tr>
-                          ))}
+                          .map(p => {
+                            const pInPlan = (patrolPlan || []).find(plan => plan.product_barcode === p.barcode);
+                            return (
+                              <tr key={p.product_id}
+                                onClick={() => setUnifiedForm({ 
+                                  ...unifiedForm, 
+                                  product_name: p.product_name, 
+                                  product_barcode: p.barcode, 
+                                  category: p.category || '기타',
+                                  waypoint_name: pInPlan ? pInPlan.waypoint_name : '',   // Auto-fill existing waypoint
+                                  row_num: pInPlan ? pInPlan.row_num : 1               // Auto-fill existing row
+                                })}
+                                className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
+                                <td style={{ fontSize: '13px', textAlign: 'center' }}>{p.product_name}</td>
+                                <td style={{ fontSize: '11px', textAlign: 'center' }}><code>{p.barcode}</code></td>
+                                <td style={{ fontSize: '12px', textAlign: 'center', color: pInPlan ? 'var(--accent-blue)' : 'var(--text-secondary)' }}>
+                                  {pInPlan ? pInPlan.waypoint_name : '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>
