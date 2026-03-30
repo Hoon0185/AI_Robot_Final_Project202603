@@ -87,10 +87,36 @@ python3 main.py
 1.  UI 상단의 **"🗓 마지막 순찰 시간"** 영역을 확인합니다.
 2.  순찰이 시작되면 `(순찰 중: shelf_1 1/4)`와 같은 형식으로 실시간 진행 상태가 업데이트되는지 확인하십시오.
 
+### 📡 원격 대시보드 명령 (Remote Dashboard)
+1.  **웹 브라우저**에서 `http://16.184.56.119/` (또는 서버 IP)에 접속합니다.
+2.  대시보드 상단의 **[순찰 개시]** 또는 **[비상 정지]** 버튼을 클릭합니다.
+3.  로봇 UI 터미널에 `[REMOTE] New command received: ...` 로그가 출력되며 로봇이 즉시 자율 순찰을 시작하거나 멈추는지 확인하십시오. (약 2초 이내 반응)
+
 ---
 
-## 4. 트러블슈팅
+## 4. 원격 서버 데이터베이스 관리 (Server branch 도구)
+`web-server` 디렉토리에는 시스템 초기 구축 및 관리를 위한 도구들이 포함되어 있습니다.
+
+### 4.1 기초 데이터 입력 (최초 1회 필수)
+새로운 환경에서 DB를 구축하거나 테이블을 초기화하려면 다음 명령을 실행합니다.
+```bash
+cd web-server
+python3 insert_base_data.py
+```
+*   `product_master`, `waypoint`, `waypoint_product_plan` 등을 자동으로 세팅합니다.
+
+### 4.2 수동 재고 관리 CLI
+로봇 순찰 외에 사람이 직접 입/출고를 관리할 때 사용하는 도구입니다.
+```bash
+python3 inventory_manager.py
+```
+*   메뉴에서 1:입고, 2:출고를 선택하고 상품 ID와 수량을 입력하여 즉시 DB에 반영할 수 있습니다.
+
+---
+
+## 5. 트러블슈팅
 
 *   **UI 실행 시 에러 발생**: `robot_logic.py`에서 `patrol_interface` 임포트 경로가 올바른지 확인하십시오.
 *   **데이터가 비어있음**: FastAPI 서버가 작동 중인지, `InventoryDB`의 `base_url`이 정확한지 확인하십시오.
 *   **명령어가 전달되지 않음**: ROS 2 노드들이 동일한 `ROS_DOMAIN_ID`를 사용하는지, 혹은 통신 환경(Namespace 등)이 일치하는지 확인하십시오.
+*   **패키지 누락**: `pip install mysql-connector-python requests` 명령이 수행되었는지 확인하십시오.

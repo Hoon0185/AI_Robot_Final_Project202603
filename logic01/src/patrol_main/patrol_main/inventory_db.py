@@ -98,6 +98,7 @@ class InventoryDB:
 
     def update_patrol_config(self, avoidance_wait=10, start="09:00", end="22:00", hour=0, minute=0):
         """서버로 새로운 순찰 설정 전송 (시/분 분리 전송)"""
+        # ... (생략)
         payload = {
             "avoidance_wait_time": int(avoidance_wait),
             "patrol_start_time": start,
@@ -111,3 +112,13 @@ class InventoryDB:
             return res.status_code == 200
         except Exception:
             return False
+
+    def get_latest_command(self):
+        """서버 대시보드에서 보낸 최신 원격 명령을 가져옵니다."""
+        try:
+            res = requests.get(f"{self.base_url}/robot/command/latest", timeout=1.0)
+            if res.status_code == 200:
+                return res.json()
+        except Exception:
+            pass
+        return None

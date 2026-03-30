@@ -39,6 +39,43 @@ class PatrolInterface:
         self.executor.add_node(self.node)
         self.spin_thread = threading.Thread(target=self.executor.spin, daemon=True)
         self.spin_thread.start()
+        
+        # Remote Command Polling
+        self.last_cmd_name = None
+        self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
+        self.poll_thread.start()
+
+    def _poll_remote_commands(self):
+        """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""
+        import time
+        while rclpy.ok():
+            try:
+                data = self.db.get_latest_command()
+                if data and data.get('command'):
+                    cmd_name = data['command']
+                    # 새로운 명령일 경우에만 실행 (동일 명령 중복 방지)
+                    if cmd_name != self.last_cmd_name:
+                        self.node.get_logger().info(f"[REMOTE] New command received: {cmd_name}")
+                        self._execute_remote_command(cmd_name)
+                        self.last_cmd_name = cmd_name
+            except Exception as e:
+                self.node.get_logger().error(f"[REMOTE] Polling error: {e}")
+            time.sleep(2.0) # 2초 간격 폴링
+
+    def _execute_remote_command(self, cmd):
+        """수신된 원격 명령을 ROS 토픽으로 변환하여 발행합니다."""
+        if cmd == "START_PATROL":
+            self.trigger_manual_patrol()
+        elif cmd == "RETURN_HOME":
+            self.return_to_base()
+        elif cmd == "EMERGENCY_STOP":
+            self.trigger_emergency_stop()
+        elif cmd == "RESET_POSE":
+            self.reset_position()
+        elif cmd == "BUZZER_ON":
+            self.trigger_buzzer(True)
+        elif cmd == "BUZZER_OFF":
+            self.trigger_buzzer(False)
 
     def _status_cb(self, msg):
         try:
