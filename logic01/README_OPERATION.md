@@ -38,15 +38,10 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 colcon build --packages-select patrol_main logic2_pkg
 source install/setup.bash
 
-# 터미널 2: 멀티플렉서 및 장애물 회피 실행 (수동 이동/부저 활성화)
-# [기본] ros2 launch logic2_pkg obstacle.launch.py
-# [네임스페이스 사용 시] ros2 launch logic2_pkg obstacle.launch.py namespace:=TB3_2
-ros2 launch logic2_pkg obstacle.launch.py
-
-# 터미널 3: 순찰 전체 시스템 실행 (스케줄러/메인 노드)
-# [기본] ros2 launch patrol_main patrol.launch.py
-# [네임스페이스 사용 시] ros2 launch patrol_main patrol.launch.py namespace:=TB3_2
-ros2 launch patrol_main patrol.launch.py
+# 터미널 2: 전체 순찰 시스템 실행 (순찰 로직 + 장애물 회피 + 멀티플렉서)
+# [기본] ros2 launch patrol_main total_patrol.launch.py
+# [네임스페이스 사용 시] ros2 launch patrol_main total_patrol.launch.py namespace:=TB3_2
+ros2 launch patrol_main total_patrol.launch.py
 ```
 
 ### 2단계: 백엔드 서버 상태 확인 (Remote)
