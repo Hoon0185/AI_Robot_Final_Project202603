@@ -1,14 +1,18 @@
 import mysql.connector
 from mysql.connector import Error
 import sys
-import os
+from dotenv import load_dotenv
 
-# DB 설정
+# .env 파일 로드
+load_dotenv()
+
+# DB 설정 (환경 변수 우선, 없으면 기본값)
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "gilbot",
-    "password": "robot123",
-    "database": "gilbot"
+    "host": os.getenv("DB_HOST", "16.184.56.119"),
+    "port": int(os.getenv("DB_PORT", 3306)),
+    "user": os.getenv("DB_USER", "gilbot"),
+    "password": os.getenv("DB_PASSWORD", "robot123"),
+    "database": os.getenv("DB_NAME", "gilbot")
 }
 
 def clear_screen():
