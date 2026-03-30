@@ -69,7 +69,7 @@ class InventoryDB:
             "tag_barcode": tag_barcode,
             "detected_barcode": detected_barcode,
             "confidence": confidence,
-            "timestamp": "2026-03-30T00:00:00" # 실제 구현 시 현재 시간 사용
+            "timestamp": datetime.now().isoformat()
         }
         try:
             res = requests.post(f"{self.base_url}/v1/robot/inventory", json=payload, timeout=2.0)

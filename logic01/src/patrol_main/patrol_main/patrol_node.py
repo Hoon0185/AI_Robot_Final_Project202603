@@ -11,6 +11,7 @@ import time
 import json
 from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
+from .inventory_db import InventoryDB
 
 class PatrolNode(Node):
     def __init__(self):
@@ -31,6 +32,8 @@ class PatrolNode(Node):
         self.current_shelf_idx = 0
         self.is_patrolling = False
         self.last_detection = None
+        self.db = InventoryDB()
+        self._goal_handle = None
 
         # 4. 순찰 및 제어 명령 구독
         self.cmd_sub = self.create_subscription(String, 'patrol_cmd', self.cmd_callback, 10)
@@ -76,14 +79,33 @@ class PatrolNode(Node):
             self.get_logger().info('Returning to Base...')
             self.is_patrolling = False
             self.cancel_nav()
-            # 원점(0,0)으로 이동하는 로직 추가 가능
+            self.go_to_origin()
         elif cmd == 'RESET_POSE':
             self.get_logger().info('Resetting Robot Pose...')
-            # 실제 추정치 초기화 서비스 호출 가능
+            # RESET_POSE는 추후 /initialpose 발행 등으로 확장 가능
 
     def cancel_nav(self):
-        # 현재 진행 중인 액션 취소 로직
-        pass
+        """현재 진행 중인 Nav2 액션 목표를 취소합니다."""
+        if self._goal_handle is not None:
+            self.get_logger().info('Cancelling current navigation goal...')
+            self._goal_handle.cancel_goal_async()
+            self._goal_handle = None
+        else:
+            self.get_logger().info('No active navigation goal to cancel.')
+
+    def go_to_origin(self):
+        """로봇을 맵의 원점(0,0,0)으로 이동시킵니다."""
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.header.frame_id = self.map_frame
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.pose.position.x = 0.0
+        goal_msg.pose.pose.position.y = 0.0
+        goal_msg.pose.pose.orientation.w = 1.0
+        
+        self._action_client.wait_for_server()
+        self._action_client.send_goal_async(goal_msg)
+        self.get_logger().info('Navigating back to HOME (0,0)...')
+
 
     def send_next_goal(self):
         if self.current_shelf_idx >= len(self.shelf_list):
@@ -114,15 +136,17 @@ class PatrolNode(Node):
         self._send_goal_future.add_done_callback(self.goal_response_callback)
 
     def goal_response_callback(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
+        self._goal_handle = future.result()
+        if not self._goal_handle.accepted:
             self.get_logger().error('Goal rejected')
             self.is_patrolling = False
             return
-        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future = self._goal_handle.get_result_async()
         self._get_result_future.add_done_callback(self.get_result_callback)
 
     def get_result_callback(self, future):
+        # 액션 종료 시 핸들 초기화
+        self._goal_handle = None
         status = future.result().status
         if status == GoalStatus.STATUS_SUCCEEDED:
             shelf_name = self.shelf_list[self.current_shelf_idx]
@@ -138,6 +162,13 @@ class PatrolNode(Node):
                 "detected_barcode": detected,
                 "confidence": 0.98
             }
+            
+            # DB 서버로 인식 결과 전송
+            success, msg = self.db.report_detection(tag_barcode, detected, 0.98)
+            if success:
+                self.get_logger().info(f'Successfully reported to DB: {tag_barcode}')
+            else:
+                self.get_logger().warn(f'Failed to report to DB: {msg}')
             
             self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}, Detected: {detected}')
             self._delay_timer = self.create_timer(2.0, self.proceed_to_next_shelf)

@@ -1,8 +1,37 @@
+import sys
+import os
+
+# ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+patrol_main_path = os.path.join(current_dir, 'logic01', 'src', 'patrol_main')
+if patrol_main_path not in sys.path:
+    sys.path.append(patrol_main_path)
+
+try:
+    from patrol_main.patrol_interface import PatrolInterface
+except ImportError:
+    # 패키지 구조에 따라 직접 참조가 필요한 경우 하드코딩된 경로 추가
+    sys.path.append(os.path.join(patrol_main_path, 'patrol_main'))
+    from patrol_interface import PatrolInterface
+
 class RobotLogicHandler:
     def __init__(self, ui_instance):
         self.ui = ui_instance
+        # ROS 2 인터페이스 초기화
+        try:
+            self.ros_interface = PatrolInterface()
+        except Exception as e:
+            print(f"[ERROR] ROS 2 Interface failed to start: {e}")
+            self.ros_interface = None
+            
         self._setup_connections()
         self._load_initial_data()
+        
+        # UI 업데이트용 타이머 (ROS 상태 반영)
+        from PyQt6.QtCore import QTimer
+        self.status_timer = QTimer()
+        self.status_timer.timeout.connect(self.sync_ros_status)
+        self.status_timer.start(1000) # 1초마다 동기화
 
     def _setup_connections(self):
         """
@@ -26,42 +55,69 @@ class RobotLogicHandler:
 
     def _load_initial_data(self):
         """앱 시작 시 초기 데이터를 DB에서 가져와 UI에 세팅"""
-        # 예: 마지막 순찰 시간을 DB에서 조회해서 UI에 표시
-        dummy_time = "2026:03:27:14:30:05"
-        self.ui.set_last_patrol_time(dummy_time)
+        self.update_inventory_db()
+        self.update_alarm_list()
+
+    def sync_ros_status(self):
+        """ROS에서 넘어온 최신 상태를 UI에 반영합니다."""
+        if not self.ros_interface: return
+        
+        status = self.ros_interface.get_recent_patrol_time()
+        if status:
+            # 마지막 순찰 시간 및 상태 표시
+            time_info = status.get('start_time', 'No Data')
+            if status.get('status') == 'patrolling':
+                shelf = status.get('current_shelf', 'Moving...')
+                progress = status.get('progress', '')
+                display_text = f"{time_info} (순찰 중: {shelf} {progress})"
+            else:
+                display_text = f"{time_info} ({status.get('status', 'IDLE')})"
+            
+            self.ui.set_last_patrol_time(display_text)
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 
     def on_patrol_set(self, val):
-        print(f"[LOGIC] 서버로 순찰 시간 {val}분 설정 패킷 송신")
+        print(f"[LOGIC] 순찰 간격 {val}분 설정")
+        if self.ros_interface:
+            self.ros_interface.set_patrol_interval(val)
 
     def on_obstacle_set(self, val):
-        print(f"[LOGIC] 장애물 인식 대기 시간 {val}초로 변경")
+        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (미구현 파라미터)")
 
     def on_move_command(self, direction):
-        print(f"[LOGIC] 로봇 구동 명령: {direction}")
-        # 여기에 socket 통신이나 ROS2 topic 발행 코드 작성
+        print(f"[LOGIC] 수동 이동: {direction}")
+        if self.ros_interface:
+            self.ros_interface.move_robot(direction)
 
     def on_buzzer(self):
-        print("[LOGIC] 부저 ON 명령 발생")
+        print("[LOGIC] 부저 작동")
+        if self.ros_interface:
+            self.ros_interface.trigger_buzzer(True)
 
     def on_return_patrol(self):
-        print("[LOGIC] 순찰 복귀 시퀀스 시작")
+        print("[LOGIC] 복귀 명령 송출")
+        if self.ros_interface:
+            self.ros_interface.return_to_base()
 
     def on_emergency(self):
-        print("[LOGIC] !!! 하드웨어 비상 정지 신호 송신 !!!")
+        print("[LOGIC] 비상 정지!")
+        if self.ros_interface:
+            self.ros_interface.trigger_emergency_stop()
 
     def on_reset_confirmed(self):
-        print("[LOGIC] 로봇 원점 복귀 명령")
+        print("[LOGIC] 원점 리셋")
+        if self.ros_interface:
+            self.ros_interface.reset_position()
 
     def update_inventory_db(self):
         """DB에서 재고 데이터를 가져와 테이블에 뿌려줌"""
-        print("[LOGIC] 재고 DB 조회 중...")
-        # 실제 구현 시: data = db.query("SELECT * FROM inventory")
-        # 현재는 UI에서 제공하는 set_db_data(None) 호출 시 더미데이터가 나옵니다.
-        self.ui.set_db_data(None)
+        if self.ros_interface:
+            data = self.ros_interface.get_inventory_data()
+            self.ui.set_db_data(data)
 
     def update_alarm_list(self):
         """재고 부족 물품 리스트 업데이트"""
-        print("[LOGIC] 재고 알림 리스트 갱신 중...")
-        self.ui.set_alarm_data(None)
+        if self.ros_interface:
+            data = self.ros_interface.get_alarm_data()
+            self.ui.set_alarm_data(data)
