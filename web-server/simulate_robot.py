@@ -8,7 +8,11 @@ from datetime import datetime
 from typing import List, Optional
 
 # --- Configuration ---
-BASE_URL = "http://localhost:8000"
+# 기본 서버 주소 (웹 연동을 위해 Lightsail IP 사용)
+# 로컬에서 테스트할 경우 python simulate_robot.py http://localhost:8000 등의 형태로 실행 가능
+DEFAULT_SERVER = "http://16.184.56.119/api"
+BASE_URL = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SERVER
+
 DETECT_URL = f"{BASE_URL}/detections/add"
 CONFIG_URL = f"{BASE_URL}/patrol/config"
 PLAN_URL = f"{BASE_URL}/patrol/plan"
