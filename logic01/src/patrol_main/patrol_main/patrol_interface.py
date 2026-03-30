@@ -49,7 +49,7 @@ class PatrolInterface:
 
     def _set_param(self, name, value, param_type):
         """Internal helper to set parameters on the patrol_scheduler node."""
-        if not self.param_client.wait_for_server(timeout_sec=2.0):
+        if not self.param_client.wait_for_service(timeout_sec=2.0):
             return False, "Parameter service /patrol_scheduler/set_parameters not available"
         
         req = SetParameters.Request()
@@ -142,7 +142,7 @@ class PatrolInterface:
 
     def trigger_manual_patrol(self):
         """수동 순찰을 즉시 실행합니다."""
-        if not self.trigger_client.wait_for_server(timeout_sec=2.0):
+        if not self.trigger_client.wait_for_service(timeout_sec=2.0):
             return False, "Service /trigger_manual_patrol not available"
         self.trigger_client.call_async(Trigger.Request())
         return True, "Manual patrol trigger sent"

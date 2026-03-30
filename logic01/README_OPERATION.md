@@ -31,14 +31,14 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 ```
 
 ### 1단계: ROS 2 환경 설정 및 노드 실행
-먼저 ROS 2 워크스페이스를 빌드하고 순찰 메인 노드를 실행합니다.
+먼저 ROS 2 워크스페이스를 빌드하고 순찰 시스템(스케줄러, 메인 노드 등)을 실행합니다.
 ```bash
 # 워크스페이스 루트에서 실행
 colcon build --packages-select patrol_main
 source install/setup.bash
 
-# 순찰 메인 노드 실행
-ros2 run patrol_main patrol_node
+# 순찰 전체 시스템 실행 (스케줄러 포함)
+ros2 launch patrol_main patrol.launch.py
 ```
 
 ### 2단계: 관리용 UI 실행 (PyQt6)
