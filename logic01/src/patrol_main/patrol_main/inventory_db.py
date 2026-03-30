@@ -124,22 +124,45 @@ class InventoryDB:
         return None
 
     def get_waypoints(self):
-        """서버에서 모든 웨이포인트 목록을 가져옵니다."""
+        """서버에서 모든 웨이포인트 목록을 가져옵니다. (단순 목록)"""
+        # ... (이전과 동일)
         try:
             res = requests.get(f"{self.base_url}/waypoints", timeout=2.0)
             if res.status_code == 200:
-                data = res.json()
-                # 로봇 노드에서 사용하는 'shelves' 형식으로 변환
-                waypoints = {}
-                for wp in data:
-                    name = wp.get('waypoint_name', 'unknown')
-                    waypoints[name] = {
-                        'x': float(wp.get('loc_x', 0.0)),
-                        'y': float(wp.get('loc_y', 0.0)),
-                        'yaw': float(wp.get('loc_yaw', 0.0)),
-                        'tag_barcode': name  # 사용자의 요청대로 waypoint_name을 tag_barcode로 사용
+                return res.json()
+        except Exception:
+            pass
+        return None
+
+    def get_active_patrol_plan(self):
+        """서버의 '순찰 계획 및 시퀀스'에 따른 정렬된 좌표 리스트를 가져옵니다."""
+        try:
+            # 1. 모든 웨이포인트의 좌표 정보 가져오기
+            w_res = requests.get(f"{self.base_url}/waypoints", timeout=2.0)
+            if w_res.status_code != 200: return None
+            waypoints_db = {wp['waypoint_id']: wp for wp in w_res.json()}
+
+            # 2. 순찰 계획(Sequence) 가져오기
+            p_res = requests.get(f"{self.base_url}/patrol/plan", timeout=2.0)
+            if p_res.status_code != 200: return None
+            plan_data = p_res.json()
+
+            # 3. 계획된 순서대로 좌표 매칭
+            active_plan = {}
+            for item in plan_data:
+                wp_id = item['waypoint_id']
+                if wp_id in waypoints_db:
+                    wp_info = waypoints_db[wp_id]
+                    # 'shelf_1' 같은 이름 대신 'TAG-A1-001' 같은 바코드 태그를 키로 사용하거나,
+                    # 순찰 시퀀스 내의 유니크한 이름을 키로 사용
+                    name = item.get('waypoint_name') or f"plan_{item['plan_id']}"
+                    active_plan[name] = {
+                        'x': float(wp_info.get('loc_x', 0.0)),
+                        'y': float(wp_info.get('loc_y', 0.0)),
+                        'yaw': float(wp_info.get('loc_yaw', 0.0)),
+                        'tag_barcode': item.get('barcode_tag') or name
                     }
-                return waypoints
+            return active_plan
         except Exception as e:
-            print(f"[DB] Failed to fetch waypoints: {e}")
+            print(f"[DB] Error fetching patrol plan: {e}")
         return None

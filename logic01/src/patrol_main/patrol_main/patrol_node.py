@@ -48,16 +48,17 @@ class PatrolNode(Node):
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
     def load_shelves(self):
-        """순찰 포인트 로드 (1순위: 원격 DB, 2순위: 로컬 YAML)"""
+        """순찰 포인트 및 시퀀스 로드 (1순위: 원격 DB Plan, 2순위: 로컬 YAML)"""
         try:
-            db_points = self.db.get_waypoints()
-            if db_points and len(db_points) > 0:
-                self.shelves = db_points
+            # 단순 위치 목록이 아닌, 웹의 '순찰 제품 및 시퀀스 관리'에서 설정한 정렬된 플랜을 가져옵니다.
+            db_plan = self.db.get_active_patrol_plan()
+            if db_plan and len(db_plan) > 0:
+                self.shelves = db_plan
                 self.shelf_list = list(self.shelves.keys())
-                self.get_logger().info(f"Successfully loaded {len(self.shelves)} waypoints from Remote DB.")
+                self.get_logger().info(f"Successfully loaded {len(self.shelves)} planned waypoints in sequence from Remote DB.")
                 return
         except Exception as e:
-            self.get_logger().warn(f"Failed to fetch from DB: {e}. Falling back to YAML.")
+            self.get_logger().warn(f"Failed to fetch patrol plan from DB: {e}. Falling back to YAML.")
 
         # 로컬 YAML 폴백
         pkg_dir = get_package_share_directory('patrol_main')
