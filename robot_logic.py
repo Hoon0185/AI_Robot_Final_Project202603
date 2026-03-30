@@ -54,21 +54,27 @@ class RobotLogicHandler:
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
 
     def _load_initial_data(self):
-        """앱 시작 시 초기 데이터를 DB에서 가져와 UI에 세팅"""
+        """앱 시작 시 초기 데이터를 DB에서 가져와 UI 및 ROS에 세팅"""
         self.update_inventory_db()
         self.update_alarm_list()
         
-        # 서버에서 초기 설정값 가져오기
+        # 서버에서 초기 설정값 가져와서 ROS 및 UI 동기화
         if self.ros_interface:
             config = self.ros_interface.get_db_config()
             if config:
-                print(f"[LOGIC] 서버에서 설정값 로드: {config}")
-                # UI에 설정값 반영 (UI 구성에 따라 다름)
+                print(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
                 try:
+                    # 1. 순찰 간격 (UI 값 설정 및 ROS 파라미터 적용)
                     interval = config.get('interval_hour', 0) * 60 + config.get('interval_minute', 0)
-                    self.ui.set_patrol_interval_ui(interval) 
-                except Exception:
-                    pass
+                    if interval > 0:
+                        self.ui.patrol_row['slider'].setValue(interval)
+                        self.ros_interface.set_patrol_interval(interval)
+                    
+                    # 2. 장애물 대기 시간 (UI 값 설정)
+                    avoidance_wait = config.get('avoidance_wait_time', 10)
+                    self.ui.obstacle_row['slider'].setValue(avoidance_wait)
+                except Exception as e:
+                    print(f"[ERROR] 초기 설정 반영 중 오류: {e}")
 
     def sync_ros_status(self):
         """ROS에서 넘어온 최신 상태 또는 DB 로그를 UI에 반영합니다."""
