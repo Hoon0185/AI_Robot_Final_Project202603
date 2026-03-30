@@ -209,10 +209,14 @@ __marimo__/
 # ROS 2 stuff
 install/
 log/
+build/
 .colcon/
 *.swp
 *.swo
 *~
 .vscode/
+
+# Project Specific
 logic01/notion_records/
 logic01/*.rviz
+DOCS_logic2/
