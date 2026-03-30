@@ -731,8 +731,15 @@ select:focus {
   padding: 24px;
   margin-bottom: 40px;
   box-shadow: var(--shadow-medium);
-  border-left: 8px solid var(--accent-red);
   animation: slideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notification-banner.anomaly {
+  border-left: 8px solid var(--accent-red);
+}
+
+.notification-banner.info {
+  border-left: 8px solid var(--accent-blue);
 }
 
 @keyframes slideIn {
@@ -747,10 +754,22 @@ select:focus {
   }
 }
 
+.notif-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-banner.anomaly .notif-body strong {
+  color: var(--accent-red);
+}
+
+.notification-banner.info .notif-body strong {
+  color: var(--accent-blue);
+}
+
 .notif-body strong {
   font-family: var(--font-heading);
   font-size: 18px;
-  color: #b91c1c;
 }
 
 .notif-body span {

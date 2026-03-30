@@ -15,6 +15,14 @@ function App() {
   const [newPlan, setNewPlan] = useState({ waypoint_id: '', barcode_tag: '', row_num: 1, product_id: '' });
   const [lastAlertCount, setLastAlertCount] = useState(0);
   const [showNotification, setShowNotification] = useState(false);
+  const [notificationMsg, setNotificationMsg] = useState({ title: '', body: '', type: 'info' });
+
+  // 알림 상태 자동 관리: 미해결 알림이 0개가 되면 알림 팝업 자동 닫기
+  useEffect(() => {
+    if (alerts.length === 0 && notificationMsg.type === 'anomaly') {
+      setShowNotification(false);
+    }
+  }, [alerts, notificationMsg.type]);
 
   // 알림 사운드 재생 함수 (내장 오디오 객체 사용)
   const playAlertSound = () => {
@@ -84,6 +92,11 @@ function App() {
           // 새로운 알림이 발생했는지 체크
           if (alertData.length > lastAlertCount && lastAlertCount !== 0) {
             playAlertSound();
+            setNotificationMsg({
+              title: '새로운 이상 탐지!',
+              body: '매대 점검이 필요한 항목이 발견되었습니다.',
+              type: 'anomaly'
+            });
             setShowNotification(true);
           }
           setAlerts(alertData);
@@ -307,6 +320,11 @@ function App() {
       setLoading(true);
       const res = await fetch('/api/patrol/start', { method: 'POST' });
       if (res.ok) {
+        setNotificationMsg({
+          title: '순찰 시작',
+          body: '로봇이 순찰을 위해 기지를 출발했습니다.',
+          type: 'info'
+        });
         setShowNotification(true);
         setTimeout(() => setShowNotification(false), 3000);
         alert("✅ 순찰 명령이 로봇에게 전달되었습니다.");
@@ -443,11 +461,11 @@ function App() {
 
             {/* 실시간 알림 배너 */}
             {showNotification && (
-              <div className="notification-banner anomaly">
-                <div className="notif-icon">🚨</div>
+              <div className={`notification-banner ${notificationMsg.type}`}>
+                <div className="notif-icon">{notificationMsg.type === 'anomaly' ? '🚨' : 'ℹ️'}</div>
                 <div className="notif-body">
-                  <strong>새로운 이상 탐지!</strong>
-                  <span>매대 점검이 필요한 항목이 발견되었습니다.</span>
+                  <strong>{notificationMsg.title}</strong>
+                  <span>{notificationMsg.body}</span>
                 </div>
                 <button onClick={() => setShowNotification(false)}>×</button>
               </div>
