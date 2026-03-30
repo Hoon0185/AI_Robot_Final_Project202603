@@ -430,6 +430,10 @@ td {
   color: var(--text-primary);
 }
 
+table.slim td, table.slim th {
+  padding: 10px 8px; /* Reduced padding for slim tables */
+}
+
 /* System Table Alignment Fix */
 .fixed-table {
   table-layout: fixed;
@@ -565,7 +569,7 @@ tr:last-child td {
 
 .unified-manager {
   display: grid;
-  grid-template-columns: 600px 1px 1fr;
+  grid-template-columns: 520px 1px 1fr;
   min-height: 540px;
   background: var(--panel-bg);
   border-radius: var(--radius-lg);
@@ -575,7 +579,7 @@ tr:last-child td {
 }
 
 .unified-sidebar {
-  padding: 24px;
+  padding: 16px;
   overflow-y: auto;
   background: #F9F9FB;
   /* Very light grey */
