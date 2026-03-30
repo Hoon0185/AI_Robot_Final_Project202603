@@ -72,15 +72,23 @@ sudo systemctl status gilbot-backend.service
 
 ## 4. 트러블 슈팅 (Troubleshooting)
 
-배포 중 발생할 수 있는 주요 문제와 해결 방법입니다. (진행 후 실재 사례를 바탕으로 업데이트 예정)
+배포 중 발생한 실제 사례와 해결 방법입니다.
 
-1.  **Apache 404/503 Error**:
-    - `ProxyPass` 설정 확인: `/etc/apache2/sites-enabled/gilbot.conf`에서 백엔드 주소(`127.0.0.1:8000`)가 맞는지 확인.
-    - 백엔드 서비스 생존 여부: `sudo systemctl status gilbot-backend.service`로 확인.
-2.  **npm build 실패**:
-    - 메모리 부족: Lightsail 사양이 1GB 이하일 경우 빌드 중 멈출 수 있습니다. 이 경우 로컬 빌드 후 `dist` 폴더만 전송하는 방식을 고려해야 합니다.
-3.  **DB 연결 오류**:
-    - `.env` 파일의 비밀번호 및 DB 이름이 서버의 MySQL 설정과 일치하는지 확인.
+1.  **npm: command not found**:
+    - **원인**: Lightsail에 Node.js가 NVM(Node Version Manager)을 통해 설치된 경우, 비대화형(non-interactive) SSH 쉘에서 `npm` 경로를 찾지 못할 수 있습니다.
+    - **해결**: 실행 시 NVM 환경 변수를 로드하거나, 다음과 같이 한 줄로 실행하십시오.
+      ```bash
+      ssh ls 'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; nvm use default; cd /path/to/web-ui && npm run build'
+      ```
+2.  **Locale Warnings (manpath: can't set the locale)**:
+    - **원인**: 로컬 터미널의 언어 설정이 원격 서버에 전달되었으나 서버에 해당 언어 팩이 없을 때 발생합니다.
+    - **해결**: 무시해도 무방하나, 거슬린다면 서버에서 `sudo locale-gen ko_KR.UTF-8` 등을 실행하거나 SSH 접속 시 locale 전달을 끄면 됩니다.
+3.  **Apache 404/503 Error**:
+    - **원인**: 백엔드가 죽어있거나 ProxyPass 설정이 잘못된 경우.
+    - **해결**: `sudo systemctl status gilbot-backend.service`로 상태 확인 및 서비스 재시작.
+4.  **권한 문제 (Permission Denied)**:
+    - **원인**: `www-data` 사용자가 `/home/ubuntu/.../dist` 폴더에 접근 권한이 없을 때.
+    - **해결**: `chmod 755 /home/ubuntu` 및 하위 폴더 권한 확인. (Apache 문서 루트 접근 필요)
 
 ---
 
