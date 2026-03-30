@@ -114,14 +114,44 @@ class InventoryDB:
             return False
 
     def get_latest_command(self):
-        """서버 대시보드에서 보낸 최신 원격 명령을 가져옵니다."""
+        """서버 대시보드에서 보낸 최신 원격 명령을 가져옵니다. (id 포함)"""
         try:
             res = requests.get(f"{self.base_url}/robot/command/latest", timeout=1.0)
             if res.status_code == 200:
-                return res.json()
+                data = res.json()
+                # command_type 또는 command 필드 추출
+                cmd_type = data.get('command_type') or data.get('command')
+                if cmd_type and cmd_type != "IDLE":
+                    return data
         except Exception:
             pass
         return None
+
+    def complete_command(self, command_id):
+        """명령 수행이 완료되었음을 서버에 알립니다."""
+        try:
+            res = requests.post(f"{self.base_url}/robot/command/{command_id}/complete", timeout=2.0)
+            return res.status_code == 200
+        except Exception:
+            return False
+
+    def start_patrol_session(self):
+        """서버에 순찰 시작 세션을 생성하고 patrol_id를 반환합니다."""
+        try:
+            res = requests.post(f"{self.base_url}/patrol/start", timeout=2.0)
+            if res.status_code == 200:
+                return res.json().get('patrol_id')
+        except Exception:
+            pass
+        return None
+
+    def finish_patrol_session(self):
+        """진행 중인 순찰 세션을 완료 상태로 변경합니다."""
+        try:
+            res = requests.post(f"{self.base_url}/patrol/finish", timeout=2.0)
+            return res.status_code == 200
+        except Exception:
+            return False
 
     def get_waypoints(self):
         """서버에서 모든 웨이포인트 목록을 가져옵니다. (단순 목록)"""

@@ -1,4 +1,5 @@
 import os
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node, PushRosNamespace
 from launch.actions import GroupAction, DeclareLaunchArgument
@@ -28,12 +29,12 @@ def generate_launch_description():
         package='twist_mux',
         executable='twist_mux',
         name='twist_mux',
-        parameters=[{
-          'use_sim_time': True,
-          'twist_mux_config': os.path.join(
-            'config',
-            'twist_mux.yaml'
-          )
+        parameters=[os.path.join(
+          get_package_share_directory('logic2_pkg'),
+          'config',
+          'twist_mux.yaml'
+        ), {
+          'use_sim_time': True
         }],
         remappings=[('cmd_vel_out', 'cmd_vel')],
         output='screen'

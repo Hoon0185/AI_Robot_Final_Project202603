@@ -85,6 +85,9 @@ class PatrolNode(Node):
         cmd = msg.data
         if cmd == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence...')
+            # 서버에 순찰 시작 세션 등록
+            self.db.start_patrol_session()
+            
             self.is_patrolling = True
             self.start_time = datetime.now()
             self.current_shelf_idx = 0
@@ -125,6 +128,9 @@ class PatrolNode(Node):
     def send_next_goal(self):
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().info('Patrol Completed!')
+            # 서버에 순찰 종료 세션 등록
+            self.db.finish_patrol_session()
+            
             self.is_patrolling = False
             self.end_time = datetime.now()
             self.publish_status('completed')
@@ -132,14 +138,16 @@ class PatrolNode(Node):
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
-
-        self.get_logger().info(f'Navigating to {shelf_name} (Tag: {coords.get("tag_barcode", "N/A")})...')
+        
+        tx, ty, tyaw = float(coords['x']), float(coords['y']), float(coords['yaw'])
+        self.get_logger().info(f'--- Sending Goal: {shelf_name} ---')
+        self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
 
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.pose.pose.position.x = float(coords['x'])
-        goal_msg.pose.pose.position.y = float(coords['y'])
+        goal_msg.pose.pose.position.x = tx
+        goal_msg.pose.pose.position.y = ty
 
         import math
         yaw = float(coords['yaw'])
@@ -158,6 +166,7 @@ class PatrolNode(Node):
             return
         self._get_result_future = self._goal_handle.get_result_async()
         self._get_result_future.add_done_callback(self.get_result_callback)
+        self.get_logger().info('Goal accepted by Nav2 server.')
 
     def get_result_callback(self, future):
         # 액션 종료 시 핸들 초기화

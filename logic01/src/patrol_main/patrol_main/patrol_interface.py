@@ -41,6 +41,7 @@ class PatrolInterface:
         self.spin_thread.start()
         
         # Remote Command Polling
+        self.last_cmd_id = None
         self.last_cmd_name = None
         self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
         self.poll_thread.start()
@@ -51,16 +52,20 @@ class PatrolInterface:
         while rclpy.ok():
             try:
                 data = self.db.get_latest_command()
-                if data and data.get('command'):
-                    cmd_name = data['command']
-                    # 새로운 명령일 경우에만 실행 (동일 명령 중복 방지)
-                    if cmd_name != self.last_cmd_name:
-                        self.node.get_logger().info(f"[REMOTE] New command received: {cmd_name}")
+                if data:
+                    cmd_name = data.get('command_type') or data.get('command')
+                    cmd_id = data.get('command_id')
+                    
+                    # 새로운 ID의 명령일 경우에만 실행
+                    if cmd_id and cmd_id != self.last_cmd_id:
+                        self.node.get_logger().info(f"[REMOTE] New command (ID:{cmd_id}): {cmd_name}")
                         self._execute_remote_command(cmd_name)
-                        self.last_cmd_name = cmd_name
+                        self.last_cmd_id = cmd_id
+                        # 명령 실행 후 서버에 즉각 완료 보고
+                        self.db.complete_command(cmd_id)
             except Exception as e:
                 self.node.get_logger().error(f"[REMOTE] Polling error: {e}")
-            time.sleep(2.0) # 2초 간격 폴링
+            time.sleep(2.0)
 
     def _execute_remote_command(self, cmd):
         """수신된 원격 명령을 ROS 토픽으로 변환하여 발행합니다."""
@@ -106,24 +111,29 @@ class PatrolInterface:
     
     def move_robot(self, direction: str):
         """수동 이동 명령을 /cmd_vel_teleop 토픽으로 발행합니다."""
-        twist = Twist()
-        speed = 0.2
-        turn = 0.5
-        
-        if direction == "UP":
-            twist.linear.x = speed
-        elif direction == "DOWN":
-            twist.linear.x = -speed
-        elif direction == "LEFT":
-            twist.angular.z = turn
-        elif direction == "RIGHT":
-            twist.angular.z = -turn
-        elif direction == "STOP":
-            twist.linear.x = 0.0
-            twist.angular.z = 0.0
+        try:
+            twist = Twist()
+            speed = 0.2
+            turn = 0.5
             
-        self.teleop_pub.publish(twist)
-        return True, f"Move command {direction} sent"
+            if direction == "UP":
+                twist.linear.x = float(speed)
+            elif direction == "DOWN":
+                twist.linear.x = float(-speed)
+            elif direction == "LEFT":
+                twist.angular.z = float(turn)
+            elif direction == "RIGHT":
+                twist.angular.z = float(-turn)
+            elif direction == "STOP":
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+            
+            p_res = self.teleop_pub.publish(twist)
+            print(f"[ROS] Topic /cmd_vel_teleop published: {direction}")
+            return True, f"Move command {direction} sent"
+        except Exception as e:
+            print(f"[ROS ERROR] Failed to move robot: {e}")
+            return False, str(e)
 
     def trigger_buzzer(self, state: bool = True):
         """부저를 켜거나 끕니다."""
@@ -178,11 +188,12 @@ class PatrolInterface:
         return self._set_param('scheduled_times', times, ParameterType.PARAMETER_STRING_ARRAY)
 
     def trigger_manual_patrol(self):
-        """수동 순찰을 즉시 실행합니다."""
-        if not self.trigger_client.wait_for_service(timeout_sec=2.0):
-            return False, "Service /trigger_manual_patrol not available"
-        self.trigger_client.call_async(Trigger.Request())
-        return True, "Manual patrol trigger sent"
+        """수동 순찰을 즉시 실행합니다. (토픽 방식)"""
+        msg = String()
+        msg.data = "START_PATROL"
+        self.cmd_pub.publish(msg)
+        self.node.get_logger().info("[UI] Manual patrol trigger published to /patrol_cmd")
+        return True, "Manual patrol trigger sent via topic"
 
     def get_recent_patrol_time(self):
         """최근 순찰 상태 및 시간 정보를 가져옵니다. (ROS 토픽 우선, 없으면 DB 로그)"""
