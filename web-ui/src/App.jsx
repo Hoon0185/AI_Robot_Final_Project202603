@@ -561,9 +561,11 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {detections.map(d => (
-                      <tr key={d.log_id}>
-                        <td style={{ color: '#8E8E93', textAlign: 'center' }}>{new Date(d.log_id * 1000).toLocaleTimeString()}</td>
+                      {detections.map(d => (
+                        <tr key={d.log_id}>
+                          <td style={{ color: '#8E8E93', textAlign: 'center' }}>
+                            {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </td>
                         <td style={{ textAlign: 'center' }}><code>{d.tag_barcode}</code></td>
                         <td style={{ fontWeight: '500' }}>{d.product_name || d.detected_barcode}</td>
                         <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`}>{d.result}</span></td>
