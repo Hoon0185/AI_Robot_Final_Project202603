@@ -665,7 +665,7 @@ function App() {
                         <tr>
                           <th style={{ textAlign: 'center' }}>상품명</th>
                           <th style={{ textAlign: 'center' }}>바코드</th>
-                          <th style={{ textAlign: 'center' }}>위치(웨이포인트)</th>
+                          <th style={{ textAlign: 'center' }}>위치(W.P.)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -724,9 +724,9 @@ function App() {
                       )}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '24px' }}>
                       <div className="form-group">
-                        <label>웨이포인트 (Waypoint)</label>
+                        <label>W.P.</label>
                         <input
                           type="text"
                           list="waypoint-list"
@@ -742,7 +742,7 @@ function App() {
                       </div>
 
                       <div className="form-group">
-                        <label>진열 단 (Shelf Level)</label>
+                        <label>진열 단</label>
                         <input
                           type="number" min="1"
                           value={unifiedForm.row_num}

@@ -565,7 +565,7 @@ tr:last-child td {
 
 .unified-manager {
   display: grid;
-  grid-template-columns: 440px 1px 1fr;
+  grid-template-columns: 520px 1px 1fr;
   min-height: 540px;
   background: var(--panel-bg);
   border-radius: var(--radius-lg);
