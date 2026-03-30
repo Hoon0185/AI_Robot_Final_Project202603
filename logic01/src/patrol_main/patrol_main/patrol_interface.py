@@ -1,11 +1,13 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
+from geometry_msgs.msg import Twist
 from std_srvs.srv import Trigger
 from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import json
 import threading
+from .inventory_db import InventoryDB
 
 class PatrolInterface:
     def __init__(self, node_name='ui_patrol_interface'):
@@ -13,9 +15,19 @@ class PatrolInterface:
             rclpy.init()
         self.node = Node(node_name)
         
+        # Database & Server Sync
+        self.db = InventoryDB(base_url="http://localhost:8000")
+        
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
         self.param_client = self.node.create_client(SetParameters, '/patrol_scheduler/set_parameters')
+        
+        # Publishers (Manual Control)
+        # LOGIC_02의 twist_mux 우선순위에 따라 /cmd_vel_teleop 사용
+        self.teleop_pub = self.node.create_publisher(Twist, '/cmd_vel_teleop', 10)
+        self.buzzer_pub = self.node.create_publisher(Bool, '/robot_buzzer', 10)
+        self.emergency_pub = self.node.create_publisher(Bool, '/emergency_stop', 10)
+        self.cmd_pub = self.node.create_publisher(String, '/patrol_cmd', 10)
         
         # Status Subscriber
         self.latest_status = None
@@ -53,8 +65,65 @@ class PatrolInterface:
         self.param_client.call_async(req)
         return True, f"Request to set {name} sent"
 
-    # Public API Methods
+    # --- Public API Methods (UI/Logic 연동용) ---
     
+    def move_robot(self, direction: str):
+        """수동 이동 명령을 /cmd_vel_teleop 토픽으로 발행합니다."""
+        twist = Twist()
+        speed = 0.2
+        turn = 0.5
+        
+        if direction == "UP":
+            twist.linear.x = speed
+        elif direction == "DOWN":
+            twist.linear.x = -speed
+        elif direction == "LEFT":
+            twist.angular.z = turn
+        elif direction == "RIGHT":
+            twist.angular.z = -turn
+        elif direction == "STOP":
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            
+        self.teleop_pub.publish(twist)
+        return True, f"Move command {direction} sent"
+
+    def trigger_buzzer(self, state: bool = True):
+        """부저를 켜거나 끕니다."""
+        msg = Bool()
+        msg.data = state
+        self.buzzer_pub.publish(msg)
+        return True, f"Buzzer {'ON' if state else 'OFF'} sent"
+
+    def trigger_emergency_stop(self):
+        """비상 정지 신호를 발행합니다."""
+        msg = Bool()
+        msg.data = True
+        self.emergency_pub.publish(msg)
+        return True, "Emergency stop signal sent"
+
+    def return_to_base(self):
+        """순찰을 중단하고 원점으로 복귀 명령을 내립니다."""
+        msg = String()
+        msg.data = "RETURN_HOME"
+        self.cmd_pub.publish(msg)
+        return True, "Return to base command sent"
+
+    def reset_position(self):
+        """로봇의 위치 추정치를 초기화하거나 처음 위치로 리셋합니다."""
+        msg = String()
+        msg.data = "RESET_POSE"
+        self.cmd_pub.publish(msg)
+        return True, "Reset position command sent"
+
+    def get_inventory_data(self):
+        """DB에서 재고 리스트를 가져옵니다. (6개 컬럼 형식)"""
+        return self.db.get_inventory()
+
+    def get_alarm_data(self):
+        """DB에서 재고 부족 알림 리스트를 가져옵니다. (4개 컬럼 형식)"""
+        return self.db.get_alarms()
+
     def set_patrol_interval(self, minutes: float):
         """순찰 간격(분)을 설정합니다."""
         return self._set_param('patrol_interval_min', float(minutes), ParameterType.PARAMETER_DOUBLE)
@@ -86,4 +155,3 @@ class PatrolInterface:
         """ROS 노드와 백그라운드 스레드를 안전하게 종료합니다."""
         self.executor.shutdown()
         self.node.destroy_node()
-        # Note: rclpy.shutdown() depends on whether the user wants to close the whole system

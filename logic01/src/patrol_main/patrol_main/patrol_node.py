@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 from action_msgs.msg import GoalStatus
 import yaml
 import os
@@ -20,7 +20,6 @@ class PatrolNode(Node):
         self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
         # 2. 파라미터 및 프레임 설정
-        # 네임스페이스가 있으면 'NS/map', 없으면 'map'을 기본으로 사용
         ns = self.get_namespace().strip('/')
         default_frame = f'{ns}/map' if ns else 'map'
         self.declare_parameter('map_frame', default_frame)
@@ -31,39 +30,60 @@ class PatrolNode(Node):
         self.shelf_list = list(self.shelves.keys())
         self.current_shelf_idx = 0
         self.is_patrolling = False
+        self.last_detection = None
 
-        # 4. 순찰 명령 구독
+        # 4. 순찰 및 제어 명령 구독
         self.cmd_sub = self.create_subscription(String, 'patrol_cmd', self.cmd_callback, 10)
+        self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
 
         # 5. 순찰 상태 발행 (UI용)
         self.patrol_status_pub = self.create_publisher(String, 'patrol_status', 10)
         self.start_time = None
         self.end_time = None
 
-        self.get_logger().info('Patrol Main Node has been started.')
+        self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
     def load_shelves(self):
-        # 패키지 공유 디렉토리에서 yaml 파일을 읽어옵니다.
         pkg_dir = get_package_share_directory('patrol_main')
         yaml_path = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
+        if not os.path.exists(yaml_path):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            yaml_path = os.path.join(current_dir, '..', 'config', 'shelf_coords.yaml')
+            
         with open(yaml_path, 'r') as f:
             config = yaml.safe_load(f)
-            # ROS 2 파라미터 형식 (/** -> ros__parameters -> shelves)에 맞춰 읽어옵니다.
             if '/**' in config:
                 self.shelves = config['/**']['ros__parameters']['shelves']
-            elif 'patrol_node' in config:
-                self.shelves = config['patrol_node']['ros__parameters']['shelves']
             else:
-                self.shelves = config['shelves']
+                self.shelves = config.get('shelves', {})
+
+    def emergency_callback(self, msg):
+        if msg.data:
+            self.get_logger().error('!!! EMERGENCY STOP RECEIVED !!!')
+            self.is_patrolling = False
+            self.cancel_nav()
 
     def cmd_callback(self, msg):
-        if msg.data == 'START_PATROL' and not self.is_patrolling:
+        cmd = msg.data
+        if cmd == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence...')
             self.is_patrolling = True
             self.start_time = datetime.now()
             self.current_shelf_idx = 0
             self.publish_status('patrolling')
             self.send_next_goal()
+        elif cmd == 'RETURN_HOME':
+            self.get_logger().info('Returning to Base...')
+            self.is_patrolling = False
+            self.cancel_nav()
+            # 원점(0,0)으로 이동하는 로직 추가 가능
+        elif cmd == 'RESET_POSE':
+            self.get_logger().info('Resetting Robot Pose...')
+            # 실제 추정치 초기화 서비스 호출 가능
+
+    def cancel_nav(self):
+        # 현재 진행 중인 액션 취소 로직
+        pass
 
     def send_next_goal(self):
         if self.current_shelf_idx >= len(self.shelf_list):
@@ -76,8 +96,7 @@ class PatrolNode(Node):
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
 
-
-        self.get_logger().info(f'Navigating to {shelf_name} (x: {coords["x"]}, y: {coords["y"]})...')
+        self.get_logger().info(f'Navigating to {shelf_name} (Tag: {coords.get("tag_barcode", "N/A")})...')
 
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
@@ -85,7 +104,6 @@ class PatrolNode(Node):
         goal_msg.pose.pose.position.x = float(coords['x'])
         goal_msg.pose.pose.position.y = float(coords['y'])
 
-        # Orientation (Simplified: yaw to quaternion)
         import math
         yaw = float(coords['yaw'])
         goal_msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
@@ -98,34 +116,40 @@ class PatrolNode(Node):
     def goal_response_callback(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().error('Goal rejected :(')
+            self.get_logger().error('Goal rejected')
             self.is_patrolling = False
             return
-
         self._get_result_future = goal_handle.get_result_async()
         self._get_result_future.add_done_callback(self.get_result_callback)
 
     def get_result_callback(self, future):
         status = future.result().status
         if status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info(f'Arrival at shelf {self.shelf_list[self.current_shelf_idx]} confirmed.')
-
-            # 2초 뒤에 proceed_to_next_shelf 함수가 실행됩니다.
+            shelf_name = self.shelf_list[self.current_shelf_idx]
+            tag_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
+            
+            # 가상 바코드 판독 시뮬레이션 (Server 로직 대응)
+            # 예: 짝수 선반은 정상, 홀수 선반은 결품(공백) 시뮬레이션
+            detected = "880" + str(1111111111 + self.current_shelf_idx)
+            if self.current_shelf_idx % 2 != 0: detected = "" 
+            
+            self.last_detection = {
+                "tag_barcode": tag_barcode,
+                "detected_barcode": detected,
+                "confidence": 0.98
+            }
+            
+            self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}, Detected: {detected}')
             self._delay_timer = self.create_timer(2.0, self.proceed_to_next_shelf)
         else:
-            # 실패 시 순찰을 종료하지 않고 다음 선반으로 넘어감
-            self.get_logger().warn(f'Failed to reach {self.shelf_list[self.current_shelf_idx]}. Status: {status}')
-            self.get_logger().info('Skipping to the next shelf...')
             self.current_shelf_idx += 1
             if self.is_patrolling:
                 self.publish_status('patrolling')
             self.send_next_goal()
 
     def proceed_to_next_shelf(self):
-        # 1회성 지연을 위한 타이머이므로 실행 직후 취소(cancel) 해줍니다.
         if self._delay_timer:
             self._delay_timer.cancel()
-
         self.current_shelf_idx += 1
         if self.is_patrolling:
             self.publish_status('patrolling')
@@ -142,15 +166,11 @@ class PatrolNode(Node):
             if self.current_shelf_idx < len(self.shelf_list):
                 info['current_shelf'] = self.shelf_list[self.current_shelf_idx]
                 info['progress'] = f"{self.current_shelf_idx + 1}/{len(self.shelf_list)}"
+                if self.last_detection:
+                    info['last_detection'] = self.last_detection
         elif status == 'completed':
             info['start_time'] = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
             info['end_time'] = self.end_time.strftime('%Y-%m-%d %H:%M:%S')
-            duration = self.end_time - self.start_time
-            # Format duration as HH:MM:SS
-            total_seconds = int(duration.total_seconds())
-            hours, remainder = divmod(total_seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            info['duration'] = f"{hours:02}:{minutes:02}:{seconds:02}"
             info['total_shelves'] = len(self.shelf_list)
         
         msg = String()
