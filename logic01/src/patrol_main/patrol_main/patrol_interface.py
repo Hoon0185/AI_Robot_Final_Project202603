@@ -172,8 +172,8 @@ class PatrolInterface:
         """DB에서 현재 인벤토리/순찰 설정을 가져옵니다."""
         return self.db.get_patrol_config()
 
-    def sync_config_to_db(self, avoidance_wait=10, hour=1, minute=0):
-        """현재 설정을 DB 서버에 저장합니다."""
+    def sync_config_to_db(self, avoidance_wait=10, hour=0, minute=0):
+        """현재 설정을 DB 서버에 저장합니다. (시/분 분리 전송)"""
         return self.db.update_patrol_config(avoidance_wait=avoidance_wait, hour=hour, minute=minute)
 
     def shutdown(self):

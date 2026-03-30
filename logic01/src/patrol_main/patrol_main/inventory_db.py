@@ -96,8 +96,8 @@ class InventoryDB:
             pass
         return None
 
-    def update_patrol_config(self, avoidance_wait=10, start="09:00", end="22:00", hour=1, minute=0):
-        """서버로 새로운 순찰 설정 전송"""
+    def update_patrol_config(self, avoidance_wait=10, start="09:00", end="22:00", hour=0, minute=0):
+        """서버로 새로운 순찰 설정 전송 (시/분 분리 전송)"""
         payload = {
             "avoidance_wait_time": int(avoidance_wait),
             "patrol_start_time": start,

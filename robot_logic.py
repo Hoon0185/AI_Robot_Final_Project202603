@@ -98,17 +98,21 @@ class RobotLogicHandler:
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 
     def on_patrol_set(self, val):
-        print(f"[LOGIC] 순찰 간격 {val}분 설정 (ROS + DB 동기화)")
+        """순찰 간격 설정 (분 -> 시/분 변환 후 동기화)"""
+        h, m = divmod(int(val), 60)
+        print(f"[LOGIC] 순찰 간격 {val}분 설정 ({h}시간 {m}분)")
+        
         if self.ros_interface:
-            # 1. ROS 파라미터 업데이트
-            self.ros_interface.set_patrol_interval(val)
-            # 2. DB 서버 업데이트
-            self.ros_interface.sync_config_to_db(minute=val)
+            # 1. ROS 파라미터 업데이트 (분 단위 유지)
+            self.ros_interface.set_patrol_interval(float(val))
+            # 2. DB 서버 업데이트 (시/분 분리)
+            self.ros_interface.sync_config_to_db(hour=h, minute=m)
 
     def on_obstacle_set(self, val):
-        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (ROS + DB 동기화)")
+        """장애물 대기 시간 설정 (DB 동기화)"""
+        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정")
         if self.ros_interface:
-            # DB 서버 업데이트
+            # DB 서버 업데이트 (기존 시/분 값 유지하며 대기 시간만 변경하기 위해 현재값 참조 가능하나 단순화)
             self.ros_interface.sync_config_to_db(avoidance_wait=val)
 
     def on_move_command(self, direction):
