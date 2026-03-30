@@ -57,33 +57,53 @@ class RobotLogicHandler:
         """앱 시작 시 초기 데이터를 DB에서 가져와 UI에 세팅"""
         self.update_inventory_db()
         self.update_alarm_list()
+        
+        # 서버에서 초기 설정값 가져오기
+        if self.ros_interface:
+            config = self.ros_interface.get_db_config()
+            if config:
+                print(f"[LOGIC] 서버에서 설정값 로드: {config}")
+                # UI에 설정값 반영 (UI 구성에 따라 다름)
+                try:
+                    interval = config.get('interval_hour', 0) * 60 + config.get('interval_minute', 0)
+                    self.ui.set_patrol_interval_ui(interval) 
+                except Exception:
+                    pass
 
     def sync_ros_status(self):
-        """ROS에서 넘어온 최신 상태를 UI에 반영합니다."""
+        """ROS에서 넘어온 최신 상태 또는 DB 로그를 UI에 반영합니다."""
         if not self.ros_interface: return
         
         status = self.ros_interface.get_recent_patrol_time()
         if status:
             # 마지막 순찰 시간 및 상태 표시
             time_info = status.get('start_time', 'No Data')
-            if status.get('status') == 'patrolling':
+            s_type = status.get('status', 'IDLE')
+            
+            if s_type == 'patrolling':
                 shelf = status.get('current_shelf', 'Moving...')
                 progress = status.get('progress', '')
                 display_text = f"{time_info} (순찰 중: {shelf} {progress})"
             else:
-                display_text = f"{time_info} ({status.get('status', 'IDLE')})"
+                display_text = f"{time_info} ({s_type})"
             
             self.ui.set_last_patrol_time(display_text)
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 
     def on_patrol_set(self, val):
-        print(f"[LOGIC] 순찰 간격 {val}분 설정")
+        print(f"[LOGIC] 순찰 간격 {val}분 설정 (ROS + DB 동기화)")
         if self.ros_interface:
+            # 1. ROS 파라미터 업데이트
             self.ros_interface.set_patrol_interval(val)
+            # 2. DB 서버 업데이트
+            self.ros_interface.sync_config_to_db(minute=val)
 
     def on_obstacle_set(self, val):
-        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (미구현 파라미터)")
+        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (ROS + DB 동기화)")
+        if self.ros_interface:
+            # DB 서버 업데이트
+            self.ros_interface.sync_config_to_db(avoidance_wait=val)
 
     def on_move_command(self, direction):
         print(f"[LOGIC] 수동 이동: {direction}")

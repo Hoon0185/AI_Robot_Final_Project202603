@@ -148,8 +148,33 @@ class PatrolInterface:
         return True, "Manual patrol trigger sent"
 
     def get_recent_patrol_time(self):
-        """최근 순찰 상태 및 시간 정보를 가져옵니다."""
-        return self.latest_status
+        """최근 순찰 상태 및 시간 정보를 가져옵니다. (ROS 토픽 우선, 없으면 DB 로그)"""
+        if self.latest_status:
+            return self.latest_status
+        
+        # ROS 토픽에 데이터가 없으면 DB에서 최신 로그를 가져옴
+        history = self.db.get_patrol_history()
+        if history and len(history) > 0:
+            latest = history[0]
+            return {
+                "status": latest.get('status', 'Completed'),
+                "start_time": latest.get('start_time', 'No Data'),
+                "end_time": latest.get('end_time', '-'),
+                "error_found": latest.get('error_found', 0)
+            }
+        return None
+
+    def get_patrol_history_data(self):
+        """DB에서 전체 순찰 이력을 가져옵니다."""
+        return self.db.get_patrol_history()
+
+    def get_db_config(self):
+        """DB에서 현재 인벤토리/순찰 설정을 가져옵니다."""
+        return self.db.get_patrol_config()
+
+    def sync_config_to_db(self, avoidance_wait=10, hour=1, minute=0):
+        """현재 설정을 DB 서버에 저장합니다."""
+        return self.db.update_patrol_config(avoidance_wait=avoidance_wait, hour=hour, minute=minute)
 
     def shutdown(self):
         """ROS 노드와 백그라운드 스레드를 안전하게 종료합니다."""

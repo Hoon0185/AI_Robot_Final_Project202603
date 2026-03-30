@@ -75,3 +75,39 @@ class InventoryDB:
             return res.status_code == 200, res.text
         except Exception as e:
             return False, str(e)
+
+    def get_patrol_history(self):
+        """서버에서 최근 10개의 순찰 이력 조회"""
+        try:
+            res = requests.get(f"{self.base_url}/patrol/list", timeout=2.0)
+            if res.status_code == 200:
+                return res.json()
+        except Exception:
+            pass
+        return []
+
+    def get_patrol_config(self):
+        """서버에서 현재 순찰 설정 조회"""
+        try:
+            res = requests.get(f"{self.base_url}/patrol/config", timeout=2.0)
+            if res.status_code == 200:
+                return res.json()
+        except Exception:
+            pass
+        return None
+
+    def update_patrol_config(self, avoidance_wait=10, start="09:00", end="22:00", hour=1, minute=0):
+        """서버로 새로운 순찰 설정 전송"""
+        payload = {
+            "avoidance_wait_time": int(avoidance_wait),
+            "patrol_start_time": start,
+            "patrol_end_time": end,
+            "interval_hour": int(hour),
+            "interval_minute": int(minute),
+            "is_active": True
+        }
+        try:
+            res = requests.post(f"{self.base_url}/patrol/config", json=payload, timeout=2.0)
+            return res.status_code == 200
+        except Exception:
+            return False
