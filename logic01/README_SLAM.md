@@ -18,6 +18,14 @@ ssh penguin@<ROBOT_IP> "echo robot123 | sudo -S systemctl stop systemd-timesyncd
 
 # 2. PC 시간을 로봇에 강제 주입 (PC 터미널에서 실행)
 ssh penguin@<ROBOT_IP> "echo robot123 | sudo -S date -s '@$(date +%s)'"
+
+### 💡 시간 차이 확인 방법
+로봇과 PC의 시간이 얼마나 차이 나는지 확인하려면 아래 명령어를 사용하세요.
+```bash
+# 로봇 시간(첫 번째 줄)과 PC 시간(두 번째 줄)을 순서대로 출력
+ssh penguin@<ROBOT_IP> "date" && date
+```
+차이가 1초 이내라면 정상입니다.
 ```
 
 ## 3. 로봇 기체 실행 (Bringup)
