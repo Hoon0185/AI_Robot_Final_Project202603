@@ -16,6 +16,9 @@ from .inventory_db import InventoryDB
 class PatrolNode(Node):
     def __init__(self):
         super().__init__('patrol_node')
+        
+        # 0. DB 데이터베이스 초기화
+        self.db = InventoryDB()
 
         # 1. Nav2 Action Client 설정
         self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
@@ -28,11 +31,9 @@ class PatrolNode(Node):
         self.load_shelves()
 
         # 3. 순찰 상태 관리
-        self.shelf_list = list(self.shelves.keys())
         self.current_shelf_idx = 0
         self.is_patrolling = False
         self.last_detection = None
-        self.db = InventoryDB()
         self._goal_handle = None
 
         # 4. 순찰 및 제어 명령 구독
@@ -47,6 +48,18 @@ class PatrolNode(Node):
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
     def load_shelves(self):
+        """순찰 포인트 로드 (1순위: 원격 DB, 2순위: 로컬 YAML)"""
+        try:
+            db_points = self.db.get_waypoints()
+            if db_points and len(db_points) > 0:
+                self.shelves = db_points
+                self.shelf_list = list(self.shelves.keys())
+                self.get_logger().info(f"Successfully loaded {len(self.shelves)} waypoints from Remote DB.")
+                return
+        except Exception as e:
+            self.get_logger().warn(f"Failed to fetch from DB: {e}. Falling back to YAML.")
+
+        # 로컬 YAML 폴백
         pkg_dir = get_package_share_directory('patrol_main')
         yaml_path = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
         if not os.path.exists(yaml_path):
@@ -59,6 +72,7 @@ class PatrolNode(Node):
                 self.shelves = config['/**']['ros__parameters']['shelves']
             else:
                 self.shelves = config.get('shelves', {})
+        self.shelf_list = list(self.shelves.keys())
 
     def emergency_callback(self, msg):
         if msg.data:

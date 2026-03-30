@@ -122,3 +122,24 @@ class InventoryDB:
         except Exception:
             pass
         return None
+
+    def get_waypoints(self):
+        """서버에서 모든 웨이포인트 목록을 가져옵니다."""
+        try:
+            res = requests.get(f"{self.base_url}/waypoints", timeout=2.0)
+            if res.status_code == 200:
+                data = res.json()
+                # 로봇 노드에서 사용하는 'shelves' 형식으로 변환
+                waypoints = {}
+                for wp in data:
+                    name = wp.get('waypoint_name', 'unknown')
+                    waypoints[name] = {
+                        'x': float(wp.get('loc_x', 0.0)),
+                        'y': float(wp.get('loc_y', 0.0)),
+                        'yaw': float(wp.get('loc_yaw', 0.0)),
+                        'tag_barcode': name  # 사용자의 요청대로 waypoint_name을 tag_barcode로 사용
+                    }
+                return waypoints
+        except Exception as e:
+            print(f"[DB] Failed to fetch waypoints: {e}")
+        return None
