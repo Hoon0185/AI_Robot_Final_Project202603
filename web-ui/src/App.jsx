@@ -663,8 +663,8 @@ function App() {
                     <table className="selectable-table slim">
                       <thead>
                         <tr>
-                          <th style={{ textAlign: 'center' }}>상품명</th>
-                          <th style={{ textAlign: 'center' }}>바코드</th>
+                          <th style={{ width: '90px', textAlign: 'center' }}>상품명</th>
+                          <th style={{ width: '80px', textAlign: 'center' }}>바코드</th>
                           <th style={{ textAlign: 'center' }}>위치(W.P.)</th>
                         </tr>
                       </thead>
@@ -684,8 +684,8 @@ function App() {
                                   row_num: pInPlan ? pInPlan.row_num : 1               // Auto-fill existing row
                                 })}
                                 className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
-                                <td style={{ fontSize: '13px', textAlign: 'center' }}>{p.product_name}</td>
-                                <td style={{ fontSize: '11px', textAlign: 'center' }}><code>{p.barcode}</code></td>
+                                <td style={{ fontSize: '12px', textAlign: 'center', width: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.product_name}</td>
+                                <td style={{ fontSize: '11px', textAlign: 'center', width: '80px' }}><code>{p.barcode}</code></td>
                                 <td style={{ fontSize: '12px', textAlign: 'center', color: pInPlan ? 'var(--accent-blue)' : 'var(--text-secondary)' }}>
                                   {pInPlan ? pInPlan.waypoint_name : '-'}
                                 </td>
@@ -724,7 +724,7 @@ function App() {
                       )}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '24px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 70px', gap: '24px' }}>
                       <div className="form-group">
                         <label>W.P.</label>
                         <input
