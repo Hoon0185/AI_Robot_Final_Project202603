@@ -154,7 +154,7 @@ async def get_status():
             
             # 1. 비상정지/해제 관련 최신 명령 확인
             cursor.execute("""
-                SELECT command_type, created_at FROM robot_command 
+                SELECT command_id, command_type, created_at FROM robot_command 
                 WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL')
                 ORDER BY created_at DESC, command_id DESC LIMIT 1
             """)
@@ -162,7 +162,7 @@ async def get_status():
             
             # 2. 일반 동작 관련 최신 명령 확인
             cursor.execute("""
-                SELECT command_type, created_at FROM robot_command 
+                SELECT command_id, command_type, created_at FROM robot_command 
                 WHERE command_type IN ('START_PATROL', 'RETURN_TO_BASE')
                 ORDER BY created_at DESC, command_id DESC LIMIT 1
             """)
@@ -176,8 +176,16 @@ async def get_status():
             # 1. 비상정지 여부 판단
             is_emergency = False
             if last_emergency and last_emergency['command_type'] == 'EMERGENCY_STOP':
-                if not last_action or last_emergency['created_at'] >= last_action['created_at']:
+                # 비상정지 명령이 가장 최신이거나, 다른 액션보다 나중인 경우
+                if not last_action:
                     is_emergency = True
+                else:
+                    # 시간과 ID(PK)를 모두 비교하여 최신성을 더 엄격히 검증
+                    if last_emergency['created_at'] > last_action['created_at']:
+                        is_emergency = True
+                    elif last_emergency['created_at'] == last_action['created_at']:
+                        if last_emergency['command_id'] > last_action['command_id']:
+                            is_emergency = True
             
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
