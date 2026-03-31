@@ -116,24 +116,28 @@ async def root():
         "env": "production" if os.getenv("DB_HOST") == "16.184.56.119" else "local"
     }
 
-@app.get("/migrate")
-async def migrate_db():
+class PoseUpdate(BaseModel):
+    odom_x: float
+    odom_y: float
+
+@app.post("/robot/pose")
+async def update_robot_pose(pose: PoseUpdate):
     conn = get_db_connection()
-    if not conn: return {"error": "DB connection failed"}
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor()
-        # 1. patrol_log 테이블에 실시간 좌표 컬럼 추가 (없을 경우)
-        try:
-            cursor.execute("ALTER TABLE patrol_log ADD COLUMN last_odom_x FLOAT DEFAULT 0.0")
-            cursor.execute("ALTER TABLE patrol_log ADD COLUMN last_odom_y FLOAT DEFAULT 0.0")
-            conn.commit()
-            return {"status": "success", "message": "Columns last_odom_x/y added to patrol_log"}
-        except Exception as e:
-            if "Duplicate column" in str(e):
-                return {"status": "info", "message": "Columns already exist"}
-            raise e
+        # 진행 중이거나 가장 최근인 순찰 로그의 좌표 업데이트
+        cursor.execute("""
+            UPDATE patrol_log 
+            SET last_odom_x = %s, last_odom_y = %s 
+            WHERE status = '진행중' OR status = '중단'
+            ORDER BY patrol_id DESC LIMIT 1
+        """, (pose.odom_x, pose.odom_y))
+        conn.commit()
+        return {"status": "success"}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 
@@ -142,8 +146,8 @@ async def get_status():
     conn = get_db_connection()
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
     robot_mode = "휴식중"
-    
     last_odom = {"odom_x": 0.0, "odom_y": 0.0}
+    
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
@@ -164,37 +168,35 @@ async def get_status():
             """)
             last_action = cursor.fetchone()
             
-            # 3. 최신 순찰 로그 확인
-            cursor.execute("SELECT status, patrol_id FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
+            # 3. 최신 순찰 로그 및 마지막 기록된 좌표 확인
+            cursor.execute("SELECT status, patrol_id, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
-            # --- 위치 및 상태 판단 로직 (재설계) ---
-            # 1. 위치 판단: 순찰 중이 아니면(휴식/완료/기타) 무조건 기지(0,0)로 간주
-            is_at_base = (not last_patrol or last_patrol['status'] != '진행중')
-            
-            if is_at_base:
-                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
-            else:
-                # 순찰 중일 때만 마지막 상품 인식 좌표 사용
-                cursor.execute("SELECT odom_x, odom_y FROM detection_log ORDER BY log_id DESC LIMIT 1")
-                odom_data = cursor.fetchone()
-                if odom_data:
-                    last_odom = odom_data
-
-            # 2. 비상정지 여부 판단
+            # --- 위치 및 상태 판단 로직 ---
+            # 1. 비상정지 여부 판단
             is_emergency = False
             if last_emergency and last_emergency['command_type'] == 'EMERGENCY_STOP':
                 if not last_action or last_emergency['created_at'] >= last_action['created_at']:
                     is_emergency = True
             
-            # 순찰 로그가 명시적으로 '중단'인 경우도 비상정지로 간주
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
+
+            # 2. 위치 판단 로직
+            # 순찰중이거나, 순찰 중 비상정지된 경우는 마지막 기록된 '실시간 좌표' 사용
+            if last_patrol and (last_patrol['status'] == '진행중' or (is_emergency and last_patrol['status'] == '중단')):
+                last_odom = {
+                    "odom_x": round(last_patrol.get('last_odom_x', 0.0), 2),
+                    "odom_y": round(last_patrol.get('last_odom_y', 0.0), 2)
+                }
+            else:
+                # 그 외(휴식중, 완료 등)는 무조건 기지(0,0)
+                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
 
             # 3. 최종 상태 명칭 결정
             if is_emergency:
                 robot_mode = "비상정지"
-            elif not is_at_base:
+            elif last_patrol and last_patrol['status'] == '진행중':
                 robot_mode = "순찰중"
             else:
                 robot_mode = "휴식중"

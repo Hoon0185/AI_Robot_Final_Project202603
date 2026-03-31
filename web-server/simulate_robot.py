@@ -22,6 +22,7 @@ FINISH_PATROL_URL = f"{BASE_URL}/patrol/finish"
 STOP_PATROL_URL = f"{BASE_URL}/patrol/stop"
 LIST_PRODUCTS_URL = f"{BASE_URL}/products"
 CLEAR_COMMAND_URL = f"{BASE_URL}/robot/command/clear_pending"
+POSE_URL = f"{BASE_URL}/robot/pose"
 
 # Robot Status
 STATUS_IDLE = "IDLE"
@@ -123,6 +124,12 @@ class VirtualRobot:
         except Exception as e:
             self.safe_print(f"   >>> ❌ 전송 중 오류: {e}")
 
+    def send_pose(self, odom_x, odom_y):
+        try:
+            requests.post(POSE_URL, json={"odom_x": round(odom_x, 2), "odom_y": round(odom_y, 2)})
+        except:
+            pass
+
     def start_patrol(self, remote=False, resume=False):
         if self.status == STATUS_EMERGENCY_STOP and not resume:
             self.safe_print("⚠️ [거부] 비상 정환 상태입니다. 비상 해제를 먼저 수행하세요.")
@@ -193,14 +200,29 @@ class VirtualRobot:
             self.safe_print(f"\n[{i+1}/{len(self.patrol_path)}] {plan['waypoint_name']} 이동 중...")
             self.safe_print(f"   - 목적지: ({target_x}, {target_y}) | 거리: {distance:.2f}m | 예상 소요 시간: {move_time:.1f}초")
             
-            # 실제 이동 시간만큼 대기
+            # 실제 이동 시간만큼 대기 (이동 중 주기적으로 좌표 전송)
             if move_time > 0:
-                if not self.interruptible_sleep(min(move_time, 10)):
-                    break
-            
+                elapsed = 0
+                report_interval = 2.0
+                while elapsed < move_time:
+                    if self.status != STATUS_PATROLLING:
+                        break
+                    
+                    # 현재 위치 선형 보간 (Linear Interpolation)
+                    ratio = min(1.0, elapsed / move_time)
+                    temp_x = current_x + (target_x - current_x) * ratio
+                    temp_y = current_y + (target_y - current_y) * ratio
+                    self.send_pose(temp_x, temp_y)
+                    self.current_pos = (temp_x, temp_y)
+                    
+                    self.interruptible_sleep(min(report_interval, move_time - elapsed))
+                    elapsed += report_interval
+
             if self.status != STATUS_PATROLLING: break
 
             self.safe_print(f"📍 {plan['waypoint_name']} 도착. 정차 후 스캔 시작...")
+            self.current_pos = (target_x, target_y)
+            self.send_pose(target_x, target_y)
             if not self.interruptible_sleep(1.5): break
             
             # 현재 위치 업데이트
@@ -298,6 +320,8 @@ class VirtualRobot:
     def emergency_stop(self, remote=False):
         self.safe_print("\n🚨 [비상 정지] 로봇 동작이 강제 중단되었습니다!")
         self.status = STATUS_EMERGENCY_STOP
+        # 비상 정지 즉시 현재 위치 서버로 보고
+        self.send_pose(self.current_pos[0], self.current_pos[1])
         
         if not remote:
             try:
