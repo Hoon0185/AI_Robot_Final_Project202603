@@ -22,7 +22,7 @@ class ObstacleInterface:
     )
 
     # ---- 기본값 및 상태 관리 변수 ----
-    self.current_wait_time = 10 #  기본 대기 시간(초)
+    self.current_wait_time = 5 #  기본 대기 시간(초)
     self.pending_data = None # DB 저장에 실패한 임시데이터 저장 변수
 
     # ---- DB 저장 실패 재시도 타이머 설정 (10초) ----
@@ -46,7 +46,7 @@ class ObstacleInterface:
 
       if response.status_code == 200:
         config = response.json()
-        db_value = config.get('avoidance_wait_time', 10) # DB에서 대기시간 추출, 없으면 기본값 10초 사용
+        db_value = config.get('avoidance_wait_time', self.current_wait_time) # DB에서 대기시간 추출, 없으면 기본값 10초 사용
 
         self.current_wait_time = int(db_value)
         self.set_wait_time(self.current_wait_time) # 로봇 노드에 적용
@@ -69,13 +69,23 @@ class ObstacleInterface:
 
     db_success = False
     try:
-      # 서버가 요구하는 JSON 규격
+      # ---- DB에서 현재 설정값 가져오기 (동기화 목적) ----
+      current_config = {}
+      get_res = requests.get(f"{self.base_url}/patrol/config", timeout=2.0)
+      if get_res.status_code == 200:
+        current_config = get_res.json()
+
+      # ---- 서버가 요구하는 JSON 규격 ----
       payload = {
-        "config_id": self.config_id,
-        "avoidance_wait_time": self.current_wait_time
+        "avoidance_wait_time": self.current_wait_time,
+        "patrol_start_time": current_config.get("patrol_start_time", "09:00"),
+        "patrol_end_time": current_config.get("patrol_end_time", "22:00"),
+        "interval_hour": int(current_config.get("interval_hour", 0)),
+        "interval_minute": int(current_config.get("interval_minute", 0)),
+        "is_active": current_config.get("is_active", True)
       }
       # 서버 주소 규격에 맞게 POST 요청 전송
-      response = requests.post(f"{self.base_url}/patrol/config/update", json=payload)
+      response = requests.post(f"{self.base_url}/patrol/config", json=payload, timeout=2.0)
 
       if response.status_code == 200:
         db_success = True
@@ -118,11 +128,21 @@ class ObstacleInterface:
     if self.pending_data:
       val = self.pending_data["value"]
       try:
+        current_config = {}
+        get_res = requests.get(f"{self.base_url}/patrol/config", timeout=2.0)
+        if get_res.status_code == 200:
+          current_config = get_res.json()
+
         payload = {
-          "config_id": self.config_id,
-          "avoidance_wait_time": val
-        }
-        response = requests.post(f"{self.base_url}/patrol/config/update", json=payload)
+        "avoidance_wait_time": int(val),
+        "patrol_start_time": current_config.get("patrol_start_time", "09:00"),
+        "patrol_end_time": current_config.get("patrol_end_time", "22:00"),
+        "interval_hour": int(current_config.get("interval_hour", 0)),
+        "interval_minute": int(current_config.get("interval_minute", 0)),
+        "is_active": current_config.get("is_active", True)
+      }
+        response = requests.post(f"{self.base_url}/patrol/config", json=payload, timeout=2.0)
+
         if response.status_code == 200:
           self.node.get_logger().info(f"재시도 성공: 누락되었던 {val}초가 서버에 저장되었습니다.")
           self.pending_data = None
