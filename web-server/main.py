@@ -219,9 +219,26 @@ async def start_patrol():
     if not conn:
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 비상정지 상태 확인
+        cursor.execute("""
+            SELECT command_type FROM robot_command 
+            WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
+            ORDER BY created_at DESC, command_id DESC LIMIT 1
+        """)
+        last_cmd = cursor.fetchone()
+        cursor.execute("SELECT status FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
+        last_patrol = cursor.fetchone()
+        
+        is_locked = (last_patrol and last_patrol['status'] == '중단') or (last_cmd and last_cmd['command_type'] == 'EMERGENCY_STOP')
+        
+        if is_locked:
+            raise HTTPException(status_code=403, detail="비상정지 상태입니다. 비상해제를 먼저 눌러주세요.")
+
         # 1. 새로운 순찰 로그 생성
         cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
+
         patrol_id = cursor.lastrowid
         
         # 2. 로봇 명령 큐에 추가
@@ -242,8 +259,22 @@ async def finish_patrol():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
+        
+        # 비상정지 상태 확인
+        cursor.execute("""
+            SELECT command_type FROM robot_command 
+            WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
+            ORDER BY created_at DESC, command_id DESC LIMIT 1
+        """)
+        last_cmd = cursor.fetchone()
+        if last_cmd and last_cmd['command_type'] == 'EMERGENCY_STOP':
+            # 단, 순찰 로그 상태가 '중단'인 경우는 finish_patrol(복귀)을 통해 해제가 가능하도록 할지의 여부
+            # 사용자 요청은 "비상해제를 누르기 전까지... 기지로 복귀를 누를 수 없도록" 임.
+            raise HTTPException(status_code=403, detail="비상정지 상태입니다. 비상해제를 먼저 눌러주세요.")
+
         # '진행중' 또는 '중단' 상태인 최신 순찰을 찾음
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status IN ('진행중', '중단') ORDER BY start_time DESC LIMIT 1")
+
         patrol = cursor.fetchone()
         
         if patrol:

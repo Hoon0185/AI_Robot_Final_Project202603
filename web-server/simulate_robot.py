@@ -124,7 +124,12 @@ class VirtualRobot:
             self.safe_print(f"   >>> ❌ 전송 중 오류: {e}")
 
     def start_patrol(self, remote=False, resume=False):
+        if self.status == STATUS_EMERGENCY_STOP and not resume:
+            self.safe_print("⚠️ [거부] 비상 정환 상태입니다. 비상 해제를 먼저 수행하세요.")
+            return
+
         if self.status == STATUS_PATROLLING:
+
             self.safe_print("⚠️ 이미 순찰 중입니다.")
             return
 
@@ -248,7 +253,13 @@ class VirtualRobot:
         self.return_to_base(remote=remote)
 
     def return_to_base(self, remote=False):
+        if self.status == STATUS_EMERGENCY_STOP:
+            self.safe_print("⚠️ [거부] 비상 정지 상태입니다. 비상 해제를 먼저 수행하세요.")
+            if remote: self.print_menu()
+            return
+
         self.safe_print("\n🏠 [기지 복귀] 기지로 복귀합니다...")
+
         self.status = STATUS_RETURNING
         # 복귀 이동 중 비상정지 가능하도록 interruptible_sleep 적용
         if not self.interruptible_sleep(5):
