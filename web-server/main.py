@@ -179,8 +179,8 @@ async def get_status():
                 last_odom = odom_data
 
             # --- 기지 복귀 상태 보정 ---
-            # 로봇이 휴식중일 때는 항상 기지(0,0)에 있는 것으로 간주합니다.
-            if robot_mode == "휴식중":
+            # 로봇이 휴식중이거나, 마지막 명령이 '기지로 복귀'인 경우 기지(0,0)에 있는 것으로 간주합니다.
+            if robot_mode == "휴식중" or (last_action and last_action['command_type'] == 'RETURN_TO_BASE'):
                 last_odom = {"odom_x": 0.0, "odom_y": 0.0}
 
         except Exception as e:
