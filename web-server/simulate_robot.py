@@ -22,6 +22,7 @@ START_PATROL_URL = f"{BASE_URL}/patrol/start"
 FINISH_PATROL_URL = f"{BASE_URL}/patrol/finish"
 STOP_PATROL_URL = f"{BASE_URL}/patrol/stop"
 LIST_PRODUCTS_URL = f"{BASE_URL}/products"
+CLEAR_COMMAND_URL = f"{BASE_URL}/robot/command/clear_pending"
 
 # Robot Status
 STATUS_IDLE = "IDLE"
@@ -325,6 +326,13 @@ class VirtualRobot:
             time.sleep(1) # 1초마다 확인 (반응성 향상)
 
     def run(self):
+        # 0. 시작 전 이전 세션의 잔류 명령 초기화 (먹통 및 자동 실행 방지)
+        try:
+            requests.post(CLEAR_COMMAND_URL, timeout=5)
+            self.safe_print("🧹 [초기화] 이전 세션의 대기 중인 명령을 모두 정리했습니다.")
+        except Exception:
+            pass
+
         # 원격 명령 수신 스레드 시작
         self.polling_thread = threading.Thread(target=self.poll_commands, daemon=True)
         self.polling_thread.start()

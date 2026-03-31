@@ -377,6 +377,17 @@ async def get_latest_command():
     finally:
         conn.close()
 
+@app.post("/robot/command/clear_pending")
+async def clear_pending_commands():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE robot_command SET status = 'CANCELED' WHERE status IN ('PENDING', 'PROCESSING')")
+        conn.commit()
+        return {"message": "All pending commands cleared", "count": cursor.rowcount}
+    finally:
+        conn.close()
+
 @app.post("/robot/command/{command_id}/complete")
 async def complete_command(command_id: int):
     conn = get_db_connection()
