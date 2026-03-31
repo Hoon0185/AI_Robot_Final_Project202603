@@ -591,7 +591,7 @@ function App() {
                   </thead>
                   <tbody>
                     {detections.length === 0 ? (
-                      <tr><td colSpan="5" className="empty-shelf">진행 중인 순찰이 없거나 데이터가 없습니다.</td></tr>
+                      <tr><td colSpan="5" className="empty-shelf">수집된 인식 데이터가 없습니다.</td></tr>
                     ) : (
                       detections.map(d => (
                         <tr key={d.log_id}>
@@ -612,7 +612,7 @@ function App() {
                               <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
                                 <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
                               </div>
-                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
+                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{((d.confidence || 0) * 100).toFixed(0)}%</span>
                             </div>
                           </td>
                         </tr>

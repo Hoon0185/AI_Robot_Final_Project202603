@@ -467,7 +467,8 @@ async def add_detection(data: DetectionInput):
             INSERT INTO detection_log (patrol_id, waypoint_id, product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, detected_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
+        # product_id에는 '계획된' 상품 ID를 저장하여 로그에서 무엇이 있어야 했는지 알 수 있게 함
+        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, planned_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
 
         # 7. Alert 생성 (이상 감제 시)
         if result_status != '정상':
@@ -503,14 +504,14 @@ async def list_detections():
     if not conn: return []
     try:
         cursor = conn.cursor(dictionary=True)
-        # 현재 '진행중'인 최신 순찰 ID를 가져옴
-        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY patrol_id DESC LIMIT 1")
-        active_patrol = cursor.fetchone()
+        # 가장 최근의 순찰 ID를 가져옴 (진행중이거나 완료된 것 모두)
+        cursor.execute("SELECT patrol_id FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
+        latest_patrol = cursor.fetchone()
         
-        if not active_patrol:
-            return []  # 진행 중인 순찰이 없으면 클리어
+        if not latest_patrol:
+            return []
             
-        active_id = active_patrol['patrol_id']
+        active_id = latest_patrol['patrol_id']
         query = """
             SELECT d.*, 
                    p1.product_name as p_name_target,
