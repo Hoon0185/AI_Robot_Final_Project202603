@@ -23,12 +23,12 @@ class RobotLogicHandler:
         except Exception as e:
             print(f"[ERROR] ROS 2 Interface failed to start: {e}")
             self.ros_interface = None
-            
+
         self._setup_connections()
         self.current_patrol_min = 60
         self.current_obstacle_sec = 10
         self._load_initial_data()
-        
+
         # UI 업데이트용 타이머 (ROS 상태 반영)
         from PyQt6.QtCore import QTimer
         self.status_timer = QTimer()
@@ -51,6 +51,9 @@ class RobotLogicHandler:
         self.ui.emergencyClicked.connect(self.on_emergency)
         self.ui.resetConfirmed.connect(self.on_reset_confirmed)
 
+        # --- 추가: 수동 순찰 명령 시그널 연결 ---
+        self.ui.patrolConfirmed.connect(self.on_patrol_confirmed)
+
         # DB 및 알림 갱신 요청
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
@@ -59,7 +62,7 @@ class RobotLogicHandler:
         """앱 시작 시 초기 데이터를 DB에서 가져와 UI 및 ROS에 세팅"""
         self.update_inventory_db()
         self.update_alarm_list()
-        
+
         # 서버에서 초기 설정값 가져와서 ROS 및 UI 동기화
         if self.ros_interface:
             config = self.ros_interface.get_db_config()
@@ -77,27 +80,27 @@ class RobotLogicHandler:
                     if self.current_patrol_min > 0:
                         self.ui.patrol_row['slider'].setValue(self.current_patrol_min)
                         self.ros_interface.set_patrol_interval(float(self.current_patrol_min))
-                    
+
                 except Exception as e:
                     print(f"[ERROR] 초기 설정 반영 중 오류: {e}")
 
     def sync_ros_status(self):
         """ROS에서 넘어온 최신 상태 또는 DB 로그를 UI에 반영합니다."""
         if not self.ros_interface: return
-        
+
         status = self.ros_interface.get_recent_patrol_time()
         if status:
             # 마지막 순찰 시간 및 상태 표시
             time_info = status.get('start_time', 'No Data')
             s_type = status.get('status', 'IDLE')
-            
+
             if s_type == 'patrolling':
                 shelf = status.get('current_shelf', 'Moving...')
                 progress = status.get('progress', '')
                 display_text = f"{time_info} (순찰 중: {shelf} {progress})"
             else:
                 display_text = f"{time_info} ({s_type})"
-            
+
             self.ui.set_last_patrol_time(display_text)
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
@@ -107,14 +110,14 @@ class RobotLogicHandler:
         self.current_patrol_min = int(val)
         h, m = divmod(self.current_patrol_min, 60)
         print(f"[LOGIC] 순찰 간격 {val}분 설정 ({h}시간 {m}분)")
-        
+
         if self.ros_interface:
             # 1. ROS 파라미터 업데이트
             self.ros_interface.set_patrol_interval(float(val))
             # 2. DB 서버 업데이트 (현재 장애물 대기 시간 유지)
             self.ros_interface.sync_config_to_db(
-                avoidance_wait=self.current_obstacle_sec, 
-                hour=h, 
+                avoidance_wait=self.current_obstacle_sec,
+                hour=h,
                 minute=m
             )
 
@@ -123,48 +126,64 @@ class RobotLogicHandler:
         self.current_obstacle_sec = int(val)
         h, m = divmod(self.current_patrol_min, 60)
         print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (순찰 간격 {h}:{m} 유지)")
-        
+
         if self.ros_interface:
             # DB 서버 업데이트 (현재 순찰 간격 유지)
             self.ros_interface.sync_config_to_db(
-                avoidance_wait=self.current_obstacle_sec, 
-                hour=h, 
+                avoidance_wait=self.current_obstacle_sec,
+                hour=h,
                 minute=m
             )
 
-    def on_move_command(self, direction):
-        print(f"[LOGIC] 수동 이동: {direction}")
+    # 재고 알림
+    def update_alarm_list(self):
+        """재고 부족 물품 리스트 업데이트"""
         if self.ros_interface:
-            self.ros_interface.move_robot(direction)
+            data = self.ros_interface.get_alarm_data()
+            self.ui.set_alarm_data(data)
 
-    def on_buzzer(self):
-        print("[LOGIC] 부저 작동")
-        if self.ros_interface:
-            self.ros_interface.trigger_buzzer(True)
-
-    def on_return_patrol(self):
-        print("[LOGIC] 복귀 명령 송출")
-        if self.ros_interface:
-            self.ros_interface.return_to_base()
-
-    def on_emergency(self):
-        print("[LOGIC] 비상 정지!")
-        if self.ros_interface:
-            self.ros_interface.trigger_emergency_stop()
-
-    def on_reset_confirmed(self):
-        print("[LOGIC] 원점 리셋")
-        if self.ros_interface:
-            self.ros_interface.reset_position()
-
+    # DB 재고 조회
     def update_inventory_db(self):
         """DB에서 재고 데이터를 가져와 테이블에 뿌려줌"""
         if self.ros_interface:
             data = self.ros_interface.get_inventory_data()
             self.ui.set_db_data(data)
 
-    def update_alarm_list(self):
-        """재고 부족 물품 리스트 업데이트"""
+    # 수동 조작 패널 - 수동 조작
+    def on_move_command(self, direction):
+        print(f"[LOGIC] 수동 이동: {direction}")
         if self.ros_interface:
-            data = self.ros_interface.get_alarm_data()
-            self.ui.set_alarm_data(data)
+            self.ros_interface.move_robot(direction)
+
+    # 수동 조작 패널 - 부저
+    def on_buzzer(self):
+        print("[LOGIC] 부저 작동")
+        if self.ros_interface:
+            self.ros_interface.trigger_buzzer(True)
+
+    # 수동 조작 패널 - 복귀 명령
+    def on_return_patrol(self):
+        print("[LOGIC] 복귀 명령 송출")
+        if self.ros_interface:
+            self.ros_interface.return_to_base()
+
+    # 수동 조작 패널 - 비상 정지
+    def on_emergency(self):
+        print("[LOGIC] 비상 정지!")
+        if self.ros_interface:
+            self.ros_interface.trigger_emergency_stop()
+
+    # 초기 위치 명령 패널 - 예 - 복귀
+    # 기능은 수동 조작 패널의 복귀 명령과 같음
+    def on_reset_confirmed(self):
+        print("[LOGIC] 원점 리셋")
+        if self.ros_interface:
+            self.ros_interface.reset_position()
+
+    # 수동 순찰 명령
+    def on_patrol_confirmed(self):
+        """수동 순찰 명령 팝업에서 '시작'을 클릭했을 때 호출"""
+        print("[LOGIC] 수동 순찰 명령 확인됨. 순찰 로직 시작 프로세스 수행 가능.")
+        if self.ros_interface:
+            # TODO: 담당자 구현 영역 (예: 순찰 노드 활성화 신호 송출 등)
+            pass
