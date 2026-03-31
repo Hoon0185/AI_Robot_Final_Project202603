@@ -35,9 +35,10 @@ class VirtualRobot:
         self.avoidance_time = 5  # default
         self.patrol_path = []
         self.products = []
-        self.current_patrol_id = None
+        self.status = STATUS_IDLE
         self.stop_event = threading.Event()
-        self.polling_thread = None
+        self.last_index = 0 # 마지막으로 완료한 웨이포인트 인덱스
+        self.current_pos = (0.0, 0.0)
         self.print_lock = threading.Lock()
         
     def safe_print(self, msg):
@@ -109,21 +110,27 @@ class VirtualRobot:
         except Exception as e:
             self.safe_print(f"   >>> ❌ 전송 중 오류: {e}")
 
-    def start_patrol(self, remote=False):
+    def start_patrol(self, remote=False, resume=False):
         if self.status == STATUS_PATROLLING:
             self.safe_print("⚠️ 이미 순찰 중입니다.")
             return
 
-        self.safe_print("\n" + "="*40)
-        self.safe_print("🚀 [순찰 개시] 로봇이 순찰을 시작합니다.")
-        self.safe_print("="*40)
+        if not resume:
+            self.safe_print("\n" + "="*40)
+            self.safe_print("🚀 [순찰 개시] 로봇이 순찰을 시작합니다.")
+            self.safe_print("="*40)
+            self.last_index = 0 # 처음부터 시작
+        else:
+            self.safe_print("\n" + "="*40)
+            self.safe_print(f"⏯️ [순찰 재개] {self.last_index + 1}번 웨이포인트부터 재개합니다.")
+            self.safe_print("="*40)
         
         # 순찰 개시 전 데이터 및 설정 매번 최신화
         if not self.load_memory():
             self.safe_print("❌ 순찰을 시작할 수 없습니다. (데이터 로딩 실패)")
             return
 
-        if not remote:
+        if not remote and not resume:
             try:
                 res = requests.post(START_PATROL_URL)
                 if res.status_code == 200:
@@ -136,17 +143,20 @@ class VirtualRobot:
 
         self.status = STATUS_PATROLLING
         
-        # 로봇 현재 위치 초기화
-        current_x, current_y = 0.0, 0.0
+        # 로봇 현재 위치 유지
+        current_x, current_y = self.current_pos
         robot_speed = 0.2 # 0.2 m/sec
         
-        # 순찰 시나리오 시뮬레이션
-        for i, plan in enumerate(self.patrol_path):
+        # 순찰 시나리오 시뮬레이션 (마지막 인덱스부터 시작)
+        for i in range(self.last_index, len(self.patrol_path)):
             if self.status != STATUS_PATROLLING:
                 self.safe_print("🛑 순찰이 중단되었습니다.")
+                self.last_index = i # 중단된 위치 저장
+                self.current_pos = (current_x, current_y)
                 if remote: self.print_menu()
                 return
 
+            plan = self.patrol_path[i]
             target_x = plan.get('loc_x', 0.0)
             target_y = plan.get('loc_y', 0.0)
             
@@ -201,12 +211,8 @@ class VirtualRobot:
                 self.safe_print(f"⚠️ [장애물 감지] 이동 경로에 장애물이 있습니다. {self.avoidance_time}초 대기...")
                 time.sleep(self.avoidance_time)
 
-        self.safe_print("\n✅ 모든 구역 순찰 완료.")
-        # 기지(0,0)로 복귀 거리 계산
-        base_dist = (current_x**2 + current_y**2)**0.5
-        self.safe_print(f"🏠 기지(0,0)로 복귀 중... (거리: {base_dist:.2f}m)")
-        time.sleep(min(base_dist/robot_speed, 5))
-        
+        self.last_index = len(self.patrol_path) # 완료 표시
+        self.current_pos = (0.0, 0.0) # 복귀했으므로 0,0
         self.return_to_base(remote=remote)
 
     def return_to_base(self, remote=False):
@@ -264,6 +270,8 @@ class VirtualRobot:
                             threading.Thread(target=self.return_to_base, args=(True,)).start()
                         elif cmd_type == "EMERGENCY_STOP":
                             self.emergency_stop(remote=True)
+                        elif cmd_type == "RESUME_PATROL":
+                            threading.Thread(target=self.start_patrol, args=(True, True)).start()
                         
                         # 명령 완료 처리 알림
                         if cmd_id:

@@ -276,6 +276,34 @@ async def stop_patrol():
     finally:
         conn.close()
 
+@app.post("/patrol/resume")
+async def resume_patrol():
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # 마지막 중단된 순찰 회차 조회
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '중단' ORDER BY patrol_id DESC LIMIT 1")
+        patrol = cursor.fetchone()
+        if not patrol:
+            raise HTTPException(status_code=404, detail="No halted patrol found to resume")
+        
+        patrol_id = patrol['patrol_id']
+        # 상태를 다시 '진행중'으로 복구
+        cursor.execute(
+            "UPDATE patrol_log SET status = '진행중', end_time = NULL WHERE patrol_id = %s",
+            (patrol_id,)
+        )
+        # 로봇 명령 큐에 순찰 재개 추가
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME_PATROL', 'PENDING')")
+        
+        conn.commit()
+        return {"message": "Patrol resumed successfully", "patrol_id": patrol_id}
+    finally:
+        conn.close()
+
+
 @app.get("/robot/command/latest")
 async def get_latest_command():
     conn = get_db_connection()

@@ -397,6 +397,10 @@ function App() {
   };
 
   const handleFinishPatrol = async () => {
+    if (status.robot_status === '휴식중' || status.robot_status === '대기중') {
+      alert("이미 기지입니다.");
+      return;
+    }
     if (!window.confirm("순찰을 마치고 복귀하시겠습니까? (5초 후 완료)")) return;
     try {
       setTimeout(async () => {
@@ -418,6 +422,20 @@ function App() {
         fetchGilbotData();
       }
     } catch (err) { alert("명령 전달 실패"); }
+  };
+
+  const handleResumePatrol = async () => {
+    if (!window.confirm("비상 상황이 해제되었습니까? 순찰을 재개합니다.")) return;
+    try {
+      const res = await fetch('/api/patrol/resume', { method: 'POST' });
+      if (res.ok) {
+        alert("순찰이 재개되었습니다.");
+        fetchGilbotData();
+      } else {
+        const err = await res.json();
+        alert("재개 실패: " + err.detail);
+      }
+    } catch (err) { alert("연결 오류"); }
   };
 
   const handleStorePlan = async (e) => {
@@ -480,9 +498,15 @@ function App() {
               <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
                 style={{ padding: '12px', fontSize: '13px', justifyContent: 'center' }}>🏠 기지로 복귀</button>
-              <button className="apple-button slim"
-                onClick={handleEmergencyStop}
-                style={{ padding: '12px', fontSize: '13px', background: '#FF453A', color: 'white', justifyContent: 'center' }}>🛑 비상 정지</button>
+              {status.robot_status === '비상정지' ? (
+                <button className="apple-button slim"
+                  onClick={handleResumePatrol}
+                  style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-green)', color: 'white', justifyContent: 'center' }}>🔓 비상 해제 (재개)</button>
+              ) : (
+                <button className="apple-button slim"
+                  onClick={handleEmergencyStop}
+                  style={{ padding: '12px', fontSize: '13px', background: '#FF453A', color: 'white', justifyContent: 'center' }}>🛑 비상 정지</button>
+              )}
             </div>
           </div>
         </div>
