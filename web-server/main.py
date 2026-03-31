@@ -242,23 +242,25 @@ async def finish_patrol():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
+        # '진행중' 또는 '중단' 상태인 최신 순찰을 찾음
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status IN ('진행중', '중단') ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
-        if not patrol:
-            raise HTTPException(status_code=404, detail="No active patrol found to finish")
         
-        patrol_id = patrol['patrol_id']
-        cursor.execute(
-            "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
-            (patrol_id,)
-        )
-        # 로봇 명령 큐에 복귀 추가
+        if patrol:
+            patrol_id = patrol['patrol_id']
+            cursor.execute(
+                "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
+                (patrol_id,)
+            )
+        
+        # 로봇 명령 큐에 복귀 추가 (비상 정지 상태였을 경우에도 해제 효과를 가짐)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
         
         conn.commit()
-        return {"message": "Patrol finished successfully", "patrol_id": patrol_id}
+        return {"message": "Return to base command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
     finally:
         conn.close()
+
 
 @app.post("/patrol/stop")
 async def stop_patrol():
@@ -296,22 +298,23 @@ async def resume_patrol():
         # 마지막 중단된 순찰 회차 조회
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '중단' ORDER BY patrol_id DESC LIMIT 1")
         patrol = cursor.fetchone()
-        if not patrol:
-            raise HTTPException(status_code=404, detail="No halted patrol found to resume")
         
-        patrol_id = patrol['patrol_id']
-        # 상태를 다시 '진행중'으로 복구
-        cursor.execute(
-            "UPDATE patrol_log SET status = '진행중', end_time = NULL WHERE patrol_id = %s",
-            (patrol_id,)
-        )
-        # 로봇 명령 큐에 순찰 재개 추가
+        if patrol:
+            patrol_id = patrol['patrol_id']
+            # 상태를 다시 '진행중'으로 복구
+            cursor.execute(
+                "UPDATE patrol_log SET status = '진행중', end_time = NULL WHERE patrol_id = %s",
+                (patrol_id,)
+            )
+        
+        # 기지에 정지상태이든 순찰중이었든 상관없이 비상정지 신호 해제를 위해 명령 전송
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME_PATROL', 'PENDING')")
         
         conn.commit()
-        return {"message": "Patrol resumed successfully", "patrol_id": patrol_id}
+        return {"message": "Patrol resume/Emergency release command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
     finally:
         conn.close()
+
 
 
 @app.get("/robot/command/latest")

@@ -52,12 +52,13 @@ class VirtualRobot:
             print("="*50)
             print("1. [순찰 시작] (START_PATROL)")
             print("2. [비상 정지] (EMERGENCY_STOP)")
-            print("3. [기지 복귀] (RETURN_TO_BASE)")
-            print("4. [메모리 로드] (설정 및 경로 업데이트)")
-            print("5. [비상 해제/재개] (RESUME_PATROL)")
+            print("3. [비상 해제/재개] (RESUME_PATROL)")
+            print("4. [기지 복귀] (RETURN_TO_BASE)")
+            print("5. [메모리 로드] (load_memory)")
             print("q. 종료")
             print("-" * 50)
             print("명령을 선택하세요: ", end="", flush=True)
+
 
     def interruptible_sleep(self, seconds):
         """status가 바뀌면 즉시 중단되는 가변 수면 함수"""
@@ -133,14 +134,22 @@ class VirtualRobot:
             self.safe_print("="*40)
             self.last_index = 0 # 처음부터 시작
         else:
-            self.safe_print("\n" + "="*40)
-            self.safe_print(f"⏯️ [순찰 재개] {self.last_index + 1}번 웨이포인트부터 재개합니다.")
-            self.safe_print("="*40)
-        
-        # 순찰 개시 전 데이터 및 설정 매번 최신화
-        if not self.load_memory():
-            self.safe_print("❌ 순찰을 시작할 수 없습니다. (데이터 로딩 실패)")
-            return
+            # 비상 해제/재개 시나리오
+            if self.status != STATUS_EMERGENCY_STOP:
+                return # 이미 작동 중이거나 비상 정지 상태 아님
+            
+            # 만약 진행 중이었던 순찰 정보(last_index)가 유효한지 확인
+            # (last_index가 patrol_path 길이보다 작으면 갈 곳이 남은 것)
+            if self.last_index < len(self.patrol_path):
+                self.safe_print("\n" + "="*40)
+                self.safe_print(f"⏯️ [순찰 재개] {self.last_index + 1}번 웨이포인트부터 재개합니다.")
+                self.safe_print("="*40)
+            else:
+                self.safe_print("\n🔓 [비상 해제] 기지 정지 상태에서 비상을 해제합니다.")
+                self.status = STATUS_IDLE
+                if remote: self.print_menu()
+                return
+
 
         if not remote and not resume:
             try:
@@ -332,12 +341,13 @@ class VirtualRobot:
             elif choice == '2':
                 self.emergency_stop()
             elif choice == '3':
-                self.return_to_base()
-            elif choice == '4':
-                self.load_memory()
-            elif choice == '5':
                 threading.Thread(target=self.start_patrol, args=(False, True)).start()
+            elif choice == '4':
+                self.return_to_base()
+            elif choice == '5':
+                self.load_memory()
             elif choice == 'q':
+
                 self.safe_print("시뮬레이터를 종료합니다.")
                 self.stop_event.set()
                 break
