@@ -323,13 +323,13 @@ class VirtualRobot:
                     if cmd_type and cmd_type != "IDLE":
                         self.safe_print(f"\n📡 [원격 신호 수신] {cmd_type} (ID: {cmd_id})")
                         
-                        if cmd_type == "START_PATROL":
+                        if cmd_type == "START":
                             threading.Thread(target=self.start_patrol, args=(True,)).start()
-                        elif cmd_type == "RETURN_TO_BASE":
+                        elif cmd_type == "RETURN":
                             threading.Thread(target=self.return_to_base, args=(True,)).start()
-                        elif cmd_type == "EMERGENCY_STOP":
+                        elif cmd_type == "EMSTOP":
                             self.emergency_stop(remote=True)
-                        elif cmd_type == "RESUME_PATROL":
+                        elif cmd_type == "RESUME":
                             threading.Thread(target=self.start_patrol, args=(True, True)).start()
                         
                         # 명령 완료 처리 알림
