@@ -39,7 +39,7 @@ class DetectProductNode(Node):
         # 3. 결과 영상 발행 (Control Server나 GUI Client 확인용)
         self.publisher = self.create_publisher(CompressedImage, '/detected_product_image', qos_profile)
 
-        self.get_logger().info('터틀봇 기반 물품 인식 노드가 가동되었습니다.')
+        self.get_logger().info('물품 인식 노드 가동.')
 
     def image_callback(self, msg):
         # ROS Image 메시지를 OpenCV 포맷으로 변환
@@ -53,6 +53,7 @@ class DetectProductNode(Node):
             x1, y1, x2, y2 = map(int, box.xyxy[0])
 
             # ROI 설정 및 QR 인식
+            # 과자를 인식한 경우 과자 인식된 범위 기준 세로의 절반만큼 영역에서 바코드를 찾습니다.
             roi = frame[y1:y2 + int((y2 - y1) * 0.5), x1:x2] # ROI 수식 유지
             if roi.size == 0: continue
 
@@ -65,6 +66,8 @@ class DetectProductNode(Node):
             class_name = self.model.names[int(box.cls[0])]
 
             # DB 조회
+            # 바코드를 읽고 물품과 비교합니다.
+            # product_id=인식을 통해 추려낸 물품 고유번호, detected_codes=바코드로 찍힌 숫자
             self.cursor.execute("SELECT * FROM products WHERE product_id=?", (cls_id,))
             rows = self.cursor.fetchall()
 
