@@ -12,9 +12,12 @@ class DetectProductNode(Node):
         super().__init__('detect_product_node')
 
         # 1. 모델 및 DB 초기화 (기존 main의 설정 부분)
-        # 경로 주의: 절대 경로를 사용하거나 패키지 내 리소스 경로를 사용하세요.
-        self.model = YOLO("best.pt")
-        self.conn = sqlite3.connect("product.db", check_same_thread=False)
+        # 경로 주의: 임시 더미데이터(product.db)를 사용했기에 DB에 맞게 경로 바꿔야합니다.
+        # products.pt = 학습된 파일, 들고가야합니다
+        # product.db = 더미데이터 테스트 파일, 버리고 DB와 연결해야합니다
+        # setup도 수정해야합니다
+        self.model = YOLO("/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt")
+        self.conn = sqlite3.connect("/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/product.db", check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.detector = cv2.QRCodeDetector()
         self.bridge = CvBridge()
@@ -69,7 +72,7 @@ class DetectProductNode(Node):
         # 시각화 및 결과 송신
         annotated_frame = results[0].plot()
 
-        # 화면 표시 (서버에서 GUI를 띄울 때만 사용)
+        # 화면 표시 (GUI 띄우기)
         cv2.imshow("YOLO Detection", annotated_frame)
         cv2.waitKey(1)
 
