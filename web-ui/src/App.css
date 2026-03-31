@@ -666,6 +666,15 @@ select:focus {
   transform: translateY(0);
 }
 
+.apple-button:disabled {
+  background: #E5E5E7 !important;
+  color: #86868B !important;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
 .apple-button.secondary {
   background: rgba(0, 0, 0, 0.03);
   color: var(--text-primary);

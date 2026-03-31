@@ -373,7 +373,12 @@ function App() {
   };
 
   const handleStartPatrol = async () => {
+    if (status.robot_status === '비상정지') {
+      alert("⚠️ 비상정지 상태입니다. 비상해제를 먼저 눌러주세요.");
+      return;
+    }
     if (!window.confirm("매대 순찰을 시작하시겠습니까?")) return;
+
     try {
       setLoading(true);
       const res = await fetch('/api/patrol/start', { method: 'POST' });
@@ -397,7 +402,12 @@ function App() {
   };
 
   const handleFinishPatrol = async () => {
+    if (status.robot_status === '비상정지') {
+      alert("⚠️ 비상정지 상태입니다. 비상해제를 먼저 눌러주세요.");
+      return;
+    }
     if (status.robot_status === '휴식중' || status.robot_status === '대기중') {
+
       alert("이미 기지입니다.");
       return;
     }
@@ -510,10 +520,13 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button className="apple-button primary slim"
                 onClick={handleStartPatrol}
-                style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-blue)', color: 'white', justifyContent: 'center' }}>🚀 순찰 개시</button>
+                disabled={status.robot_status === '비상정지'}
+                style={{ padding: '12px', fontSize: '13px', background: status.robot_status === '비상정지' ? '#E5E5E7' : 'var(--accent-blue)', color: status.robot_status === '비상정지' ? '#86868B' : 'white', justifyContent: 'center' }}>🚀 순찰 개시</button>
               <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
-                style={{ padding: '12px', fontSize: '13px', justifyContent: 'center' }}>🏠 기지로 복귀</button>
+                disabled={status.robot_status === '비상정지'}
+                style={{ padding: '12px', fontSize: '13px', background: status.robot_status === '비상정지' ? '#E5E5E7' : 'var(--accent-green)', color: status.robot_status === '비상정지' ? '#86868B' : 'white', justifyContent: 'center' }}>🏠 기지로 복귀</button>
+
               {status.robot_status === '비상정지' ? (
                 <button className="apple-button slim"
                   onClick={handleResumePatrol}

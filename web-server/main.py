@@ -125,16 +125,28 @@ async def get_status():
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-            # 가장 최근 순착 상태 확인
+            # 1. 가장 최근 명령 확인
+            cursor.execute("""
+                SELECT command_type FROM robot_command 
+                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
+                ORDER BY created_at DESC, command_id DESC LIMIT 1
+            """)
+            last_cmd_row = cursor.fetchone()
+            
+            # 2. 가장 최근 순찰 상태 확인
             cursor.execute("SELECT status FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
-            if last_patrol:
+            
+            # 비상정지 우선순위 (명령이 STOP이거나 로그가 중단인 경우)
+            if (last_patrol and last_patrol['status'] == '중단') or (last_cmd_row and last_cmd_row['command_type'] == 'EMERGENCY_STOP'):
+                robot_mode = "비상정지"
+            elif last_patrol:
                 if last_patrol['status'] == '진행중':
                     robot_mode = "순찰중"
-                elif last_patrol['status'] == '중단':
-                    robot_mode = "비상정지"
                 else:
                     robot_mode = "휴식중"
+            else:
+                robot_mode = "휴식중"
             
             # 가장 최근 위치 정보 확인
             cursor.execute("SELECT odom_x, odom_y FROM detection_log ORDER BY log_id DESC LIMIT 1")
