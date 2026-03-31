@@ -152,62 +152,45 @@ async def get_status():
         try:
             cursor = conn.cursor(dictionary=True)
             
-            # 1. 비상정지/해제 관련 최신 명령 확인
+            # 1. 최신 명령 확인 (전체 타입 중 가장 최근 것)
             cursor.execute("""
-                SELECT command_id, command_type, created_at FROM robot_command 
-                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL')
+                SELECT command_type, created_at FROM robot_command 
                 ORDER BY created_at DESC, command_id DESC LIMIT 1
             """)
-            last_emergency = cursor.fetchone()
+            latest_cmd = cursor.fetchone()
             
-            # 2. 일반 동작 관련 최신 명령 확인
-            cursor.execute("""
-                SELECT command_id, command_type, created_at FROM robot_command 
-                WHERE command_type IN ('START_PATROL', 'RETURN_TO_BASE')
-                ORDER BY created_at DESC, command_id DESC LIMIT 1
-            """)
-            last_action = cursor.fetchone()
-            
-            # 3. 최신 순찰 로그 및 마지막 기록된 좌표 확인
+            # 2. 최신 순찰 로그 확인
             cursor.execute("SELECT status, patrol_id, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
-            # --- 위치 및 상태 판단 로직 ---
-            # 1. 비상정지 여부 판단
-            is_emergency = False
-            if last_emergency and last_emergency['command_type'] == 'EMERGENCY_STOP':
-                # 비상정지 명령이 가장 최신이거나, 다른 액션보다 나중인 경우
-                if not last_action:
-                    is_emergency = True
-                else:
-                    # 시간과 ID(PK)를 모두 비교하여 최신성을 더 엄격히 검증
-                    if last_emergency['created_at'] > last_action['created_at']:
-                        is_emergency = True
-                    elif last_emergency['created_at'] == last_action['created_at']:
-                        if last_emergency['command_id'] > last_action['command_id']:
-                            is_emergency = True
+            # --- 상태 및 위치 판단 로직 (전면 통합) ---
             
+            # 1. 비상 여부 판단 (명령 테이블 기준)
+            # 가장 최신 명령이 'EMERGENCY_STOP'이거나, 순찰 로그가 명시적으로 '중단'이면 비상정지
+            is_emergency = False
+            if latest_cmd and latest_cmd['command_type'] == 'EMERGENCY_STOP':
+                is_emergency = True
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
 
-            # 2. 위치 판단 로직
-            # 순찰중이거나, 순찰 중 비상정지된 경우는 마지막 기록된 '실시간 좌표' 사용
-            if last_patrol and (last_patrol['status'] == '진행중' or (is_emergency and last_patrol['status'] == '중단')):
-                last_odom = {
-                    "odom_x": round(last_patrol.get('last_odom_x', 0.0), 2),
-                    "odom_y": round(last_patrol.get('last_odom_y', 0.0), 2)
-                }
-            else:
-                # 그 외(휴식중, 완료 등)는 무조건 기지(0,0)
-                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
-
-            # 3. 최종 상태 명칭 결정
+            # 2. 최종 상태 명칭(robot_mode) 결정
             if is_emergency:
                 robot_mode = "비상정지"
             elif last_patrol and last_patrol['status'] == '진행중':
                 robot_mode = "순찰중"
             else:
                 robot_mode = "휴식중"
+
+            # 3. 위치(last_odom) 결정
+            # 기지 휴식중이 아닌 경우(순찰중 버튼을 눌렀거나, 그 과정에서 비상정지된 경우)만 마지막 좌표 사용
+            if robot_mode in ["순찰중", "비상정지"] and last_patrol and last_patrol['status'] != '완료':
+                last_odom = {
+                    "odom_x": round(last_patrol.get('last_odom_x', 0.0), 2),
+                    "odom_y": round(last_patrol.get('last_odom_y', 0.0), 2)
+                }
+            else:
+                # 그 외(기지 휴식중, 혹은 기지에서 발생한 비상정지)는 무조건 기지(0,0)
+                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
 
         except Exception as e:
             print(f"Error fetching robot status: {e}")
