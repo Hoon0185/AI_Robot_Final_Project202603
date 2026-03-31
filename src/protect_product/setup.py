@@ -12,8 +12,9 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/models', ['models/products.pt', 'models/product.db']), #model(trainmodel, testdb)
+        # ('share/' + package_name + '/models', ['models/products.pt', 'models/product.db']), #model(trainmodel, testdb)
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))), #launch
+        (os.path.join('share', package_name, 'models'), glob('models/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
