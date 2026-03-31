@@ -187,7 +187,8 @@ async def get_status():
         "database": db_status,
         "odom_x": last_odom['odom_x'],
         "odom_y": last_odom['odom_y'],
-        "db_host": os.getenv("DB_HOST")
+        "db_host": os.getenv("DB_HOST", "localhost"),
+        "server_time": datetime.now().strftime("%H:%M:%S") # 프레임 신선도 확인용
     }
 
 @app.get("/patrol/list")
