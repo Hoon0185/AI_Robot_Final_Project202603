@@ -253,11 +253,6 @@ class VirtualRobot:
         self.return_to_base(remote=remote)
 
     def return_to_base(self, remote=False):
-        if self.status == STATUS_EMERGENCY_STOP:
-            self.safe_print("⚠️ [거부] 비상 정지 상태입니다. 비상 해제를 먼저 수행하세요.")
-            if remote: self.print_menu()
-            return
-
         self.safe_print("\n🏠 [기지 복귀] 기지로 복귀합니다...")
 
         self.status = STATUS_RETURNING

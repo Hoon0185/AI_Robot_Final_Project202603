@@ -402,10 +402,6 @@ function App() {
   };
 
   const handleFinishPatrol = async () => {
-    if (status.robot_status === '비상정지') {
-      alert("⚠️ 비상정지 상태입니다. 비상해제를 먼저 눌러주세요.");
-      return;
-    }
     if (status.robot_status === '휴식중' || status.robot_status === '대기중') {
 
       alert("이미 기지입니다.");
@@ -524,8 +520,7 @@ function App() {
                 style={{ padding: '12px', fontSize: '13px', background: status.robot_status === '비상정지' ? '#E5E5E7' : 'var(--accent-blue)', color: status.robot_status === '비상정지' ? '#86868B' : 'white', justifyContent: 'center' }}>🚀 순찰 개시</button>
               <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
-                disabled={status.robot_status === '비상정지'}
-                style={{ padding: '12px', fontSize: '13px', background: status.robot_status === '비상정지' ? '#E5E5E7' : 'var(--accent-green)', color: status.robot_status === '비상정지' ? '#86868B' : 'white', justifyContent: 'center' }}>🏠 기지로 복귀</button>
+                style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-green)', color: 'white', justifyContent: 'center' }}>🏠 기지로 복귀</button>
 
               {status.robot_status === '비상정지' ? (
                 <button className="apple-button slim"
