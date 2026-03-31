@@ -3,13 +3,17 @@ from rclpy.node import Node
 from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import threading
-import datetime # 저장 시간대 기록 - DB에서 필요 없으면 제거
+import requests # DB 통신을 위한 HTTP 요청 라이브러리
 
 class ObstacleInterface:
   def __init__(self, node_name='ui_obstacle_interface'):
     if not rclpy.ok():
       rclpy.init()
     self.node = Node(node_name)
+
+    # ---- DB 연결 정보 설정 ----
+    self.base_url = "http://16.184.56.119/api"
+    self.config_id = 26
 
     # ---- 서비스 클라이언트 설정 ----
     self.param_client = self.node.create_client(
@@ -19,7 +23,6 @@ class ObstacleInterface:
 
     # ---- 기본값 및 상태 관리 변수 ----
     self.current_wait_time = 10 #  기본 대기 시간(초)
-    self.is_db_connected = False # DB 연결 상태
     self.pending_data = None # DB 저장에 실패한 임시데이터 저장 변수
 
     # ---- DB 저장 실패 재시도 타이머 설정 (10초) ----
@@ -39,20 +42,20 @@ class ObstacleInterface:
     """
     try:
       # ---- DB 연결 시도 ----
-      # TODO: 실제 DB 연결 시 성공 여부에 따라 True/False 설정
-      self.is_db_connected = False # 임시로 True/False 변형해가며 실행
+      response = requests.get(f"{self.base_url}/patrol/config")
 
-      if self.is_db_connected:
-        db_value = 5 # TODO: DB에서 실제 대기 시간 값을 가져와서 설정
-        self.current_wait_time = db_value
-        self.set_wait_time(db_value) # 노드에 초기값 전송
-        self.node.get_logger().info(f"DB 연결 성공: 현재 대기시간 {db_value}초")
+      if response.status_code == 200:
+        config = response.json()
+        db_value = config.get('avoidance_wait_time', 10) # DB에서 대기시간 추출, 없으면 기본값 10초 사용
+
+        self.current_wait_time = int(db_value)
+        self.set_wait_time(self.current_wait_time) # 로봇 노드에 적용
+        self.node.get_logger().info(f"[API] 초기값 동기화 성공: {self.current_wait_time}초")
       else:
-        self.node.get_logger().warn("DB 연결 실패: 기본 대기시간 10초를 사용합니다.")
+        self.node.get_logger().warn("서버 응답 에러: 기본 대기시간 10초를 사용합니다.")
 
     except Exception as e:
-      self.node.get_logger().error(f"DB 초기 연결 예외 발생: {e}")
-      self.is_db_connected = False
+      self.node.get_logger().error(f"[API] 서버 연결 실패: {e}")
 
 
   def update_db_and_sync(self, seconds:int):
@@ -60,30 +63,38 @@ class ObstacleInterface:
     UI 슬라이더에서 대기 시간 변경 -> DB 업데이트 및 노드 전송을 동시에 처리하는 함수
     """
     self.current_wait_time = int(seconds)
-    save_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 저장 시간대 기록
 
     # ---- 로봇 노드 파라미터 전송 ----
     ros_success, _ = self.set_wait_time(self.current_wait_time)
 
-    # ---- DB 저장 시도 ----
-    db_success, db_msg = self.save_to_db(self.current_wait_time, save_time)
+    db_success = False
+    try:
+      # 서버가 요구하는 JSON 규격
+      payload = {
+        "config_id": self.config_id,
+        "avoidance_wait_time": self.current_wait_time
+      }
+      # 서버 주소 규격에 맞게 POST 요청 전송
+      response = requests.post(f"{self.base_url}/patrol/config/update", json=payload)
 
+      if response.status_code == 200:
+        db_success = True
+    except Exception as e:
+      self.node.get_logger().error(f"[API] 서버 전송 실패: {e}")
+
+
+    # 결과 분기 처리
     if ros_success and db_success:
-      self.node.get_logger().info(f"성공: {seconds}초 설정 / DB 저장 완료 ({save_time})")
-      return True, f"성공: {seconds}초 설정 / DB 저장 완료 ({save_time})"
-
-    elif not ros_success and db_success:
-      self.node.get_logger().warn(f"경고: 대기 시간 {seconds}초 설정 실패 / DB 저장 성공")
-      return False, f"경고: 대기 시간 {seconds}초 설정 실패 / DB 저장 성공"
+      self.node.get_logger().info(f"성공: {seconds}초 설정 및 서버 저장 완료")
+      return True, f"성공: {seconds}초 설정 및 서버 저장 완료"
 
     elif ros_success and not db_success:
-      self.node.get_logger().warn(f"경고: 대기 시간 {seconds}초 설정 완료 / DB 저장 실패: 재전송 예정")
-      self.pending_data = {"value": seconds, "timestamp": save_time} # 대기 시간 임시 저장
-      return False, f"경고: 대기 시간 {seconds}초 설정 완료 / DB 저장 실패: 재전송 예정"
+      self.node.get_logger().warn(f"경고: {seconds}초 설정 완료 / 서버 저장 실패: 대기열 등록")
+      self.pending_data = {"value": seconds}
+      return False, f"경고: {seconds}초 설정 완료 / 서버 저장 실패: 재전송 예정"
 
     else:
-      self.node.get_logger().error("시스템 마비: 로봇 및 DB 통신 실패. 전체 시스템 연결을 확인해주세요.")
-      return False, "전체 시스템 연결을 확인해주세요."
+      return False, "설정 실패: 전체 시스템 연결을 확인해주세요."
 
 
   def set_wait_time(self, seconds: int):
@@ -100,33 +111,21 @@ class ObstacleInterface:
     return True, f"대기 시간이 {seconds}s로 설정되었습니다."
 
 
-  def save_to_db(self, seconds:int, timestamp:str):
-    """
-    장애물 대기 시간과 저장 시간대를 DB에 저장하는 함수
-    """
-    if self.is_db_connected:
-      # TODO : 실제 DB 저장 로직 구현 필요
-      # DB 저장 코드 작성 예시
-      # table  = self.server.send_log(
-      #   log_type="obstacle_wait_time",
-      #   value=seconds,
-      #   timestamp=timestamp
-      # )
-      return True, "DB에 저장되었습니다."
-    else:
-      return False, "DB 연결이 되어 있지 않습니다. 저장에 실패했습니다."
-
   def check_pending_data(self):
     """
     DB 연결이 복구되었는지 확인하고, DB 저장에 실패한 장애물 대기 시간 데이터를 재전송하는 함수
     """
-    if self.pending_data and self.is_db_connected: # DB 연결 복구 및 저장 대기 데이터 존재 여부 확인
+    if self.pending_data:
       val = self.pending_data["value"]
-      ts = self.pending_data["timestamp"]
-
-      # DB 저장 재시도
-      success, _ = self.save_to_db(val, ts)
-      if success:
-        self.node.get_logger().info(f"재시도 성공: 누락되었던 대기시간 {val}초가 DB에 저장되었습니다.")
-        self.pending_data = None # 임시 데이터 초기화
+      try:
+        payload = {
+          "config_id": self.config_id,
+          "avoidance_wait_time": val
+        }
+        response = requests.post(f"{self.base_url}/patrol/config/update", json=payload)
+        if response.status_code == 200:
+          self.node.get_logger().info(f"재시도 성공: 누락되었던 {val}초가 서버에 저장되었습니다.")
+          self.pending_data = None
+      except:
+        pass
 
