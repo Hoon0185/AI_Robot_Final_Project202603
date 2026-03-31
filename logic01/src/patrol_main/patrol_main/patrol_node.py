@@ -36,12 +36,12 @@ class PatrolNode(Node):
         self.last_detection = None
         self._goal_handle = None
 
-        # 4. 순찰 및 제어 명령 구독
-        self.cmd_sub = self.create_subscription(String, 'patrol_cmd', self.cmd_callback, 10)
+        # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
+        self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
         self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
 
         # 5. 순찰 상태 발행 (UI용)
-        self.patrol_status_pub = self.create_publisher(String, 'patrol_status', 10)
+        self.patrol_status_pub = self.create_publisher(String, '/patrol_status', 10)
         self.start_time = None
         self.end_time = None
 
@@ -78,6 +78,9 @@ class PatrolNode(Node):
     def emergency_callback(self, msg):
         if msg.data:
             self.get_logger().error('!!! EMERGENCY STOP RECEIVED !!!')
+            # 서버에 순찰 종료/중단 세션 등록
+            self.db.finish_patrol_session()
+            
             self.is_patrolling = False
             self.cancel_nav()
 
@@ -95,6 +98,9 @@ class PatrolNode(Node):
             self.send_next_goal()
         elif cmd == 'RETURN_HOME':
             self.get_logger().info('Returning to Base...')
+            # 서버에 순찰 종료 세션 등록 (진행 중이었다면)
+            self.db.finish_patrol_session()
+            
             self.is_patrolling = False
             self.cancel_nav()
             self.go_to_origin()

@@ -17,7 +17,8 @@ class PatrolScheduler(Node):
         
         self.update_config()
         
-        self.publisher_ = self.create_publisher(String, 'patrol_cmd', 10)
+        # 모든 노드가 들을 수 있도록 절대 경로(/)로 명령 발행
+        self.publisher_ = self.create_publisher(String, '/patrol_cmd', 10)
         
         # 2. 서비스 서버 추가 (UI 수동 트리거용)
         self.srv = self.create_service(Trigger, 'trigger_manual_patrol', self.manual_trigger_callback)
