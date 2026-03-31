@@ -30,7 +30,8 @@ setup(
         'console_scripts': [
             'patrol_scheduler = patrol_main.patrol_scheduler:main',
             'patrol_node = patrol_main.patrol_node:main',
-            'patrol_visualizer = patrol_main.patrol_visualizer:main'
+            'patrol_visualizer = patrol_main.patrol_visualizer:main',
+            'obstacle_node = patrol_main.obstacle_node:main'
         ],
     },
 )
