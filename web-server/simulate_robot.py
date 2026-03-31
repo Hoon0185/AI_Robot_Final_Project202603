@@ -8,9 +8,8 @@ from datetime import datetime
 from typing import List, Optional
 
 # --- Configuration ---
-# 기본 서버 주소 (웹 연동을 위해 Lightsail IP 사용)
-# 로컬에서 테스트할 경우 python simulate_robot.py http://localhost:8000 등의 형태로 실행 가능
-DEFAULT_SERVER = "http://16.184.56.119/api"
+# 로컬 개발 환경 보호: 기본 서버 주소를 localhost로 변경 (배포 시 CLI 아규먼트로 Lightsail IP 제공 가능)
+DEFAULT_SERVER = "http://localhost:8000/api"
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SERVER
 
 DETECT_URL = f"{BASE_URL}/detections/add"
@@ -357,17 +356,22 @@ class VirtualRobot:
         self.safe_print("="*50)
         
         while True:
-            self.print_menu()
-            if not sys.stdin.isatty():
-                # tty가 아니면 (nohup/배경 실행) 폴링만 수행하며 대기
-                self.stop_event.wait(timeout=5)
-                continue
-
             try:
+                self.print_menu()
+                # Check for tty or if stdin is closed/broken
+                if not sys.stdin or not sys.stdin.isatty():
+                    self.stop_event.wait(timeout=5)
+                    continue
+
                 choice = sys.stdin.readline().strip().lower()
-                if not choice: # 엔터만 친 경우 메뉴 재출력
+                if not choice:
                     time.sleep(1)
                     continue
+            except (OSError, EOFError) as e:
+                # Descriptor was likely closed - fallback to polling mode only
+                self.safe_print(f"⚠️  Input-Terminal disconnected ({e}). Falling back to Remote-only mode.")
+                self.stop_event.wait(timeout=5)
+                continue
             except Exception as e:
                 time.sleep(5)
                 continue
