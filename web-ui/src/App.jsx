@@ -1114,8 +1114,6 @@ function App() {
                     <table className="fixed-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '60px', textAlign: 'center' }}>ID</th>
-                          <th style={{ width: '100px', textAlign: 'center' }}>웨이포인트 코드</th>
                           <th style={{ textAlign: 'center' }}>웨이포인트 별칭</th>
                           <th style={{ textAlign: 'center' }}>등록 상품 이름</th>
                           <th style={{ width: '90px', textAlign: 'center' }}>X 좌표</th>
@@ -1128,15 +1126,6 @@ function App() {
                           const linkedProducts = (patrolPlan || []).filter(plan => plan.waypoint_id === wp.waypoint_id);
                           return (
                             <tr key={wp.waypoint_id}>
-                              <td style={{ textAlign: 'center' }}>#{wp.waypoint_id}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <input type="number" value={wp.waypoint_no} 
-                                  className="slim-input"
-                                  onChange={(e) => {
-                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, waypoint_no: parseInt(e.target.value)} : w);
-                                    setWaypoints(newWps);
-                                  }} />
-                              </td>
                               <td style={{ textAlign: 'center' }}>
                                 <input type="text" value={wp.waypoint_name} 
                                   className="slim-input wide"
