@@ -118,20 +118,6 @@ async def root():
 
 @app.get("/status")
 async def get_status():
-    # 마이트레이션 로직 (긴 명령어 수용 가능하도록 DB 스키마 수정)
-    conn = get_db_connection()
-    migration_status = "Skipped"
-    if conn:
-        try:
-            cursor = conn.cursor()
-            cursor.execute("ALTER TABLE robot_command MODIFY COLUMN command_type VARCHAR(50)")
-            conn.commit()
-            migration_status = "Migrated"
-        except Exception as e:
-            migration_status = f"Error: {e}"
-        finally:
-            conn.close()
-
     conn = get_db_connection()
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
     robot_mode = "휴식중"
