@@ -257,23 +257,30 @@ class VirtualRobot:
         if self.status == STATUS_EMERGENCY_STOP:
             self.safe_print("\n🔓 [비상 해제] 비상 정지 상태에서 기지 복귀 명령을 수신하여 비상을 해제합니다.")
             self.status = STATUS_RETURNING
-        elif self.status == STATUS_IDLE:
-            self.safe_print("\n🏠 [이미 기지] 로봇이 이미 기지에 있습니다.")
-            self.status = STATUS_IDLE
-            return
-
-        self.safe_print("\n🏠 [기지 복귀] 기지로 복귀합니다...")
-        self.status = STATUS_RETURNING
-
-        # 복귀 이동 중 비상정지 가능하도록 interruptible_sleep 적용
-        if not self.interruptible_sleep(5):
-            if self.status == STATUS_EMERGENCY_STOP:
-                self.safe_print("🛑 복귀 중 비상 정지되었습니다.")
-                if remote: self.print_menu()
-                return
         
+        # 기지(0,0)까지의 거리 및 시간 계산
+        current_x, current_y = self.current_pos
+        distance = (current_x**2 + current_y**2)**0.5
+        robot_speed = 0.2
+        travel_time = distance / robot_speed
+
+        if distance < 0.05:
+            self.safe_print("\n🏠 [이미 기지] 로봇이 이미 기지(0,0)에 근접해 있습니다.")
+            self.status = STATUS_IDLE
+            # 기지에서 이미 정지된 상태였다면 즉시 완료 처리
+        else:
+            self.safe_print(f"\n🏠 [기지 복귀] 기지로 복귀 시작합니다... (거리: {distance:.2f}m, 예상 시간: {travel_time:.1f}초)")
+            self.status = STATUS_RETURNING
+            if travel_time > 0:
+                if not self.interruptible_sleep(travel_time):
+                    if self.status == STATUS_EMERGENCY_STOP:
+                        self.safe_print("🛑 복귀 중 비상 정지되었습니다.")
+                        if remote: self.print_menu()
+                        return
+
         self.safe_print("🏁 [복귀 완료] 로봇이 기지에 도착했습니다.")
         self.status = STATUS_IDLE
+        self.current_pos = (0.0, 0.0) # 최종 위치 보정
         
         # 복귀 완료 신호 전송
         if not remote:
