@@ -555,9 +555,56 @@ function App() {
               </div>
             </div>
 
+            <section className="apple-card">
+              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
+              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="fixed-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '85px', textAlign: 'center' }}>시각</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>정상 상품 / 바코드</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>인식 상품 / 바코드</th>
+                      <th style={{ width: '70px', textAlign: 'center' }}>결과</th>
+                      <th style={{ width: '90px', textAlign: 'center' }}>신뢰도</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detections.length === 0 ? (
+                      <tr><td colSpan="5" className="empty-shelf">수집된 인식 데이터가 없습니다.</td></tr>
+                    ) : (
+                      detections.map(d => (
+                        <tr key={d.log_id}>
+                          <td style={{ color: '#8E8E93', textAlign: 'center', fontSize: '12px' }}>
+                            {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_target}</div>
+                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.tag_barcode}</div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_detected || "미지정"}</div>
+                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.detected_barcode || "-"}</div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`} style={{ padding: '2px 8px', fontSize: '11px' }}>{d.result}</span></td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
+                                <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
+                              </div>
+                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{((d.confidence || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <section className="apple-card shelf-visualizer-section">
               <div className="v-header">
-                <h2>🏬 실시간 매대 진열 현황</h2>
+                <h2>🏬 매대 진열 현황판</h2>
                 <div className="shelf-legend">
                   <span className="legend-item"><span className="legend-dot normal"></span> 정상</span>
                   <span className="legend-item"><span className="legend-dot missing"></span> 결품</span>
@@ -598,53 +645,6 @@ function App() {
                             ) : (
                               <span style={{ color: '#8E8E93' }}>-</span>
                             )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className="apple-card">
-              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
-              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <table className="fixed-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '85px', textAlign: 'center' }}>시각</th>
-                      <th style={{ width: '150px', textAlign: 'center' }}>정상 상품 / 바코드</th>
-                      <th style={{ width: '150px', textAlign: 'center' }}>인식 상품 / 바코드</th>
-                      <th style={{ width: '70px', textAlign: 'center' }}>결과</th>
-                      <th style={{ width: '90px', textAlign: 'center' }}>신뢰도</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detections.length === 0 ? (
-                      <tr><td colSpan="5" className="empty-shelf">수집된 인식 데이터가 없습니다.</td></tr>
-                    ) : (
-                      detections.map(d => (
-                        <tr key={d.log_id}>
-                          <td style={{ color: '#8E8E93', textAlign: 'center', fontSize: '12px' }}>
-                            {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_target}</div>
-                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.tag_barcode}</div>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_detected || "미지정"}</div>
-                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.detected_barcode || "-"}</div>
-                          </td>
-                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`} style={{ padding: '2px 8px', fontSize: '11px' }}>{d.result}</span></td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
-                                <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
-                              </div>
-                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{((d.confidence || 0) * 100).toFixed(0)}%</span>
-                            </div>
                           </td>
                         </tr>
                       ))
