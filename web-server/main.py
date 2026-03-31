@@ -147,10 +147,21 @@ async def get_status():
             cursor.execute("SELECT status, patrol_id FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
-            # --- 상태 결정 로직 ---
-            is_emergency = False
+            # --- 위치 및 상태 판단 로직 (재설계) ---
+            # 1. 위치 판단: 순찰 중이 아니면(휴식/완료/기타) 무조건 기지(0,0)로 간주
+            is_at_base = (not last_patrol or last_patrol['status'] != '진행중')
             
-            # 비상정지 명령이 있고, 그게 일반 동작 명령보다 나중에 발생했으면 비상정지 우선
+            if is_at_base:
+                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
+            else:
+                # 순찰 중일 때만 마지막 상품 인식 좌표 사용
+                cursor.execute("SELECT odom_x, odom_y FROM detection_log ORDER BY log_id DESC LIMIT 1")
+                odom_data = cursor.fetchone()
+                if odom_data:
+                    last_odom = odom_data
+
+            # 2. 비상정지 여부 판단
+            is_emergency = False
             if last_emergency and last_emergency['command_type'] == 'EMERGENCY_STOP':
                 if not last_action or last_emergency['created_at'] >= last_action['created_at']:
                     is_emergency = True
@@ -159,29 +170,13 @@ async def get_status():
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
 
+            # 3. 최종 상태 명칭 결정
             if is_emergency:
                 robot_mode = "비상정지"
+            elif not is_at_base:
+                robot_mode = "순찰중"
             else:
-                # 일반 동작 판정
-                if last_patrol and last_patrol['status'] == '진행중':
-                    robot_mode = "순찰중"
-                else:
-                    # 마지막 명령이 복귀인 경우 확실히 휴식중
-                    if last_action and last_action['command_type'] == 'RETURN_TO_BASE':
-                        robot_mode = "휴식중"
-                    else:
-                        robot_mode = "휴식중" # 기본값
-
-            # 위치 정보 업데이트
-            cursor.execute("SELECT odom_x, odom_y FROM detection_log ORDER BY log_id DESC LIMIT 1")
-            odom_data = cursor.fetchone()
-            if odom_data:
-                last_odom = odom_data
-
-            # --- 기지 복귀 상태 보정 ---
-            # 로봇이 휴식중이거나, 마지막 명령이 '기지로 복귀'인 경우 기지(0,0)에 있는 것으로 간주합니다.
-            if robot_mode == "휴식중" or (last_action and last_action['command_type'] == 'RETURN_TO_BASE'):
-                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
+                robot_mode = "휴식중"
 
         except Exception as e:
             print(f"Error fetching robot status: {e}")
