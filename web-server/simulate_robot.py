@@ -342,9 +342,18 @@ class VirtualRobot:
         
         while True:
             self.print_menu()
-            choice = sys.stdin.readline().strip().lower()
-            
-            if not choice: # 엔터만 친 경우 메뉴 재출력
+            if not sys.stdin.isatty():
+                # tty가 아니면 (nohup/배경 실행) 폴링만 수행하며 대기
+                self.stop_event.wait(timeout=5)
+                continue
+
+            try:
+                choice = sys.stdin.readline().strip().lower()
+                if not choice: # 엔터만 친 경우 메뉴 재출력
+                    time.sleep(1)
+                    continue
+            except Exception as e:
+                time.sleep(5)
                 continue
                 
             if choice == '1':
@@ -358,7 +367,6 @@ class VirtualRobot:
             elif choice == '5':
                 self.load_memory()
             elif choice == 'q':
-
                 self.safe_print("시뮬레이터를 종료합니다.")
                 self.stop_event.set()
                 break
