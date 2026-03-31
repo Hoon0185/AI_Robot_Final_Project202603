@@ -548,7 +548,7 @@ async def list_detections():
             LEFT JOIN product_master p1 ON d.product_id = p1.product_id
             LEFT JOIN product_master p2 ON d.detected_barcode = p2.barcode
             WHERE d.patrol_id = %s
-            ORDER BY d.log_id ASC LIMIT 100
+            ORDER BY d.log_id ASC
         """
         cursor.execute(query, (active_id,))
         return cursor.fetchall()

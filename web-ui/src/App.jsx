@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
 function App() {
@@ -17,12 +17,19 @@ function App() {
   const [showNotification, setShowNotification] = useState(false);
   const [notificationMsg, setNotificationMsg] = useState({ title: '', body: '', type: 'info' });
 
-  // 알림 상태 자동 관리: 미해결 알림이 0개가 되면 알림 팝업 자동 닫기
   useEffect(() => {
     if (alerts.length === 0 && notificationMsg.type === 'anomaly') {
       setShowNotification(false);
     }
   }, [alerts, notificationMsg.type]);
+
+  // 실시간 인식 로그 자동 스크롤 (CRT 스타일 효과)
+  const detectionLogRef = useRef(null);
+  useEffect(() => {
+    if (detectionLogRef.current) {
+      detectionLogRef.current.scrollTop = detectionLogRef.current.scrollHeight;
+    }
+  }, [detections]);
 
   // 알림 사운드 재생 함수 (내장 오디오 객체 사용)
   const playAlertSound = () => {
@@ -558,7 +565,7 @@ function App() {
 
             <section className="apple-card">
               <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
-              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }} ref={detectionLogRef}>
                 <table className="fixed-table">
                   <thead>
                     <tr>
