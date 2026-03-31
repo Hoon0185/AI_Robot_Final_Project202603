@@ -121,10 +121,11 @@ async def get_status():
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
     robot_mode = "휴식중"
     
+    last_odom = {"odom_x": 0.0, "odom_y": 0.0}
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-            # 가장 최근 순찰 상태 확인
+            # 가장 최근 순착 상태 확인
             cursor.execute("SELECT status FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
             if last_patrol:
@@ -134,6 +135,12 @@ async def get_status():
                     robot_mode = "비상정지"
                 else:
                     robot_mode = "휴식중"
+            
+            # 가장 최근 위치 정보 확인
+            cursor.execute("SELECT odom_x, odom_y FROM detection_log ORDER BY log_id DESC LIMIT 1")
+            odom_data = cursor.fetchone()
+            if odom_data:
+                last_odom = odom_data
         except Exception as e:
             print(f"Error fetching robot status: {e}")
         finally:
@@ -143,6 +150,8 @@ async def get_status():
         "status": "online",
         "robot_status": robot_mode,
         "database": db_status,
+        "odom_x": last_odom['odom_x'],
+        "odom_y": last_odom['odom_y'],
         "db_host": os.getenv("DB_HOST")
     }
 

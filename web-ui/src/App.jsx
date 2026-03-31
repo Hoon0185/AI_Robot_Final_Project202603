@@ -401,15 +401,29 @@ function App() {
       alert("이미 기지입니다.");
       return;
     }
-    if (!window.confirm("순찰을 마치고 복귀하시겠습니까? (5초 후 완료)")) return;
+    
+    // 현재 위치 정보 확인 (없으면 기본값 0)
+    const curX = status.odom_x || 0;
+    const curY = status.odom_y || 0;
+    
+    // 기지(0,0)까지의 거리 계산 (Euclidean)
+    const distance = Math.sqrt(Math.pow(curX, 2) + Math.pow(curY, 2));
+    const speed = 0.2; // 0.2 m/sec
+    const travelTimeSec = distance / speed;
+    const travelTimeMs = Math.max(travelTimeSec * 1000, 2000); // 최소 2초 대기
+    
+    if (!window.confirm(`순찰을 마치고 복귀하시겠습니까? (이동 거리: ${distance.toFixed(2)}m, 예상 소요 시간: ${travelTimeSec.toFixed(1)}초)`)) {
+      return;
+    }
+
     try {
       setTimeout(async () => {
         const res = await fetch('/api/patrol/finish', { method: 'POST' });
         if (res.ok) {
-          alert("성공적으로 복귀 완료되었습니다.");
+          alert(`성공적으로 복귀 완료되었습니다. (${travelTimeSec.toFixed(1)}초 소요됨)`);
           fetchGilbotData();
         } else { alert("복귀 실패 (진행중인 순찰 없음)"); }
-      }, 5000);
+      }, travelTimeMs);
     } catch (err) { alert("연결 오류"); }
   };
 
