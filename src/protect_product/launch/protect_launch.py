@@ -14,7 +14,7 @@ def generate_launch_description():
         name='detector_node',
         output='screen',
         emulate_tty=True,
-        parameters=[{'use_sim_time': False}] # 실물 로봇 = False
+        parameters=[{'use_sim_time': False}] # 실물=False, simulation(가상 시간)=True / 동기화 실패 및 TF(좌표)오류 대비
     )
 
     # 2. Verifier 노드 설정 (QR 인식 및 DB 대조)

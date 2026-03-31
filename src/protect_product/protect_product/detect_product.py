@@ -1,3 +1,4 @@
+#기존에 작성했던 코드로 분할 이후 버리는 작업중입니다.
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage

@@ -1,4 +1,4 @@
-# 이미지 전송을 위한 런치 파일
+# 이미지 전송을 위한 런치 파일(구파일,현재 미사용 상태 / 영상이 많이 끊길경우 대체 사용)
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
