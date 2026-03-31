@@ -40,6 +40,7 @@ class Product(BaseModel):
     barcode: str
     category: str = "General"
     min_inventory_qty: int = 5
+    yolo_class_id: Optional[int] = None
 
 class InventoryUpdate(BaseModel):
     current_inventory_qty: int
@@ -55,6 +56,7 @@ class PatrolConfig(BaseModel):
 class DetectionInput(BaseModel):
     tag_barcode: str
     detected_barcode: Optional[str] = None
+    yolo_class_id: Optional[int] = None
     confidence: float = 0.0
     odom_x: float = 0.0
     odom_y: float = 0.0
@@ -67,6 +69,7 @@ class UnifiedRegisterInput(BaseModel):
     min_inventory_qty: int = 5
     waypoint_name: str
     row_num: int = 1
+    yolo_class_id: Optional[int] = None
 
 class PlanAddInput(BaseModel):
     waypoint_id: int
@@ -304,8 +307,8 @@ async def add_product(product: Product):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        query = "INSERT INTO product_master (product_name, barcode, category, min_inventory_qty) VALUES (%s, %s, %s, %s)"
-        cursor.execute(query, (product.product_name, product.barcode, product.category, product.min_inventory_qty))
+        query = "INSERT INTO product_master (product_name, barcode, category, min_inventory_qty, yolo_class_id) VALUES (%s, %s, %s, %s, %s)"
+        cursor.execute(query, (product.product_name, product.barcode, product.category, product.min_inventory_qty, product.yolo_class_id))
         conn.commit()
         return {"message": "Product added successfully", "id": cursor.lastrowid}
     finally:
@@ -436,10 +439,15 @@ async def add_detection(data: DetectionInput):
         planned_product_id = plan['planned_product_id']
         row_num = plan['row_num']
 
-        # 3. 인식된 바코드로 실제 상품 ID 조회
+        # 3. 인식된 바코드 또는 YOLO ID로 실제 상품 ID 조회
         detected_product_id = None
         if data.detected_barcode:
             cursor.execute("SELECT product_id FROM product_master WHERE barcode = %s", (data.detected_barcode,))
+            prod = cursor.fetchone()
+            if prod:
+                detected_product_id = prod['product_id']
+        elif data.yolo_class_id is not None:
+            cursor.execute("SELECT product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
             prod = cursor.fetchone()
             if prod:
                 detected_product_id = prod['product_id']
@@ -781,13 +789,13 @@ async def unified_register(data: UnifiedRegisterInput):
         if prod:
             product_id = prod['product_id']
             cursor.execute(
-                "UPDATE product_master SET product_name = %s, category = %s, min_inventory_qty = %s WHERE product_id = %s",
-                (data.product_name, data.category, data.min_inventory_qty, product_id)
+                "UPDATE product_master SET product_name = %s, category = %s, min_inventory_qty = %s, yolo_class_id = %s WHERE product_id = %s",
+                (data.product_name, data.category, data.min_inventory_qty, data.yolo_class_id, product_id)
             )
         else:
             cursor.execute(
-                "INSERT INTO product_master (product_name, barcode, category, min_inventory_qty) VALUES (%s, %s, %s, %s)",
-                (data.product_name, data.product_barcode, data.category, data.min_inventory_qty)
+                "INSERT INTO product_master (product_name, barcode, category, min_inventory_qty, yolo_class_id) VALUES (%s, %s, %s, %s, %s)",
+                (data.product_name, data.product_barcode, data.category, data.min_inventory_qty, data.yolo_class_id)
             )
             product_id = cursor.lastrowid
 

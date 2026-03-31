@@ -17,7 +17,7 @@
 
 | 테이블 | 역할 |
 |---|---|
-| `product_master` | 상품 정보 및 창고 재고 마스터 정보 |
+| `product_master` | 상품 정보, YOLO 매핑 및 창고 재고 정보 |
 | `waypoint` | 로봇이 물리적으로 **정지하여 스캔하는 위치** (X/Y 좌표 기반) |
 | `waypoint_product_plan` | 특정 위치(웨이포인트 + 바코드 태그)에 **어떤 상품이 있어야 하는지** 정의 |
 | `shelf_status` | 순찰 후 최종적으로 파악된 **현재 진열 상태** |
@@ -33,8 +33,9 @@
 
 1.  **Waypoint 도착**: 로봇이 미리 정의된 정지 위치(X, Y)에 멈춤
 2.  **Tag 스캔**: 매대의 **바코드 태그**를 읽어 위치를 식별
-3.  **이미지 서버 분석**: YOLO를 통해 실제 상품의 바코드 식별 데이터 수신
+3.  **이미지 서버 분석**: YOLO를 통해 실제 상품의 **Class ID** 또는 바코드 식별 데이터 수신
 4.  **판독 및 기록**:
+    - `yolo_class_id` 또는 `barcode`를 사용하여 `product_master` 조회
     - `waypoint_product_plan`의 계획된 상품과 대조
     - `shelf_status` 최신화 및 `detection_log` 기록
     - 이상 발견 시 `alert` 생성
@@ -51,6 +52,7 @@ erDiagram
         VARCHAR product_name "제품명"
         VARCHAR category "분류"
         VARCHAR barcode "제품 바코드 (UNIQUE)"
+        INT yolo_class_id "YOLO 클래스 ID"
         INT min_inventory_qty "최소 수량"
         INT current_inventory_qty "현재 재고"
     }
