@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
-from protect_product.msg import DetectionArray
+from protect_product_msgs.msg import DetectionArray
 from cv_bridge import CvBridge
 from ultralytics import YOLO
 
