@@ -326,21 +326,34 @@ class VirtualRobot:
             time.sleep(1) # 1초마다 확인 (반응성 향상)
 
     def run(self):
-        # 0. 시작 전 이전 세션의 잔류 명령 초기화 (먹통 및 자동 실행 방지)
+        # 1. 시작 전 이전 세션의 잔류 명령 초기화 (먹통 및 자동 실행 방지)
         try:
             requests.post(CLEAR_COMMAND_URL, timeout=5)
             self.safe_print("🧹 [초기화] 이전 세션의 대기 중인 명령을 모두 정리했습니다.")
         except Exception:
             pass
 
-        # 원격 명령 수신 스레드 시작
+        # 2. 서버에서 설정 정보 및 동기화된 상태 읽어오기
+        self.load_memory()
+        try:
+            status_res = requests.get(f"{BASE_URL}/status", timeout=5)
+            if status_res.status_code == 200:
+                server_status = status_res.json().get("robot_status")
+                if server_status == "비상정지":
+                    self.status = STATUS_EMERGENCY_STOP
+                    self.safe_print("⚠️ [동기화] 현재 서버가 비상 정지 상태입니다. 시뮬레이터도 비상 모드로 시작합니다.")
+        except Exception:
+            pass
+
+        # 3. 원격 명령 수신 스레드 시작
         self.polling_thread = threading.Thread(target=self.poll_commands, daemon=True)
         self.polling_thread.start()
         
         self.safe_print("="*50)
         self.safe_print("🤖 Gilbot 확장 가상 로봇 시뮬레이터 v2.1")
         self.safe_print("   - 서버 주소: " + BASE_URL)
-        self.safe_print("   - 상태: 원격 신호 대기 중 (Polling)")
+        self.safe_print("   - 상태: " + self.status)
+        self.safe_print("   - 원격 신호 대기 중 (Polling)")
         self.safe_print("="*50)
         
         while True:

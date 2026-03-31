@@ -125,30 +125,53 @@ async def get_status():
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-            # 1. 가장 최근 명령 확인
+            
+            # 1. 비상정지/해제 관련 최신 명령 확인
             cursor.execute("""
-                SELECT command_type FROM robot_command 
-                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
+                SELECT command_type, created_at FROM robot_command 
+                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL')
                 ORDER BY created_at DESC, command_id DESC LIMIT 1
             """)
-            last_cmd_row = cursor.fetchone()
+            last_emergency = cursor.fetchone()
             
-            # 2. 가장 최근 순찰 상태 확인
-            cursor.execute("SELECT status FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
+            # 2. 일반 동작 관련 최신 명령 확인
+            cursor.execute("""
+                SELECT command_type, created_at FROM robot_command 
+                WHERE command_type IN ('START_PATROL', 'RETURN_TO_BASE')
+                ORDER BY created_at DESC, command_id DESC LIMIT 1
+            """)
+            last_action = cursor.fetchone()
+            
+            # 3. 최신 순찰 로그 확인
+            cursor.execute("SELECT status, patrol_id FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
+
+            # --- 상태 결정 로직 ---
+            is_emergency = False
             
-            # 비상정지 우선순위 (명령이 STOP이거나 로그가 중단인 경우)
-            if (last_patrol and last_patrol['status'] == '중단') or (last_cmd_row and last_cmd_row['command_type'] == 'EMERGENCY_STOP'):
+            # 비상정지 명령이 있고, 그게 일반 동작 명령보다 나중에 발생했으면 비상정지 우선
+            if last_emergency and last_emergency['command_type'] == 'EMERGENCY_STOP':
+                if not last_action or last_emergency['created_at'] >= last_action['created_at']:
+                    is_emergency = True
+            
+            # 순찰 로그가 명시적으로 '중단'인 경우도 비상정지로 간주
+            if last_patrol and last_patrol['status'] == '중단':
+                is_emergency = True
+
+            if is_emergency:
                 robot_mode = "비상정지"
-            elif last_patrol:
-                if last_patrol['status'] == '진행중':
+            else:
+                # 일반 동작 판정
+                if last_patrol and last_patrol['status'] == '진행중':
                     robot_mode = "순찰중"
                 else:
-                    robot_mode = "휴식중"
-            else:
-                robot_mode = "휴식중"
-            
-            # 가장 최근 위치 정보 확인
+                    # 마지막 명령이 복귀인 경우 확실히 휴식중
+                    if last_action and last_action['command_type'] == 'RETURN_TO_BASE':
+                        robot_mode = "휴식중"
+                    else:
+                        robot_mode = "휴식중" # 기본값
+
+            # 위치 정보 업데이트
             cursor.execute("SELECT odom_x, odom_y FROM detection_log ORDER BY log_id DESC LIMIT 1")
             odom_data = cursor.fetchone()
             if odom_data:
@@ -380,11 +403,25 @@ async def get_latest_command():
 @app.post("/robot/command/clear_pending")
 async def clear_pending_commands():
     conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor()
+        # 1. 미완료된 로봇 명령 초기화
         cursor.execute("UPDATE robot_command SET status = 'CANCELED' WHERE status IN ('PENDING', 'PROCESSING')")
+        cmd_count = cursor.rowcount
+        
+        # 2. '진행중'인 순찰 로그 모두 강제 중단 처리 (잔류 로그 정리)
+        cursor.execute("UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE status = '진행중'")
+        log_count = cursor.rowcount
+        
         conn.commit()
-        return {"message": "All pending commands cleared", "count": cursor.rowcount}
+        print(f"🧹 CLEAR: {cmd_count} commands and {log_count} patrol logs cleared.")
+        return {
+            "message": "All pending commands and stale patrol logs cleared",
+            "commands_cleared_count": cmd_count,
+            "patrol_logs_cleared_count": log_count
+        }
     finally:
         conn.close()
 
