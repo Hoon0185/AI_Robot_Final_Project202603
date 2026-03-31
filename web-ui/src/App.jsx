@@ -75,13 +75,16 @@ function App() {
   const fetchGilbotData = async () => {
     try {
       setLoading(true);
-      const statusRes = await fetch('/api/status');
+      const statusRes = await fetch('/api/status', { cache: 'no-store' });
       if (statusRes.ok) {
         const statusData = await statusRes.json();
+        // console.log("Fetched Robot Status:", statusData.robot_status);
         setStatus({
           status: statusData.status || 'offline',
           robot_status: statusData.robot_status || '휴식중',
-          database: statusData.database || 'unknown'
+          database: statusData.database || 'unknown',
+          odom_x: statusData.odom_x,
+          odom_y: statusData.odom_y
         });
       }
 
@@ -426,6 +429,8 @@ function App() {
       setTimeout(async () => {
         const res = await fetch('/api/patrol/finish', { method: 'POST' });
         if (res.ok) {
+          // 낙관적 업데이트: 즉시 UI 변경
+          setStatus(prev => ({ ...prev, robot_status: '휴식중' }));
           alert(`성공적으로 복귀 완료되었습니다. (${travelTimeSec.toFixed(1)}초 소요됨)`);
           fetchGilbotData();
         } else { alert("복귀 실패 (진행중인 순찰 없음)"); }
@@ -438,9 +443,10 @@ function App() {
     try {
       const res = await fetch('/api/patrol/stop', { method: 'POST' });
       if (res.ok) {
-        // 즉시 상태 갱신 요청 (버튼 토글을 위해)
-        await fetchGilbotData();
+        // 낙관적 업데이트: 즉시 UI 변경 (백엔드 반영 전이라도)
+        setStatus(prev => ({ ...prev, robot_status: '비상정지' }));
         alert("순찰이 즉시 중단되었습니다.");
+        await fetchGilbotData();
       }
     } catch (err) { alert("명령 전달 실패"); }
   };
@@ -450,9 +456,10 @@ function App() {
     try {
       const res = await fetch('/api/patrol/resume', { method: 'POST' });
       if (res.ok) {
-        // 즉시 상태 갱신 요청 (버튼 토글을 위해)
-        await fetchGilbotData();
+        // 낙관적 업데이트: 순찰중으로 복구 (또는 적절한 상태)
+        setStatus(prev => ({ ...prev, robot_status: '순찰중' }));
         alert("순찰이 재개되었습니다.");
+        await fetchGilbotData();
       } else {
         const err = await res.json();
         alert("재개 실패: " + err.detail);
