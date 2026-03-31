@@ -12,17 +12,30 @@ try:
 except ImportError:
     # 패키지 구조에 따라 직접 참조가 필요한 경우 하드코딩된 경로 추가
     sys.path.append(os.path.join(patrol_main_path, 'patrol_main'))
-    from patrol_interface import PatrolInterface
+    try:
+        from patrol_interface import PatrolInterface
+    except ImportError:
+        # 디버그 모드를 위해 임포트 실패 시 pass 처리 (is_debug에서 걸러짐)
+        PatrolInterface = None
 
 class RobotLogicHandler:
-    def __init__(self, ui_instance):
+    def __init__(self, ui_instance, debug_mode=False):
         self.ui = ui_instance
-        # ROS 2 인터페이스 초기화
-        try:
-            self.ros_interface = PatrolInterface()
-        except Exception as e:
-            print(f"[ERROR] ROS 2 Interface failed to start: {e}")
-            self.ros_interface = None
+        self.is_debug = debug_mode # 디버그 모드 상태 저장
+
+        # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
+        self.ros_interface = None
+        if not self.is_debug:
+            try:
+                if PatrolInterface:
+                    self.ros_interface = PatrolInterface()
+                else:
+                    raise ImportError("PatrolInterface module not found.")
+            except Exception as e:
+                print(f"[ERROR] ROS 2 Interface failed to start: {e}")
+                print("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
+        else:
+            print("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
 
         self._setup_connections()
         self.current_patrol_min = 60
@@ -83,9 +96,19 @@ class RobotLogicHandler:
 
                 except Exception as e:
                     print(f"[ERROR] 초기 설정 반영 중 오류: {e}")
+        elif self.is_debug:
+            # 디버그 모드 시 기본 UI 초기값 설정
+            print("[DEBUG] 초기 UI 데이터를 가상으로 세팅합니다.")
+            self.ui.obstacle_row['slider'].setValue(10)
+            self.ui.patrol_row['slider'].setValue(60)
 
     def sync_ros_status(self):
         """ROS에서 넘어온 최신 상태 또는 DB 로그를 UI에 반영합니다."""
+        if self.is_debug:
+            # 디버그 모드 가상 상태 표시
+            self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
+            return
+
         if not self.ros_interface: return
 
         status = self.ros_interface.get_recent_patrol_time()
@@ -120,6 +143,8 @@ class RobotLogicHandler:
                 hour=h,
                 minute=m
             )
+        elif self.is_debug:
+            print(f"[DEBUG] DB 연결 없이 설정값 로컬 업데이트: {h}h {m}m")
 
     def on_obstacle_set(self, val):
         """장애물 대기 시간 설정 (상태 유지하며 DB 동기화)"""
@@ -134,6 +159,8 @@ class RobotLogicHandler:
                 hour=h,
                 minute=m
             )
+        elif self.is_debug:
+            print(f"[DEBUG] DB 연결 없이 장애물 대기 시간 업데이트: {val}s")
 
     # 재고 알림
     def update_alarm_list(self):
@@ -141,6 +168,10 @@ class RobotLogicHandler:
         if self.ros_interface:
             data = self.ros_interface.get_alarm_data()
             self.ui.set_alarm_data(data)
+        elif self.is_debug:
+            # 디버그용 샘플 데이터
+            debug_data = [("가상 상품A", "부족"), ("가상 상품B", "품절")]
+            self.ui.set_alarm_data(debug_data)
 
     # DB 재고 조회
     def update_inventory_db(self):
@@ -148,30 +179,42 @@ class RobotLogicHandler:
         if self.ros_interface:
             data = self.ros_interface.get_inventory_data()
             self.ui.set_db_data(data)
+        elif self.is_debug:
+            # 디버그용 샘플 데이터
+            debug_data = [("1", "가상 상품A", "10", "A-1"), ("2", "가상 상품B", "0", "B-2")]
+            self.ui.set_db_data(debug_data)
 
     # 수동 조작 패널 - 수동 조작
     def on_move_command(self, direction):
         print(f"[LOGIC] 수동 이동: {direction}")
         if self.ros_interface:
             self.ros_interface.move_robot(direction)
+        elif self.is_debug:
+            print(f"[DEBUG] Robot moving to {direction}")
 
     # 수동 조작 패널 - 부저
     def on_buzzer(self):
         print("[LOGIC] 부저 작동")
         if self.ros_interface:
             self.ros_interface.trigger_buzzer(True)
+        elif self.is_debug:
+            print("[DEBUG] Buzzer sound activated")
 
     # 수동 조작 패널 - 복귀 명령
     def on_return_patrol(self):
         print("[LOGIC] 복귀 명령 송출")
         if self.ros_interface:
             self.ros_interface.return_to_base()
+        elif self.is_debug:
+            print("[DEBUG] Returning to home station")
 
     # 수동 조작 패널 - 비상 정지
     def on_emergency(self):
         print("[LOGIC] 비상 정지!")
         if self.ros_interface:
             self.ros_interface.trigger_emergency_stop()
+        elif self.is_debug:
+            print("[DEBUG] EMERGENCY STOP TRIGGERED")
 
     # 초기 위치 명령 패널 - 예 - 복귀
     # 기능은 수동 조작 패널의 복귀 명령과 같음
@@ -179,6 +222,8 @@ class RobotLogicHandler:
         print("[LOGIC] 원점 리셋")
         if self.ros_interface:
             self.ros_interface.reset_position()
+        elif self.is_debug:
+            print("[DEBUG] Resetting to origin")
 
     # 수동 순찰 명령
     def on_patrol_confirmed(self):
@@ -187,3 +232,5 @@ class RobotLogicHandler:
         if self.ros_interface:
             # TODO: 담당자 구현 영역 (예: 순찰 노드 활성화 신호 송출 등)
             pass
+        elif self.is_debug:
+            print("[DEBUG] Manual patrol sequence started in simulation")
