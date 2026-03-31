@@ -371,6 +371,7 @@ function App() {
       setLoading(true);
       const res = await fetch('/api/patrol/start', { method: 'POST' });
       if (res.ok) {
+        setDetections([]); // 새 순찰 시작 시 기존 로그 즉시 초기화 (CRT 클리어 효과)
         setNotificationMsg({
           title: '순찰 시작',
           body: '로봇이 순찰을 위해 기지를 출발했습니다.',
