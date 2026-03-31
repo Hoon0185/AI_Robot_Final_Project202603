@@ -116,6 +116,21 @@ async def root():
         "env": "production" if os.getenv("DB_HOST") == "16.184.56.119" else "local"
     }
 
+@app.get("/api/debug/schema")
+async def migrate_db():
+    conn = get_db_connection()
+    if not conn: return {"error": "db connection fail"}
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # 컬럼 속성 변경 (ENUM 제약 제거 및 길이 확장)
+        cursor.execute("ALTER TABLE robot_command MODIFY COLUMN command_type VARCHAR(50)")
+        conn.commit()
+        return {"status": "success", "message": "Column 'command_type' expanded to VARCHAR(50)"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        conn.close()
+
 @app.get("/status")
 async def get_status():
     conn = get_db_connection()
@@ -138,7 +153,7 @@ async def get_status():
             # 2. 일반 동작 관련 최신 명령 확인
             cursor.execute("""
                 SELECT command_type, created_at FROM robot_command 
-                WHERE command_type IN ('START', 'RETURN')
+                WHERE command_type IN ('START_PATROL', 'RETURN_TO_BASE')
                 ORDER BY created_at DESC, command_id DESC LIMIT 1
             """)
             last_action = cursor.fetchone()
@@ -151,7 +166,7 @@ async def get_status():
             is_emergency = False
             
             # 비상정지 명령이 있고, 그게 일반 동작 명령보다 나중에 발생했으면 비상정지 우선
-            if last_emergency and last_emergency['command_type'] == 'EMSTOP':
+            if last_emergency and last_emergency['command_type'] == 'EMERGENCY_STOP':
                 if not last_action or last_emergency['created_at'] >= last_action['created_at']:
                     is_emergency = True
             
@@ -167,7 +182,7 @@ async def get_status():
                     robot_mode = "순찰중"
                 else:
                     # 마지막 명령이 복귀인 경우 확실히 휴식중
-                    if last_action and last_action['command_type'] == 'RETURN':
+                    if last_action and last_action['command_type'] == 'RETURN_TO_BASE':
                         robot_mode = "휴식중"
                     else:
                         robot_mode = "휴식중" # 기본값
@@ -279,7 +294,7 @@ async def start_patrol():
         patrol_id = cursor.lastrowid
         
         # 2. 로봇 명령 큐에 추가
-        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('START', 'PENDING')")
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('START_PATROL', 'PENDING')")
         
         conn.commit()
         return {"message": "Patrol started successfully", "patrol_id": patrol_id}
@@ -313,7 +328,7 @@ async def finish_patrol():
             )
         
         # 로봇 명령 큐에 복귀 추가 (비상 정지 상태였을 경우에도 해제 효과를 가짐)
-        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN', 'PENDING')")
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
         
         conn.commit()
         return {"message": "Return to base command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
@@ -329,7 +344,7 @@ async def stop_patrol():
     try:
         cursor = conn.cursor(dictionary=True)
         # 1. 일단 로봇 명령 큐에 비상정지 추가 (최우선)
-        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMSTOP', 'PENDING')")
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMERGENCY_STOP', 'PENDING')")
         
         # 2. 진행중인 순찰이 있다면 '중단'으로 변경
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
@@ -367,7 +382,7 @@ async def resume_patrol():
             )
         
         # 기지에 정지상태이든 순찰중이었든 상관없이 비상정지 신호 해제를 위해 명령 전송
-        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME', 'PENDING')")
+        cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME_PATROL', 'PENDING')")
         
         conn.commit()
         return {"message": "Patrol resume/Emergency release command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
