@@ -289,12 +289,12 @@ function App() {
   };
 
   const handleDeleteWaypoint = async (id) => {
-    if (!window.confirm("정말 이 웨이포인트를 삭제하시겠습니까?")) return;
+    if (!window.confirm("정말 이 웨이포인트를 삭제하시겠습니까? 관련 진열 계획, 인식 로그, 알림 내역이 모두 함께 삭제됩니다.")) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/waypoints/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert("웨이포인트가 삭제되었습니다.");
+        alert("✅ 웨이포인트와 관련 데이터가 모두 삭제되었습니다.");
         fetchStaticData();
       } else {
         const errorData = await res.json();

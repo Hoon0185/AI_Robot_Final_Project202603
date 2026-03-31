@@ -782,24 +782,27 @@ async def delete_waypoint(waypoint_id: int):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        # 1. 진열 계획 확인
-        cursor.execute("SELECT COUNT(*) FROM waypoint_product_plan WHERE waypoint_id = %s", (waypoint_id,))
-        if cursor.fetchone()[0] > 0:
-            raise HTTPException(status_code=400, detail="삭제 실패: 해당 웨이포인트에 연결된 상품 진열 계획이 남아있습니다. 먼저 '비우기'를 진행해 주세요.")
         
-        # 2. 다른 테이블 의존성 확인 (shelf_status, detection_log, alert)
-        try:
-            cursor.execute("DELETE FROM waypoint WHERE waypoint_id = %s", (waypoint_id,))
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="웨이포인트를 찾을 수 없습니다.")
-            return {"message": "웨이포인트가 삭제되었습니다."}
-        except Error as e:
-            conn.rollback()
-            # 외래 키 제약 조건 에러 시 (Error Code 1451)
-            if e.errno == 1451:
-                raise HTTPException(status_code=400, detail="삭제 실패: 이 웨이포인트와 관련된 순찰 로그, 인식 기록 또는 알림 데이터가 존재합니다. 과거 이력이 있는 위치는 안전을 위해 삭제할 수 없습니다.")
-            raise HTTPException(status_code=500, detail=f"데이터베이스 오류: {str(e)}")
+        # 1. 진열 계획 및 매대 현황 데이터 삭제 (CASCADE 수동 구현)
+        cursor.execute("DELETE FROM waypoint_product_plan WHERE waypoint_id = %s", (waypoint_id,))
+        cursor.execute("DELETE FROM shelf_status WHERE waypoint_id = %s", (waypoint_id,))
+        
+        # 2. 관련 순찰 로그 내역 및 알림 내역 삭제
+        cursor.execute("DELETE FROM detection_log WHERE waypoint_id = %s", (waypoint_id,))
+        cursor.execute("DELETE FROM alert WHERE waypoint_id = %s", (waypoint_id,))
+        
+        # 3. 웨이포인트 본체 삭제
+        cursor.execute("DELETE FROM waypoint WHERE waypoint_id = %s", (waypoint_id,))
+        
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="웨이포인트를 찾을 수 없습니다.")
+        
+        return {"message": "웨이포인트 및 관련 모든 데이터가 삭제되었습니다."}
+        
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"데이터베이스 오류: {str(e)}")
             
     except HTTPException:
         raise
