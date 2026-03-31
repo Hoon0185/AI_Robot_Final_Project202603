@@ -1,15 +1,21 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge
 import cv2
 from ultralytics import YOLO
 import sqlite3
 import os
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 class DetectProductNode(Node):
     def __init__(self):
         super().__init__('detect_product_node')
+
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT, # 터틀봇 무선 환경 권장
+            depth=10
+        )
 
         # 1. 모델 및 DB 초기화 (기존 main의 설정 부분)
         # 경로 주의: 임시 더미데이터(product.db)를 사용했기에 DB에 맞게 경로 바꿔야합니다.
@@ -25,19 +31,19 @@ class DetectProductNode(Node):
         # 2. 이미지 구독 (터틀봇 카메라 토픽)
         # v4l2_camera 기본 토픽인 /image_raw를 구독합니다.
         self.subscription = self.create_subscription(
-            Image,
-            '/image_raw',
+            CompressedImage,
+            '/image_raw/compressed',
             self.image_callback,
-            10) # 큐 사이즈
+            qos_profile)
 
         # 3. 결과 영상 발행 (Control Server나 GUI Client 확인용)
-        self.publisher = self.create_publisher(Image, '/detected_product_image', 10)
+        self.publisher = self.create_publisher(CompressedImage, '/detected_product_image', qos_profile)
 
         self.get_logger().info('터틀봇 기반 물품 인식 노드가 가동되었습니다.')
 
     def image_callback(self, msg):
         # ROS Image 메시지를 OpenCV 포맷으로 변환
-        frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
         # --- 기존 비즈니스 로직 적용 ---
         results = self.model(frame)
@@ -77,7 +83,7 @@ class DetectProductNode(Node):
         cv2.waitKey(1)
 
         # 처리된 영상을 다시 ROS 토픽으로 발행
-        result_msg = self.bridge.cv2_to_imgmsg(annotated_frame, encoding="bgr8")
+        result_msg = self.bridge.cv2_to_compressed_imgmsg(annotated_frame, dst_format='jpg')
         self.publisher.publish(result_msg)
 
     def __del__(self):
@@ -93,7 +99,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok(): # 살아있을 때만 셧다운
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
