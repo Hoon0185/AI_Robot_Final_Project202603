@@ -54,6 +54,7 @@ class VirtualRobot:
             print("2. [비상 정지] (EMERGENCY_STOP)")
             print("3. [기지 복귀] (RETURN_TO_BASE)")
             print("4. [메모리 로드] (설정 및 경로 업데이트)")
+            print("5. [비상 해제/재개] (RESUME_PATROL)")
             print("q. 종료")
             print("-" * 50)
             print("명령을 선택하세요: ", end="", flush=True)
@@ -308,6 +309,8 @@ class VirtualRobot:
                 self.return_to_base()
             elif choice == '4':
                 self.load_memory()
+            elif choice == '5':
+                threading.Thread(target=self.start_patrol, args=(False, True)).start()
             elif choice == 'q':
                 self.safe_print("시뮬레이터를 종료합니다.")
                 self.stop_event.set()
