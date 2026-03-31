@@ -59,6 +59,17 @@ class VirtualRobot:
             print("-" * 50)
             print("명령을 선택하세요: ", end="", flush=True)
 
+    def interruptible_sleep(self, seconds):
+        """status가 바뀌면 즉시 중단되는 가변 수면 함수"""
+        step = 0.5
+        slept = 0
+        while slept < seconds:
+            if self.status == STATUS_EMERGENCY_STOP:
+                return False
+            time.sleep(min(step, seconds - slept))
+            slept += step
+        return True
+
     def load_memory(self):
         """서버에서 설정 정보 및 웨이포인트 경로를 읽어 메모리에 저장"""
         self.safe_print("\n[상태] 설정 정보 및 웨이포인트 경로 메모리 탑재 중...")
@@ -168,12 +179,15 @@ class VirtualRobot:
             self.safe_print(f"\n[{i+1}/{len(self.patrol_path)}] {plan['waypoint_name']} 이동 중...")
             self.safe_print(f"   - 목적지: ({target_x}, {target_y}) | 거리: {distance:.2f}m | 예상 소요 시간: {move_time:.1f}초")
             
-            # 실제 이동 시간만큼 대기 (시뮬레이션 가속을 위해 최대 10초로 제한할 수도 있으나 요청대로 구현)
+            # 실제 이동 시간만큼 대기
             if move_time > 0:
-                time.sleep(min(move_time, 10)) # 너무 오래 걸리면 테스트가 힘드니 최대 10초로 캡핑 (실제 적용 시 조절 가능)
+                if not self.interruptible_sleep(min(move_time, 10)):
+                    break
             
+            if self.status != STATUS_PATROLLING: break
+
             self.safe_print(f"📍 {plan['waypoint_name']} 도착. 정차 후 스캔 시작...")
-            time.sleep(1.5) # 정차 및 카메라 포커싱 시간
+            if not self.interruptible_sleep(1.5): break
             
             # 현재 위치 업데이트
             current_x, current_y = target_x, target_y
@@ -210,7 +224,15 @@ class VirtualRobot:
             # 회피 대기 시나리오 (30% 확률)
             if i < len(self.patrol_path) - 1 and random.random() < 0.3:
                 self.safe_print(f"⚠️ [장애물 감지] 이동 경로에 장애물이 있습니다. {self.avoidance_time}초 대기...")
-                time.sleep(self.avoidance_time)
+                if not self.interruptible_sleep(self.avoidance_time):
+                    break
+
+        if self.status != STATUS_PATROLLING:
+            self.safe_print("🛑 순찰이 중단되었습니다.")
+            self.last_index = i # 중단된 위치 저장
+            self.current_pos = (current_x, current_y)
+            if remote: self.print_menu()
+            return
 
         self.last_index = len(self.patrol_path) # 완료 표시
         self.current_pos = (0.0, 0.0) # 복귀했으므로 0,0
@@ -219,7 +241,11 @@ class VirtualRobot:
     def return_to_base(self, remote=False):
         self.safe_print("\n🏠 [기지 복귀] 기지로 복귀합니다...")
         self.status = STATUS_RETURNING
-        time.sleep(3) # 복귀 이동 시간 시뮬레이션
+        # 복귀 이동 중 비상정지 가능하도록 interruptible_sleep 적용
+        if not self.interruptible_sleep(5):
+            self.safe_print("🛑 복귀 중 비상 정지되었습니다.")
+            if remote: self.print_menu()
+            return
         
         self.safe_print("🏁 [복귀 완료] 로봇이 기지에 도착했습니다.")
         self.status = STATUS_IDLE
@@ -281,7 +307,7 @@ class VirtualRobot:
             except Exception as e:
                 pass
             
-            time.sleep(2) # 2초마다 확인
+            time.sleep(1) # 1초마다 확인 (반응성 향상)
 
     def run(self):
         # 원격 명령 수신 스레드 시작

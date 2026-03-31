@@ -432,8 +432,9 @@ function App() {
     try {
       const res = await fetch('/api/patrol/stop', { method: 'POST' });
       if (res.ok) {
+        // 즉시 상태 갱신 요청 (버튼 토글을 위해)
+        await fetchGilbotData();
         alert("순찰이 즉시 중단되었습니다.");
-        fetchGilbotData();
       }
     } catch (err) { alert("명령 전달 실패"); }
   };
@@ -443,8 +444,9 @@ function App() {
     try {
       const res = await fetch('/api/patrol/resume', { method: 'POST' });
       if (res.ok) {
+        // 즉시 상태 갱신 요청 (버튼 토글을 위해)
+        await fetchGilbotData();
         alert("순찰이 재개되었습니다.");
-        fetchGilbotData();
       } else {
         const err = await res.json();
         alert("재개 실패: " + err.detail);

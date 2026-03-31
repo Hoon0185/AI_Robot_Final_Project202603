@@ -267,21 +267,22 @@ async def stop_patrol():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
-        patrol = cursor.fetchone()
-        if not patrol:
-            raise HTTPException(status_code=404, detail="No active patrol found to stop")
-        
-        patrol_id = patrol['patrol_id']
-        cursor.execute(
-            "UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE patrol_id = %s",
-            (patrol_id,)
-        )
-        # 로봇 명령 큐에 비상정지 추가
+        # 1. 일단 로봇 명령 큐에 비상정지 추가 (최우선)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMERGENCY_STOP', 'PENDING')")
         
+        # 2. 진행중인 순찰이 있다면 '중단'으로 변경
+        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
+        patrol = cursor.fetchone()
+        patrol_id = None
+        if patrol:
+            patrol_id = patrol['patrol_id']
+            cursor.execute(
+                "UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE patrol_id = %s",
+                (patrol_id,)
+            )
+        
         conn.commit()
-        return {"message": "Patrol stopped (Emergency)", "patrol_id": patrol_id}
+        return {"message": "Emergency stop command sent", "patrol_id": patrol_id}
     finally:
         conn.close()
 
