@@ -34,7 +34,7 @@ class VerifierNode(Node):
 
         # 두 메시지의 시간차를 고려하여 동기화 (슬롭 0.1초 설정)
         self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.img_sub, self.det_sub], queue_size=10, slop=0.1)
+            [self.img_sub, self.det_sub], queue_size=10, slop=0.1, allow_headerless=True)
         self.ts.registerCallback(self.sync_callback)
 
         # 4. 검증 결과 이미지 발행
