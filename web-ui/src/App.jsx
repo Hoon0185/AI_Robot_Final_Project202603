@@ -224,7 +224,6 @@ function App() {
   };
 
   const handleResolveAlert = async (alertId) => {
-    if (!window.confirm("이 알림을 해결 상태로 변경하시겠습니까?")) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/alerts/${alertId}/resolve`, { method: 'POST' });
@@ -1086,7 +1085,7 @@ function App() {
 
                 <section className="apple-card">
                   <h2 className="section-title" style={{ marginTop: 0 }}>📍 등록된 웨이포인트(구역) 관리</h2>
-                  <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없어야 가능합니다.)</p>
+                  <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없고, 순찰로그에서 삭제된 상태여야 삭제 가능합니다.)</p>
                   <div className="table-container">
                     <table className="fixed-table">
                       <thead>
