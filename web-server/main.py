@@ -116,6 +116,27 @@ async def root():
         "env": "production" if os.getenv("DB_HOST") == "16.184.56.119" else "local"
     }
 
+@app.get("/migrate")
+async def migrate_db():
+    conn = get_db_connection()
+    if not conn: return {"error": "DB connection failed"}
+    try:
+        cursor = conn.cursor()
+        # 1. patrol_log 테이블에 실시간 좌표 컬럼 추가 (없을 경우)
+        try:
+            cursor.execute("ALTER TABLE patrol_log ADD COLUMN last_odom_x FLOAT DEFAULT 0.0")
+            cursor.execute("ALTER TABLE patrol_log ADD COLUMN last_odom_y FLOAT DEFAULT 0.0")
+            conn.commit()
+            return {"status": "success", "message": "Columns last_odom_x/y added to patrol_log"}
+        except Exception as e:
+            if "Duplicate column" in str(e):
+                return {"status": "info", "message": "Columns already exist"}
+            raise e
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        conn.close()
+
 @app.get("/status")
 async def get_status():
     conn = get_db_connection()
