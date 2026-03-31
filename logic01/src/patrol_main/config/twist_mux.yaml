@@ -1,0 +1,19 @@
+# Corrected twist_mux configuration for ROS 2
+# All parameters must be nested under ros__parameters
+
+twist_mux:
+  ros__parameters:
+    sampler_rate: 10.0
+    topics:
+      obstacle:
+        topic: "/cmd_vel_obstacle"
+        timeout: 0.5
+        priority: 100
+      teleop:
+        topic: "/cmd_vel_teleop"
+        timeout: 0.5
+        priority: 80
+      navigation:
+        topic: "/cmd_vel_nav"
+        timeout: 0.5
+        priority: 10

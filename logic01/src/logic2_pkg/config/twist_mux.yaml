@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    topics:
+      # 1순위: 수동 조작 (UI / 키보드) - 테스트를 위해 최우선권 부여 (200)
+      teleop:
+        topic:  "/cmd_vel_teleop"
+        timeout: 0.5
+        priority: 200
+      # 2순위: 장애물 관리 (사용자 노드) - (100)
+      obstacle:
+        topic:  "/cmd_vel_obstacle"
+        timeout: 0.5
+        priority: 100
+      # 3순위: 기본 순찰 (내비게이션) - (5)
+      navigation:
+        topic:  "/cmd_vel_nav"
+        timeout: 0.5
+        priority: 5
