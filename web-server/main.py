@@ -85,6 +85,12 @@ class PlanOrderUpdate(BaseModel):
     plan_id: int
     plan_order: int
 
+class WaypointUpdate(BaseModel):
+    waypoint_no: int
+    waypoint_name: str
+    loc_x: float
+    loc_y: float
+
 # 데이터베이스 연결 함수
 def get_db_connection():
     try:
@@ -720,6 +726,29 @@ async def update_waypoints_order(orders: List[WaypointOrderUpdate]):
     except Error as e:
         conn.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@app.put("/waypoints/{waypoint_id}")
+async def update_waypoint(waypoint_id: int, wp: WaypointUpdate):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="DB Connection Error")
+    try:
+        cursor = conn.cursor()
+        query = """
+            UPDATE waypoint 
+            SET waypoint_no = %s, waypoint_name = %s, loc_x = %s, loc_y = %s 
+            WHERE waypoint_id = %s
+        """
+        cursor.execute(query, (wp.waypoint_no, wp.waypoint_name, wp.loc_x, wp.loc_y, waypoint_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="웨이포인트를 찾을 수 없습니다.")
+        return {"message": "웨이포인트 정보가 업데이트되었습니다."}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"DB Error: {str(e)}")
     finally:
         conn.close()
 

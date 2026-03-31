@@ -299,13 +299,37 @@ function App() {
     }
   };
 
+  const handleUpdateWaypoint = async (wp) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/waypoints/${wp.waypoint_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          waypoint_no: wp.waypoint_no,
+          waypoint_name: wp.waypoint_name,
+          loc_x: wp.loc_x,
+          loc_y: wp.loc_y
+        })
+      });
+      if (res.ok) {
+        alert("✅ 웨이포인트 정보가 업데이트되었습니다.");
+        fetchStaticData();
+      } else {
+        const errData = await res.json();
+        alert("❌ 업데이트 실패: " + errData.detail);
+      }
+    } catch (err) { alert("연결 오류 발생"); }
+    finally { setLoading(false); }
+  };
+
   const handleClearWaypointPlans = async (id) => {
     if (!window.confirm("정말 이 웨이포인트의 모든 등록 상품 연결을 해제하시겠습니까?")) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/waypoints/${id}/clear_plans`, { method: 'DELETE' });
       if (res.ok) {
-        alert("웨이포인트의 상품 연결이 모두 해제되었습니다.");
+        alert("✅ 웨이포인트의 상품 연결이 모두 해제되었습니다.");
         fetchStaticData();
       } else {
         const errorData = await res.json();
@@ -1091,9 +1115,11 @@ function App() {
                       <thead>
                         <tr>
                           <th style={{ width: '60px', textAlign: 'center' }}>ID</th>
-                          <th style={{ textAlign: 'center' }}>웨이포인트 이름</th>
-                          <th style={{ textAlign: 'center' }}>등록 상품</th>
-                          <th style={{ width: '120px', textAlign: 'center' }}>제어 번호(No.)</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>웨이포인트 코드</th>
+                          <th style={{ textAlign: 'center' }}>웨이포인트 별칭</th>
+                          <th style={{ textAlign: 'center' }}>등록 상품 이름</th>
+                          <th style={{ width: '90px', textAlign: 'center' }}>X 좌표</th>
+                          <th style={{ width: '90px', textAlign: 'center' }}>Y 좌표</th>
                           <th style={{ width: '150px', textAlign: 'center' }}>조치</th>
                         </tr>
                       </thead>
@@ -1103,7 +1129,22 @@ function App() {
                           return (
                             <tr key={wp.waypoint_id}>
                               <td style={{ textAlign: 'center' }}>#{wp.waypoint_id}</td>
-                              <td style={{ fontWeight: '600', textAlign: 'center' }}>{wp.waypoint_name}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="number" value={wp.waypoint_no} 
+                                  className="slim-input"
+                                  onChange={(e) => {
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, waypoint_no: parseInt(e.target.value)} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="text" value={wp.waypoint_name} 
+                                  className="slim-input wide"
+                                  onChange={(e) => {
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, waypoint_name: e.target.value} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
                               <td style={{ textAlign: 'center' }}>
                                 {linkedProducts.length > 0 ? (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
@@ -1117,16 +1158,36 @@ function App() {
                                   <span style={{ color: '#8E8E93', fontSize: '12px' }}>없음</span>
                                 )}
                               </td>
-                              <td style={{ textAlign: 'center' }}>{wp.waypoint_no}</td>
                               <td style={{ textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                <input type="number" step="0.1" value={wp.loc_x} 
+                                  className="slim-input"
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, loc_x: val} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="number" step="0.1" value={wp.loc_y} 
+                                  className="slim-input"
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, loc_y: val} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button className="apple-button" 
+                                    style={{ padding: '6px 8px', fontSize: '11px', borderRadius: '6px' }}
+                                    onClick={() => handleUpdateWaypoint(wp)}>저장</button>
                                   {linkedProducts.length > 0 && (
                                     <button className="apple-button secondary" 
-                                      style={{ padding: '6px 10px', fontSize: '12px', color: 'var(--accent-orange)', borderRadius: '8px' }}
+                                      style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--accent-orange)', borderRadius: '6px' }}
                                       onClick={() => handleClearWaypointPlans(wp.waypoint_id)}>비우기</button>
                                   )}
                                   <button className="apple-button secondary" 
-                                    style={{ padding: '6px 10px', fontSize: '12px', color: '#FF453A', borderRadius: '8px' }}
+                                    style={{ padding: '6px 8px', fontSize: '11px', color: '#FF453A', borderRadius: '6px' }}
                                     onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>
                                 </div>
                               </td>
