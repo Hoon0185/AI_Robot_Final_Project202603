@@ -86,14 +86,14 @@ class VirtualRobot:
             self.safe_print(f"❌ 데이터 로딩 실패: {e}")
             return False
 
-    def send_detection(self, tag_barcode, detected_barcode=None, yolo_class_id=None, confidence=0.98):
+    def send_detection(self, tag_barcode, detected_barcode=None, yolo_class_id=None, confidence=0.98, odom_x=0.0, odom_y=0.0):
         payload = {
             "tag_barcode": tag_barcode,
             "detected_barcode": detected_barcode,
             "yolo_class_id": yolo_class_id,
             "confidence": confidence,
-            "odom_x": round(random.uniform(1.0, 5.0), 2),
-            "odom_y": round(random.uniform(1.0, 5.0), 2),
+            "odom_x": round(odom_x, 2),
+            "odom_y": round(odom_y, 2),
             "timestamp": datetime.now().isoformat()
         }
         try:
@@ -103,7 +103,7 @@ class VirtualRobot:
                 self.current_patrol_id = data.get("patrol_id")
                 # 결과 출력 가독성 개선
                 item_desc = detected_barcode if detected_barcode else (f"YOLO:{yolo_class_id}" if yolo_class_id is not None else "NO_ITEM")
-                self.safe_print(f"   >>> [인식 결과] 태그:{tag_barcode} | 상품:{item_desc} -> {data.get('judgment')}")
+                self.safe_print(f"   >>> [서버 판정] {data.get('judgment')} (품명: {data.get('product_name', '알수없음')})")
             else:
                 self.safe_print(f"   >>> ❌ 서버 응답 오류: {res.status_code}")
         except Exception as e:
@@ -118,13 +118,12 @@ class VirtualRobot:
         self.safe_print("🚀 [순찰 개시] 로봇이 순찰을 시작합니다.")
         self.safe_print("="*40)
         
-        # 순찰 개시 전 데이터 로딩
+        # 순찰 개시 전 데이터 및 설정 매번 최신화
         if not self.load_memory():
-            self.safe_print("❌ 순찰을 시작할 수 없습니다. (메모리 탑재 실패)")
+            self.safe_print("❌ 순찰을 시작할 수 없습니다. (데이터 로딩 실패)")
             return
 
         if not remote:
-            # 직접 시작하는 경우 서버에 신호 전송
             try:
                 res = requests.post(START_PATROL_URL)
                 if res.status_code == 200:
@@ -137,6 +136,10 @@ class VirtualRobot:
 
         self.status = STATUS_PATROLLING
         
+        # 로봇 현재 위치 초기화
+        current_x, current_y = 0.0, 0.0
+        robot_speed = 0.2 # 0.2 m/sec
+        
         # 순찰 시나리오 시뮬레이션
         for i, plan in enumerate(self.patrol_path):
             if self.status != STATUS_PATROLLING:
@@ -144,42 +147,66 @@ class VirtualRobot:
                 if remote: self.print_menu()
                 return
 
+            target_x = plan.get('loc_x', 0.0)
+            target_y = plan.get('loc_y', 0.0)
+            
+            # 거리 계산 (Euclidean distance)
+            distance = ((target_x - current_x)**2 + (target_y - current_y)**2)**0.5
+            move_time = distance / robot_speed
+            
             self.safe_print(f"\n[{i+1}/{len(self.patrol_path)}] {plan['waypoint_name']} 이동 중...")
-            time.sleep(2) # 이동 시간 시뮬레이션
+            self.safe_print(f"   - 목적지: ({target_x}, {target_y}) | 거리: {distance:.2f}m | 예상 소요 시간: {move_time:.1f}초")
             
-            self.safe_print(f"📍 {plan['waypoint_name']} 도착. 스캔 중...")
-            time.sleep(1) # 스캔 시간 시뮬레이션
+            # 실제 이동 시간만큼 대기 (시뮬레이션 가속을 위해 최대 10초로 제한할 수도 있으나 요청대로 구현)
+            if move_time > 0:
+                time.sleep(min(move_time, 10)) # 너무 오래 걸리면 테스트가 힘드니 최대 10초로 캡핑 (실제 적용 시 조절 가능)
             
-            # 실제 스캔 시뮬레이션 (70% 확률로 정상, 15% 확률로 결품(바코드 없음/YOLO -1 or 0), 15% 확률로 오진열)
+            self.safe_print(f"📍 {plan['waypoint_name']} 도착. 정차 후 스캔 시작...")
+            time.sleep(1.5) # 정차 및 카메라 포커싱 시간
+            
+            # 현재 위치 업데이트
+            current_x, current_y = target_x, target_y
+            
+            # 판정 시나리오 (70% 정상, 15% 결품, 15% 오진열)
             rand_val = random.random()
             
             if rand_val < 0.7:
-                # 정상
-                self.send_detection(plan['barcode_tag'], detected_barcode=plan['product_barcode'])
+                # 1. 정상 (실제 등록된 바코드 전송)
+                self.safe_print(f"   [결과] 정상 인식: {plan['product_name']}")
+                self.send_detection(plan['barcode_tag'], detected_barcode=plan['product_barcode'], odom_x=current_x, odom_y=current_y)
+            
             elif rand_val < 0.85:
-                # 결품 시나리오 (0 또는 -1 무작위 선택)
-                missing_class_id = random.choice([0, -1])
-                self.safe_print(f"   [시뮬레이션] 상품 미검출 시나리오 발생 (YOLO ID: {missing_class_id})")
-                self.send_detection(plan['barcode_tag'], yolo_class_id=missing_class_id, confidence=0.0)
+                # 2. 미진열/결품 (YOLO ID -1 또는 0 전송)
+                missing_id = random.choice([-1, 0])
+                self.safe_print(f"   [결과] 상품 미검출 (결품 시나리오) 발생 (YOLO ID: {missing_id})")
+                self.send_detection(plan['barcode_tag'], yolo_class_id=missing_id, confidence=0.0, odom_x=current_x, odom_y=current_y)
+            
             else:
-                # 오진열 (다른 무작위 상품 선택)
-                other_products = [p for p in self.products if p['barcode'] != plan['product_barcode']]
-                if other_products:
-                    other_p = random.choice(other_products)
-                    self.send_detection(plan['barcode_tag'], detected_barcode=other_p['barcode'], confidence=0.95)
+                # 3. 오진열 (엉뚱한 상품 클래스 전송)
+                # 현재 등록된 상품 마스터에서 의도하지 않은 상품의 YOLO ID를 무작위로 선택
+                wrong_products = [p for p in self.products if p.get('yolo_class_id') is not None and p.get('yolo_class_id') != plan.get('yolo_class_id')]
+                
+                if wrong_products:
+                    wrong_p = random.choice(wrong_products)
+                    wrong_yolo_id = wrong_p['yolo_class_id']
+                    self.safe_print(f"   [결과] 오진열 발생! (기대:{plan['product_name']} -> 실제:{wrong_p['product_name']})")
+                    self.send_detection(plan['barcode_tag'], yolo_class_id=wrong_yolo_id, confidence=0.95, odom_x=current_x, odom_y=current_y)
                 else:
-                    self.send_detection(plan['barcode_tag'], detected_barcode="0000000000000", confidence=0.5)
+                    # 마땅한 상품이 없으면 아예 모르는 ID 전송
+                    self.safe_print(f"   [결과] 알 수 없는 상품 감지 (오진열)")
+                    self.send_detection(plan['barcode_tag'], yolo_class_id=999, confidence=0.7, odom_x=current_x, odom_y=current_y)
 
-            # 회피 대기 시간 적용 (마지막 웨이포인트 제외이며, 장애물 감지 시에만 발생)
-            if i < len(self.patrol_path) - 1:
-                # 30% 확률로 사람이 매대 앞을 막고 있는 시나리오 시뮬레이션
-                if random.random() < 0.3:
-                    self.safe_print(f"⚠️ [장애물 감지] 매대 앞에 고객이 있습니다. {self.avoidance_time}초 대기 후 이동합니다...")
-                    time.sleep(self.avoidance_time)
-                else:
-                    self.safe_print("⏭️ 장애물 없음. 다음 위치로 즉시 이동합니다.")
+            # 회피 대기 시나리오 (30% 확률)
+            if i < len(self.patrol_path) - 1 and random.random() < 0.3:
+                self.safe_print(f"⚠️ [장애물 감지] 이동 경로에 장애물이 있습니다. {self.avoidance_time}초 대기...")
+                time.sleep(self.avoidance_time)
 
-        self.safe_print("\n✅ 모든 웨이포인트 순찰 완료.")
+        self.safe_print("\n✅ 모든 구역 순찰 완료.")
+        # 기지(0,0)로 복귀 거리 계산
+        base_dist = (current_x**2 + current_y**2)**0.5
+        self.safe_print(f"🏠 기지(0,0)로 복귀 중... (거리: {base_dist:.2f}m)")
+        time.sleep(min(base_dist/robot_speed, 5))
+        
         self.return_to_base(remote=remote)
 
     def return_to_base(self, remote=False):
