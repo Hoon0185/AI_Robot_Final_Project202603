@@ -11,6 +11,7 @@
 *   **FastAPI 백엔드**: 재고 데이터 및 알림 처리를 위해 실행 중이어야 합니다 (기본 포트: 8000).
 *   **Navigation2 Stack**: 순찰 및 복귀 기능을 위해 반드시 실행 중이어야 합니다.
 *   **의존성**: `PyQt6`, `requests`, `rclpy`, `nav2_msgs`, `uvicorn` 등이 설치되어 있어야 합니다.
+*   **시간 동기화 (Chrony)**: 터틀봇과 PC 간의 시스템 시간이 일치해야 TF 에러가 발생하지 않습니다. (SLAM 가이드 참고)
 
 ---
 
@@ -38,10 +39,10 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 colcon build --packages-select patrol_main logic2_pkg
 source install/setup.bash
 
-# 터미널 2: 전체 순찰 시스템 실행 (순찰 로직 + 장애물 회피 + 멀티플렉서)
-# [기본] ros2 launch patrol_main total_patrol.launch.py
-# [네임스페이스 사용 시] ros2 launch patrol_main total_patrol.launch.py namespace:=TB3_2
-ros2 launch patrol_main total_patrol.launch.py
+# 터미널 2: 순찰 시스템 실행 (순찰 로직 + 장애물 회피 + 멀티플렉서)
+# [기본] ros2 launch patrol_main patrol.launch.py
+# [네임스페이스 사용 시] ros2 launch patrol_main patrol.launch.py namespace:=TB3_2
+ros2 launch patrol_main patrol.launch.py
 ```
 
 ### 2단계: 백엔드 서버 상태 확인 (Remote)
@@ -113,5 +114,6 @@ python3 inventory_manager.py
 
 *   **UI 실행 시 에러 발생**: `robot_logic.py`에서 `patrol_interface` 임포트 경로가 올바른지 확인하십시오.
 *   **데이터가 비어있음**: FastAPI 서버가 작동 중인지, `InventoryDB`의 `base_url`이 정확한지 확인하십시오.
+*   **네비게이션/TF 에러**: 터틀봇과 PC의 시간이 일치하는지 확인하세요. 터틀봇에서 `date` 명령을 실행해보고 PC 시간과 1초 이상 차이가 나면 `chrony` 서비스를 재시작하거나 수동으로 동기화해야 합니다.
 *   **명령어가 전달되지 않음**: ROS 2 노드들이 동일한 `ROS_DOMAIN_ID`를 사용하는지, 혹은 통신 환경(Namespace 등)이 일치하는지 확인하십시오.
 *   **패키지 누락**: `pip install mysql-connector-python requests` 명령이 수행되었는지 확인하십시오.

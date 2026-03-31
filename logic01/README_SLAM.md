@@ -11,22 +11,33 @@ source ~/turtlebot3_ws/install/setup.bash
 
 ## 2. 시간 동기화 (필수)
 로봇과 PC의 시간이 맞지 않으면 TF 에러로 지도가 그려지지 않거나 로봇 위치가 사라집니다.
+
+### A. 인터넷 기반 자동 동기화 (권장)
+로봇에 인터넷이 연결되어 있다면 `chrony`를 사용하는 것이 가장 확실합니다.
+```bash
+ssh penguin@<ROBOT_IP>
+sudo systemctl start chrony
+sudo systemctl enable chrony
+# 동기화 상태 확인
+chronyc tracking
+```
+
+### B. PC 시간을 로봇에 강제 주입 (임시 방편)
+인터넷이 안 되는 환경에서 PC 시간을 로봇에 복사합니다.
 ```bash
 # 1. 로봇(SSH)에서 자동 동기화 중지
-# <ROBOT_IP> 자리에 실제 로봇 IP(예: 192.168.230.78)를 입력하세요.
 ssh penguin@<ROBOT_IP> "echo robot123 | sudo -S systemctl stop systemd-timesyncd"
 
 # 2. PC 시간을 로봇에 강제 주입 (PC 터미널에서 실행)
 ssh penguin@<ROBOT_IP> "echo robot123 | sudo -S date -s '@$(date +%s)'"
+```
 
 ### 💡 시간 차이 확인 방법
-로봇과 PC의 시간이 얼마나 차이 나는지 확인하려면 아래 명령어를 사용하세요.
+로봇 시간(첫 번째 줄)과 PC 시간(두 번째 줄)을 순서대로 출력하여 확인하세요.
 ```bash
-# 로봇 시간(첫 번째 줄)과 PC 시간(두 번째 줄)을 순서대로 출력
 ssh penguin@<ROBOT_IP> "date" && date
 ```
 차이가 1초 이내라면 정상입니다.
-```
 
 ## 3. 로봇 기체 실행 (Bringup)
 로봇 본체(라즈베리 파이) 터미널에서 실행합니다.
@@ -237,7 +248,7 @@ AMCL 위치 추정이 틀어지기 쉬운 환경(대칭형 진열대 등)에서 
 ### A. RFID 노드 활성화
 시스템 실행 시 `run_rfid:=true` 인자를 추가합니다.
 ```bash
-ros2 launch patrol_main total_patrol.launch.py run_rfid:=true
+ros2 launch patrol_main patrol.launch.py run_rfid:=true
 ```
 
 ### B. 보정 원리

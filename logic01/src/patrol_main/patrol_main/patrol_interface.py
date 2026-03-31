@@ -42,6 +42,15 @@ class PatrolInterface:
         
         # Remote Command Polling
         self.last_cmd_id = None
+        try:
+            # 시작 시점의 최신 명령 ID를 가져와서 저장 (이전 명령 재실행 방지)
+            init_data = self.db.get_latest_command()
+            if init_data:
+                self.last_cmd_id = init_data.get('command_id')
+                self.node.get_logger().info(f"Initialized with last remote command ID: {self.last_cmd_id}")
+        except Exception as e:
+            self.node.get_logger().error(f"Failed to fetch initial command ID: {e}")
+
         self.last_cmd_name = None
         self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
         self.poll_thread.start()

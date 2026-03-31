@@ -203,10 +203,10 @@ class PatrolNode(Node):
             self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}, Detected: {detected}')
             self._delay_timer = self.create_timer(2.0, self.proceed_to_next_shelf)
         else:
-            self.current_shelf_idx += 1
-            if self.is_patrolling:
-                self.publish_status('patrolling')
-            self.send_next_goal()
+            self.get_logger().error(f'Navigation FAILED with status code: {status}. Stopping patrol for safety.')
+            self.is_patrolling = False
+            self.publish_status('error')
+            # 더 이상 send_next_goal()을 호출하지 않고 중단하여 무한 루프를 방지합니다.
 
     def proceed_to_next_shelf(self):
         if self._delay_timer:
