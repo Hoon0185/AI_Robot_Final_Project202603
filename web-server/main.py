@@ -619,7 +619,7 @@ async def get_patrol_plan():
         query = """
             SELECT 
                 p.plan_id, p.waypoint_id, p.barcode_tag, p.product_id,
-                p.plan_order, w.waypoint_name, p.row_num,
+                p.plan_order, w.waypoint_name, w.loc_x, w.loc_y, p.row_num,
                 m.product_name, m.barcode as product_barcode
             FROM waypoint_product_plan p
             LEFT JOIN waypoint w ON p.waypoint_id = w.waypoint_id
