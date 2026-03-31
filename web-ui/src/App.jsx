@@ -405,8 +405,20 @@ function App() {
   };
 
   const handleFinishPatrol = async () => {
-    if (status.robot_status === '휴식중' || status.robot_status === '대기중') {
+    // 비상정지 중 복귀 누를 경우의 예외 처리 (사용자 요청: 이미 기지 메시지 및 비상해제)
+    if (status.robot_status === '비상정지') {
+      alert("이미 기지이기 때문에 기지입니다.");
+      try {
+        const res = await fetch('/api/patrol/finish', { method: 'POST' });
+        if (res.ok) {
+          setStatus(prev => ({ ...prev, robot_status: '휴식중' }));
+          fetchGilbotData();
+        } else { alert("비상 해제 및 복귀 처리 실패"); }
+      } catch (err) { alert("연결 오류"); }
+      return;
+    }
 
+    if (status.robot_status === '휴식중' || status.robot_status === '대기중') {
       alert("이미 기지입니다.");
       return;
     }

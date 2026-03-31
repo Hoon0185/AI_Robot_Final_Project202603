@@ -253,14 +253,24 @@ class VirtualRobot:
         self.return_to_base(remote=remote)
 
     def return_to_base(self, remote=False):
-        self.safe_print("\n🏠 [기지 복귀] 기지로 복귀합니다...")
+        # 만약 비상 정지 상태에서 복귀 명령이 왔다면, 비상 해제 후 복귀 수행 (사용자 요청)
+        if self.status == STATUS_EMERGENCY_STOP:
+            self.safe_print("\n🔓 [비상 해제] 비상 정지 상태에서 기지 복귀 명령을 수신하여 비상을 해제합니다.")
+            self.status = STATUS_RETURNING
+        elif self.status == STATUS_IDLE:
+            self.safe_print("\n🏠 [이미 기지] 로봇이 이미 기지에 있습니다.")
+            self.status = STATUS_IDLE
+            return
 
+        self.safe_print("\n🏠 [기지 복귀] 기지로 복귀합니다...")
         self.status = STATUS_RETURNING
+
         # 복귀 이동 중 비상정지 가능하도록 interruptible_sleep 적용
         if not self.interruptible_sleep(5):
-            self.safe_print("🛑 복귀 중 비상 정지되었습니다.")
-            if remote: self.print_menu()
-            return
+            if self.status == STATUS_EMERGENCY_STOP:
+                self.safe_print("🛑 복귀 중 비상 정지되었습니다.")
+                if remote: self.print_menu()
+                return
         
         self.safe_print("🏁 [복귀 완료] 로봇이 기지에 도착했습니다.")
         self.status = STATUS_IDLE
