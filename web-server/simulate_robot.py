@@ -86,13 +86,14 @@ class VirtualRobot:
             self.safe_print(f"❌ 데이터 로딩 실패: {e}")
             return False
 
-    def send_detection(self, tag_barcode, detected_barcode, confidence=0.98):
+    def send_detection(self, tag_barcode, detected_barcode=None, yolo_class_id=None, confidence=0.98):
         payload = {
             "tag_barcode": tag_barcode,
             "detected_barcode": detected_barcode,
+            "yolo_class_id": yolo_class_id,
             "confidence": confidence,
-            "odom_x": 1.23, # 시뮬레이션 가상 좌표
-            "odom_y": 4.56,
+            "odom_x": round(random.uniform(1.0, 5.0), 2),
+            "odom_y": round(random.uniform(1.0, 5.0), 2),
             "timestamp": datetime.now().isoformat()
         }
         try:
@@ -100,7 +101,9 @@ class VirtualRobot:
             if res.status_code == 200:
                 data = res.json()
                 self.current_patrol_id = data.get("patrol_id")
-                self.safe_print(f"   >>> [인식 결과] 태그:{tag_barcode} | 상품:{detected_barcode if detected_barcode else 'NO_ITEM'} -> {data.get('judgment')}")
+                # 결과 출력 가독성 개선
+                item_desc = detected_barcode if detected_barcode else (f"YOLO:{yolo_class_id}" if yolo_class_id is not None else "NO_ITEM")
+                self.safe_print(f"   >>> [인식 결과] 태그:{tag_barcode} | 상품:{item_desc} -> {data.get('judgment')}")
             else:
                 self.safe_print(f"   >>> ❌ 서버 응답 오류: {res.status_code}")
         except Exception as e:
@@ -147,23 +150,25 @@ class VirtualRobot:
             self.safe_print(f"📍 {plan['waypoint_name']} 도착. 스캔 중...")
             time.sleep(1) # 스캔 시간 시뮬레이션
             
-            # 실제 스캔 시뮬레이션 (90% 확률로 정상, 5% 확률로 결품, 5% 확률로 오진열)
+            # 실제 스캔 시뮬레이션 (70% 확률로 정상, 15% 확률로 결품(바코드 없음/YOLO -1 or 0), 15% 확률로 오진열)
             rand_val = random.random()
             
-            if rand_val < 0.8:
+            if rand_val < 0.7:
                 # 정상
-                self.send_detection(plan['barcode_tag'], plan['product_barcode'])
-            elif rand_val < 0.9:
-                # 결품
-                self.send_detection(plan['barcode_tag'], None, 0.0)
+                self.send_detection(plan['barcode_tag'], detected_barcode=plan['product_barcode'])
+            elif rand_val < 0.85:
+                # 결품 시나리오 (0 또는 -1 무작위 선택)
+                missing_class_id = random.choice([0, -1])
+                self.safe_print(f"   [시뮬레이션] 상품 미검출 시나리오 발생 (YOLO ID: {missing_class_id})")
+                self.send_detection(plan['barcode_tag'], yolo_class_id=missing_class_id, confidence=0.0)
             else:
                 # 오진열 (다른 무작위 상품 선택)
                 other_products = [p for p in self.products if p['barcode'] != plan['product_barcode']]
                 if other_products:
                     other_p = random.choice(other_products)
-                    self.send_detection(plan['barcode_tag'], other_p['barcode'], 0.95)
+                    self.send_detection(plan['barcode_tag'], detected_barcode=other_p['barcode'], confidence=0.95)
                 else:
-                    self.send_detection(plan['barcode_tag'], "0000000000000", 0.5)
+                    self.send_detection(plan['barcode_tag'], detected_barcode="0000000000000", confidence=0.5)
 
             # 회피 대기 시간 적용 (마지막 웨이포인트 제외이며, 장애물 감지 시에만 발생)
             if i < len(self.patrol_path) - 1:

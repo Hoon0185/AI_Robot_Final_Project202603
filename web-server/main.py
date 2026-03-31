@@ -453,16 +453,22 @@ async def add_detection(data: DetectionInput):
             if prod:
                 detected_product_id = prod['product_id']
         elif data.yolo_class_id is not None:
-            cursor.execute("SELECT product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
-            prod = cursor.fetchone()
-            if prod:
-                detected_product_id = prod['product_id']
+            # -1 또는 0은 '상품 없음'으로 간주 (미진열 처리용)
+            if data.yolo_class_id in [-1, 0]:
+                detected_product_id = None
+            else:
+                cursor.execute("SELECT product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
+                prod = cursor.fetchone()
+                if prod:
+                    detected_product_id = prod['product_id']
 
         # 4. 판독 로직 (정상 / 결품 / 오진열)
         result_status = '정상'
-        if not data.detected_barcode:
+        if not data.detected_barcode and (data.yolo_class_id is None or data.yolo_class_id in [-1, 0]):
+            # 바코드도 없고, YOLO ID도 없거나 무효한 경우 결품
             result_status = '결품'
         elif detected_product_id != planned_product_id:
+            # 인식된 상품 ID가 계획과 다른 경우 오진열 (결품이 아닌 상황에서)
             result_status = '오진열'
 
         # 5. shelf_status 업데이트 (현재 매대 현황)
