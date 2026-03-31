@@ -216,11 +216,19 @@ function App() {
   };
 
   const handleDeletePatrol = async (id) => {
-    if (!window.confirm("정말 이 기록을 삭제하시겠습니까?")) return;
+    if (!window.confirm("정말 이 기록을 삭제하시겠습니까? 관련 탐지 로그와 알림 내역도 함께 삭제됩니다.")) return;
     try {
+      setLoading(true);
       const res = await fetch(`/api/patrol/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchGilbotData();
-    } catch (err) { alert("삭제 실패"); }
+      if (res.ok) {
+        alert("✅ 순찰 기록이 삭제되었습니다.");
+        fetchGilbotData();
+      } else {
+        const errData = await res.json();
+        alert("❌ 삭제 실패: " + errData.detail);
+      }
+    } catch (err) { alert("연결 오류 발생"); }
+    finally { setLoading(false); }
   };
 
   const handleResolveAlert = async (alertId) => {

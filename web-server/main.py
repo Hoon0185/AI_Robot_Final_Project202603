@@ -188,11 +188,19 @@ async def delete_patrol(patrol_id: int):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        # 1. 관련된 alert 삭제
+        cursor.execute("DELETE FROM alert WHERE patrol_id = %s", (patrol_id,))
+        # 2. 관련된 detection_log 삭제
+        cursor.execute("DELETE FROM detection_log WHERE patrol_id = %s", (patrol_id,))
+        # 3. 순찰 로그 삭제
         cursor.execute("DELETE FROM patrol_log WHERE patrol_id = %s", (patrol_id,))
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Log not found")
-        return {"message": "Patrol log deleted successfully"}
+        return {"message": "Patrol log and related data deleted successfully"}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
 
