@@ -1,25 +1,51 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
+from launch_ros.actions import Node, SetRemap
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
     pkg_dir = get_package_share_directory('patrol_main')
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     
     # Configuration file paths
     twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
-    
+    nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml') # 우리 패키지의 파라미터 사용
+    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_01.yaml') # 실제 지도 이름으로 수정
+
     # Launch arguments
-    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     map_frame = LaunchConfiguration('map_frame', default='map')
+    run_rfid = LaunchConfiguration('run_rfid', default='false')
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('map_frame', default_value='map'),
+        DeclareLaunchArgument('run_rfid', default_value='false', description='Whether to run RFID localization node'),
 
-        # 1. Patrol Scheduler Node
+        # 1. Navigation2 Bringup (Forced Remap cmd_vel to cmd_vel_nav)
+        # GroupAction과 SetRemap(상대+절대)을 모두 사용하여 컨테이너 내부 노드까지 강제 리매핑합니다.
+        GroupAction(
+            actions=[
+                SetRemap(src='/cmd_vel', dst='/cmd_vel_nav'),
+                SetRemap(src='cmd_vel', dst='/cmd_vel_nav'),
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(os.path.join(nav2_bringup_dir, 'launch', 'bringup_launch.py')),
+                    launch_arguments={
+                        'map': map_file,
+                        'use_sim_time': use_sim_time,
+                        'params_file': nav2_params_file,
+                        'autostart': 'true'
+                    }.items()
+                ),
+            ]
+        ),
+
+        # 2. Patrol Scheduler Node
         Node(
             package='patrol_main',
             executable='patrol_scheduler',
@@ -28,7 +54,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 2. Patrol Main Node (Navigation Goal Sender)
+        # 3. Patrol Main Node (Navigation Goal Sender)
         Node(
             package='patrol_main',
             executable='patrol_node',
@@ -40,7 +66,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 3. Obstacle Avoidance Node (LOGIC_02 Integration)
+        # 4. Obstacle Avoidance Node
         Node(
             package='patrol_main',
             executable='obstacle_node',
@@ -52,22 +78,34 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 4. Twist Mux (Priority Management)
+        # 5. Twist Mux (Final Arbitrator)
+        # Nav2 신호를 리매핑된 토픽(/cmd_vel_nav)으로 받고, 최종 명령은 /cmd_vel로 내보냅니다.
         Node(
             package='twist_mux',
             executable='twist_mux',
             name='twist_mux',
             output='screen',
             parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-            remappings=[('/cmd_vel_out', '/cmd_vel')] # 최종 출력 토픽
+            remappings=[('/cmd_vel_out', '/cmd_vel')] 
         ),
 
-        # 5. Patrol Visualizer (Optional but helpful)
+        # 6. Patrol Visualizer
         Node(
             package='patrol_main',
             executable='patrol_visualizer',
             name='patrol_visualizer',
             parameters=[{'use_sim_time': use_sim_time, 'map_frame': map_frame}],
             output='screen'
+        ),
+
+        # 7. RFID Localization Node (Optional Correction)
+        Node(
+            package='patrol_main',
+            executable='rfid_localization_node',
+            name='rfid_localization_node',
+            parameters=[{'use_sim_time': use_sim_time}],
+            output='screen',
+            condition=IfCondition(run_rfid)
         )
     ])
+

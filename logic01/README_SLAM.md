@@ -230,3 +230,21 @@ print(f"현재 상태: {status}")
 # 작업 완료 후 종료 (필수)
 patrol.shutdown()
 ```
+
+## 11. RFID 랜드마크 보정 가이드 (Robust Localization)
+AMCL 위치 추정이 틀어지기 쉬운 환경(대칭형 진열대 등)에서 RFID 태그를 랜드마크로 사용하여 위치를 강제 보정할 수 있습니다.
+
+### A. RFID 노드 활성화
+시스템 실행 시 `run_rfid:=true` 인자를 추가합니다.
+```bash
+ros2 launch patrol_main total_patrol.launch.py run_rfid:=true
+```
+
+### B. 보정 원리
+1. 로봇 하단의 RFID 리더기가 특정 태그(`landmark_map`에 등록된 ID)를 인식합니다.
+2. 인식된 태그에 매핑된 `(x, y, yaw)` 좌표를 기반으로 `PoseWithCovarianceStamped` 메시지를 생성합니다.
+3. 생성된 메시지를 `/initialpose` 토픽으로 발행하여 AMCL의 현재 위치를 즉시 업데이트합니다.
+
+### C. 태그 및 좌표 관리
+`logic01/src/patrol_main/patrol_main/rfid_localization_node.py` 파일의 `self.landmark_map` 딕셔너리에 태그 ID와 실제 지도상의 좌표를 입력하여 확장할 수 있습니다.
+
