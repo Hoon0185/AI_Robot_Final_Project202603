@@ -116,23 +116,22 @@ async def root():
         "env": "production" if os.getenv("DB_HOST") == "16.184.56.119" else "local"
     }
 
-@app.get("/api/debug/schema")
-async def migrate_db():
-    conn = get_db_connection()
-    if not conn: return {"error": "db connection fail"}
-    try:
-        cursor = conn.cursor(dictionary=True)
-        # 컬럼 속성 변경 (ENUM 제약 제거 및 길이 확장)
-        cursor.execute("ALTER TABLE robot_command MODIFY COLUMN command_type VARCHAR(50)")
-        conn.commit()
-        return {"status": "success", "message": "Column 'command_type' expanded to VARCHAR(50)"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        conn.close()
-
 @app.get("/status")
 async def get_status():
+    # 마이트레이션 로직 (긴 명령어 수용 가능하도록 DB 스키마 수정)
+    conn = get_db_connection()
+    migration_status = "Skipped"
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("ALTER TABLE robot_command MODIFY COLUMN command_type VARCHAR(50)")
+            conn.commit()
+            migration_status = "Migrated"
+        except Exception as e:
+            migration_status = f"Error: {e}"
+        finally:
+            conn.close()
+
     conn = get_db_connection()
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
     robot_mode = "휴식중"
