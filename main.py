@@ -11,7 +11,7 @@ class MainApp:
         self.login_view.login_success.connect(self.start_main_system)
         self.login_view.show()
 
-    def start_main_system(self):
+    def start_main_system(self,is_debug):
         # 2. 로그인 창 닫기
         self.login_view.close()
 
@@ -20,7 +20,7 @@ class MainApp:
 
         # 4. 로직 핸들러 생성 및 UI 연결
         # 담당자들이 robot_logic.py만 수정하면 여기에 자동으로 반영됩니다.
-        self.logic = RobotLogicHandler(self.main_view)
+        self.logic = RobotLogicHandler(self.main_view,debug_mode=is_debug)
 
         # 5. 메인 화면 표시
         self.main_view.show()

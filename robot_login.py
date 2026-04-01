@@ -1,8 +1,9 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class LoginWindow(QWidget):
-    login_success = pyqtSignal()
+    # 로그인 성공 시 모드(True: Debug, False: Release)를 전달하도록 인자 추가
+    login_success = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
@@ -13,7 +14,40 @@ class LoginWindow(QWidget):
         self.setFixedSize(850, 650)
         self.setStyleSheet("background-color: #2C3E50; font-family: 'Malgun Gothic';")
 
-        layout = QVBoxLayout(self)
+        # 메인 레이아웃 (기존 layout을 유지하되 모드 선택기를 위해 전체 배치를 잡습니다)
+        main_v_layout = QVBoxLayout(self)
+
+        # --- [추가: 우상단 모드 선택 영역] ---
+        top_h_layout = QHBoxLayout()
+        top_h_layout.addStretch() # 왼쪽 공간을 다 채워서 ComboBox를 오른쪽 끝으로 밈
+
+        self.mode_selector = QComboBox()
+        self.mode_selector.addItems(["🛠 DEBUG MODE", "🚀 RELEASE MODE"])
+        self.mode_selector.setFixedSize(150, 30)
+        self.mode_selector.setStyleSheet("""
+            QComboBox {
+                background-color: rgba(52, 73, 94, 0.7);
+                border: 1px solid #5D6D7E;
+                border-radius: 5px;
+                color: #82E0AA;
+                font-size: 11px;
+                font-weight: bold;
+                padding-left: 5px;
+            }
+            QComboBox:hover { border: 1px solid #27AE60; }
+            QComboBox::drop-down { border: none; }
+            QAbstractItemView {
+                background-color: #34495E;
+                color: white;
+                selection-background-color: #27AE60;
+                outline: none;
+            }
+        """)
+        top_h_layout.addWidget(self.mode_selector)
+        main_v_layout.addLayout(top_h_layout)
+
+        # 중앙 배치를 위한 컨테이너 레이아웃 (기존 layout 로직 그대로 유지)
+        layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(20)
 
@@ -68,6 +102,11 @@ class LoginWindow(QWidget):
         layout.addSpacing(30)
         layout.addWidget(footer, alignment=Qt.AlignmentFlag.AlignHCenter)
 
+        # 중앙 레이아웃을 메인 레이아웃에 추가
+        main_v_layout.addStretch()
+        main_v_layout.addLayout(layout)
+        main_v_layout.addStretch()
+
         self.id_input.returnPressed.connect(self.validate_login)
         self.pw_input.returnPressed.connect(self.validate_login)
         self.login_btn.clicked.connect(self.validate_login)
@@ -77,7 +116,9 @@ class LoginWindow(QWidget):
         user_pw = self.pw_input.text().strip()
 
         if user_id == "admin" and user_pw == "1234":
-            self.login_success.emit()
+            # 0번 인덱스(Debug)면 True, 아니면 False 전송
+            is_debug = (self.mode_selector.currentIndex() == 0)
+            self.login_success.emit(is_debug)
         else:
             self.id_input.setStyleSheet(self.error_style)
             self.pw_input.setStyleSheet(self.error_style)
