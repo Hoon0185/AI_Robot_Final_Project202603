@@ -34,6 +34,7 @@ class PatrolNode(Node):
         self.current_shelf_idx = 0
         self.is_patrolling = False
         self.last_detection = None
+        self.reported_tags = set() # 중복 리포팅 방지를 위한 저장소
         self._goal_handle = None
 
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
@@ -94,6 +95,7 @@ class PatrolNode(Node):
             self.is_patrolling = True
             self.start_time = datetime.now()
             self.current_shelf_idx = 0
+            self.reported_tags.clear() # 새로운 순찰 세션 시작 시 초기화
             self.publish_status('patrolling')
             self.send_next_goal()
         elif cmd == 'RETURN_HOME':
@@ -193,12 +195,16 @@ class PatrolNode(Node):
                 "confidence": 0.98
             }
             
-            # DB 서버로 인식 결과 전송
-            success, msg = self.db.report_detection(tag_barcode, detected, 0.98)
-            if success:
-                self.get_logger().info(f'Successfully reported to DB: {tag_barcode}')
+            # DB 서버로 인식 결과 전송 (중복 전송 방지 로직 적용)
+            if tag_barcode not in self.reported_tags:
+                success, msg = self.db.report_detection(tag_barcode, detected, 0.98)
+                if success:
+                    self.get_logger().info(f'Successfully reported to DB: {tag_barcode}')
+                    self.reported_tags.add(tag_barcode)
+                else:
+                    self.get_logger().warn(f'Failed to report to DB: {msg}')
             else:
-                self.get_logger().warn(f'Failed to report to DB: {msg}')
+                self.get_logger().info(f'Skipping duplicate report for: {tag_barcode}')
             
             self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}, Detected: {detected}')
             

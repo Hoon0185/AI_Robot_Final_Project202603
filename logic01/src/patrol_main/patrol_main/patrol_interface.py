@@ -66,12 +66,19 @@ class PatrolInterface:
                     cmd_id = data.get('command_id')
                     
                     # 새로운 ID의 명령일 경우에만 실행
-                    if cmd_id and cmd_id != self.last_cmd_id:
+                    if cmd_id is not None and cmd_id != self.last_cmd_id:
                         self.node.get_logger().info(f"[REMOTE] New command (ID:{cmd_id}): {cmd_name}")
                         self._execute_remote_command(cmd_name)
+                        
+                        # 실행 직후 즉시 로컬 ID 업데이트하여 중복 실행 방지
                         self.last_cmd_id = cmd_id
-                        # 명령 실행 후 서버에 즉각 완료 보고
-                        self.db.complete_command(cmd_id)
+                        
+                        # 서버에 완료 보고
+                        success = self.db.complete_command(cmd_id)
+                        if success:
+                            self.node.get_logger().info(f"[REMOTE] Command {cmd_id} marked as COMPLETED on server.")
+                        else:
+                            self.node.get_logger().warn(f"[REMOTE] Failed to mark command {cmd_id} as COMPLETED.")
             except Exception as e:
                 self.node.get_logger().error(f"[REMOTE] Polling error: {e}")
             time.sleep(2.0)
