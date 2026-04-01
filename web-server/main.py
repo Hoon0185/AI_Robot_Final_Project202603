@@ -168,9 +168,9 @@ async def get_status():
             p_status = str(last_patrol['status']).strip() if last_patrol else "완료"
 
             # 3. 비상 여부 판정 (최우선)
-            if res_cmd == "EMERGENCY_STOP" or p_status == "중단":
+            # '==' 대신 'in'을 사용하여 보이지 않는 공백/바이너리 오차 무력화
+            if "EMERGENCY_STOP" in res_cmd or p_status == "중단":
                 res_status = "비상정지"
-                # 비상정지 시에도 진행 중이었다면 위치를 유지
                 if p_status != "완료" and last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
@@ -191,6 +191,8 @@ async def get_status():
         "status": "online",
         "robot_status": res_status,
         "latest_cmd": res_cmd,
+        "debug_cmd_repr": repr(res_cmd), # 유령 문자 확인용
+        "debug_cmd_len": len(res_cmd),   # 문자열 길이 확인용
         "database": db_status,
         "odom_x": res_x,
         "odom_y": res_y,
