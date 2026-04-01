@@ -746,7 +746,15 @@ function App() {
                     {shelfStatus.length === 0 ? (
                       <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>데이터를 수집 중입니다...</td></tr>
                     ) : (
-                      shelfStatus.map(item => (
+                      [...shelfStatus]
+                        .sort((a, b) => {
+                          const wpA = a.waypoint_name || "";
+                          const wpB = b.waypoint_name || "";
+                          const nameCompare = wpA.localeCompare(wpB);
+                          if (nameCompare !== 0) return nameCompare;
+                          return (a.row_num || 0) - (b.row_num || 0);
+                        })
+                        .map(item => (
                         <tr key={item.status_id}>
                           <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.waypoint_name}</td>
                           <td style={{ textAlign: 'center', padding: '14px 2px' }}>{item.row_num || 1}</td>
