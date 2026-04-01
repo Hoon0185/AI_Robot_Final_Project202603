@@ -5,11 +5,27 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from nav2_msgs.srv import ClearEntireCostmap
+import requests
 
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
-    self.declare_parameter('obstacle_wait_time',10) # 장애물 대기 시간(ui 조정을 위함)
+    
+    # ---- 웹 DB에서 초기 설정값 가져오기 ----
+    default_wait_time = 10
+    try:
+        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=2.0)
+        if response.status_code == 200:
+            config = response.json()
+            # DB에 값이 있으면 덮어쓰기 (기본값은 10)
+            default_wait_time = int(config.get('avoidance_wait_time', 10))
+            self.get_logger().info(f'[DB] 초기 장애물 대기 시간 설정 성공: {default_wait_time}초')
+        else:
+            self.get_logger().warn(f'[DB] 서버 응답 에러 ({response.status_code}), 기본값 {default_wait_time}초를 사용합니다.')
+    except Exception as e:
+        self.get_logger().error(f'[DB] 서버 연결 실패: {e}, 기본값 {default_wait_time}초를 사용합니다.')
+
+    self.declare_parameter('obstacle_wait_time', default_wait_time)
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -39,7 +55,7 @@ class ObstacleNode(Node):
     )
 
     # ---- 타이머 설정 ----
-    timer_pub = 0.02 # 50Hz로 상향
+    timer_pub = 0.1 # 10Hz로 최적화 (SLAM 흔들림 방지 및 부하 감소)
     self.timer_second = int(1/timer_pub) # 1초당 타이머 콜백 횟수 계산
     self.timer = self.create_timer(timer_pub, self.timer_callback)
 
@@ -83,7 +99,7 @@ class ObstacleNode(Node):
           self.get_logger().warn(f'장애물이 감지되었습니다! 거리: {min_distance:.2f}m')
           self.is_blocked = True
           self.wait_counter = 0
-        self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
+        # self.stop_robot() # 타이머 콜백에서 처리하도록 위임하여 중복 발행 방지
       else:
         ## ---- 장애물이 사라졌을 때 (10초 강제 대기를 위해 조기 취소 로직 비활성화) ----
         if self.is_blocked and self.wait_counter >= 0:

@@ -10,7 +10,7 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description():
     pkg_dir = get_package_share_directory('patrol_main')
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
-    
+
     # Configuration file paths
     # LOGIC_02의 설정을 우선하여 사용
     twist_mux_config = os.path.join(get_package_share_directory('logic2_pkg'), 'config', 'twist_mux.yaml')
@@ -76,8 +76,7 @@ def generate_launch_description():
             executable='obstacle_node',
             name='obstacle_node',
             parameters=[{
-                'use_sim_time': use_sim_time,
-                'obstacle_wait_time': 10
+                'use_sim_time': use_sim_time
             }],
             output='screen'
         ),
@@ -90,7 +89,7 @@ def generate_launch_description():
             name='twist_mux',
             output='screen',
             parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-            remappings=[('/cmd_vel_out', '/cmd_vel')] 
+            remappings=[('/cmd_vel_out', '/cmd_vel')]
         ),
 
         # 6. Patrol Visualizer

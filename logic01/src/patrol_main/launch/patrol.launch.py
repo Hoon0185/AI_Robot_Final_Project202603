@@ -43,7 +43,7 @@ def generate_launch_description():
 
     # 3. 모든 순찰 관련 노드 실행 (네임스페이스 제거됨)
     patrol_actions = [
-            
+
             # (1) 순찰 스케줄러 (주기적/예약 실행 관리)
             Node(
                 package='patrol_main',
@@ -52,7 +52,7 @@ def generate_launch_description():
                 parameters=[shelf_config, {'use_sim_time': use_sim_time}],
                 output='screen'
             ),
-            
+
             # (2) 순찰 메인 노드 (Nav2 목표 전송 및 상태 관리)
             Node(
                 package='patrol_main',
@@ -64,19 +64,18 @@ def generate_launch_description():
                 }],
                 output='screen'
             ),
-            
+
             # (3) 장애물 회피 제어 노드 (LOGIC_02 패키지 사용)
             Node(
                 package='logic2_pkg',
                 executable='obstacle_node',
                 name='obstacle_node',
                 parameters=[{
-                    'use_sim_time': use_sim_time,
-                    'obstacle_wait_time': 10
+                    'use_sim_time': use_sim_time
                 }],
                 output='screen'
             ),
-            
+
             # (4) Twist Mux (최종 명령 중재기)
             # Nav2(/cmd_vel_nav), Teleop(/cmd_vel_teleop), Obstacle(/cmd_vel_obstacle) 명령 우선순위 중재
             Node(
@@ -85,7 +84,7 @@ def generate_launch_description():
                 name='twist_mux',
                 output='screen',
                 parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-                remappings=[('/cmd_vel_out', '/cmd_vel')] 
+                remappings=[('/cmd_vel_out', '/cmd_vel')]
             ),
 
             # (5) 순찰 시각화 (RVIZ Marker 관리)

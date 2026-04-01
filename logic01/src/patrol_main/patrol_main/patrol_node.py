@@ -17,7 +17,7 @@ from .inventory_db import InventoryDB
 class PatrolNode(Node):
     def __init__(self):
         super().__init__('patrol_node')
-        
+
         # 0. DB 데이터베이스 초기화
         self.db = InventoryDB()
 
@@ -52,15 +52,15 @@ class PatrolNode(Node):
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
         self.pose_timer = self.create_timer(2.0, self.report_pose_to_server)
-        
+
         # 7. AI 인식 연동 (Verifier 노드 데이터 수신)
         self.ai_sub = self.create_subscription(
             DetectionArray, '/verified_objs', self.ai_callback, 10)
-        self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장 
+        self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
         # 8. 위치 초기화 발행 (AMCL 보정용)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
-        self.is_waiting_for_ai = False 
+        self.is_waiting_for_ai = False
         self.ai_wait_start_time = None
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
@@ -84,7 +84,7 @@ class PatrolNode(Node):
         if not os.path.exists(yaml_path):
             current_dir = os.path.dirname(os.path.abspath(__file__))
             yaml_path = os.path.join(current_dir, '..', 'config', 'shelf_coords.yaml')
-            
+
         with open(yaml_path, 'r') as f:
             config = yaml.safe_load(f)
             if '/**' in config:
@@ -98,7 +98,7 @@ class PatrolNode(Node):
             self.get_logger().error('!!! EMERGENCY STOP RECEIVED !!!')
             # 서버에 순찰 종료/중단 세션 등록
             self.db.finish_patrol_session()
-            
+
             self.is_patrolling = False
             self.cancel_nav()
 
@@ -108,7 +108,7 @@ class PatrolNode(Node):
             self.get_logger().info('Starting Patrol Sequence...')
             # 서버에 순찰 시작 세션 등록 및 ID 저장
             self.current_patrol_id = self.db.start_patrol_session()
-            
+
             self.is_patrolling = True
             self.start_time = datetime.now()
             self.current_shelf_idx = 0
@@ -119,7 +119,7 @@ class PatrolNode(Node):
             self.get_logger().info('Returning to Base...')
             # 서버에 순찰 종료 세션 등록 (진행 중이었다면)
             self.db.finish_patrol_session()
-            
+
             self.is_patrolling = False
             self.cancel_nav()
             self.go_to_origin()
@@ -148,7 +148,7 @@ class PatrolNode(Node):
         goal_msg.pose.pose.orientation.y = 0.0
         goal_msg.pose.pose.orientation.z = 0.0
         goal_msg.pose.pose.orientation.w = 1.0
-        
+
         self._action_client.wait_for_server()
         self._action_client.send_goal_async(goal_msg)
         self.get_logger().info('Navigating back to HOME (0,0)...')
@@ -159,18 +159,18 @@ class PatrolNode(Node):
             self.get_logger().info('Patrol Completed! Navigating back to HOME (0,0)...')
             # 서버에 순찰 종료 세션 등록
             self.db.finish_patrol_session()
-            
+
             self.is_patrolling = False
             self.end_time = datetime.now()
             self.publish_status('completed')
-            
+
             # 모든 순찰 완료 후 원점으로 자동 복귀
             self.go_to_origin()
             return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
-        
+
         tx, ty, tyaw = float(coords['x']), float(coords['y']), float(coords['yaw'])
         self.get_logger().info(f'--- Sending Goal: {shelf_name} ---')
         self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
@@ -204,42 +204,42 @@ class PatrolNode(Node):
         # 액션 종료 시 핸들 초기화
         self._goal_handle = None
         status = future.result().status
-        
+
         if status == GoalStatus.STATUS_SUCCEEDED:
             shelf_name = self.shelf_list[self.current_shelf_idx]
             target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
-            
+
             # 1. AI 시뮬레이션 모드일 때 (카메라 준비 안 됨)
             if self.get_parameter('use_ai_sim').get_parameter_value().bool_value:
                 self.get_logger().info(f'[SIM] AI Simulation Mode active for {shelf_name}. Assuming success.')
                 detected = target_barcode # 시뮬레이션 성공 가정
-                
+
                 self.last_detection = {
                     "tag_barcode": target_barcode,
                     "detected_barcode": detected,
                     "confidence": 1.0
                 }
-                
+
                 if target_barcode not in self.reported_tags:
                     self.db.report_detection(target_barcode, detected, 1.0)
                     self.reported_tags.add(target_barcode)
-                
+
                 self._delay_timer = self.create_timer(1.0, self.proceed_to_next_shelf)
                 return
 
             # 2. 실제 AI 인식 모드
             self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {target_barcode}. Waiting for AI verification...')
-            
+
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
             self.ai_wait_start_time = self.get_clock().now()
-            self.latest_ai_barcodes = [] 
-            
+            self.latest_ai_barcodes = []
+
             # 이전에 설정된 타이머가 있다면 제거
             if hasattr(self, '_delay_timer') and self._delay_timer:
                 self.destroy_timer(self._delay_timer)
                 self._delay_timer = None
-                
+
             # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
             self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
         else:
@@ -265,10 +265,10 @@ class PatrolNode(Node):
         info = {
             'status': status,
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'current_x': round(self.current_x, 3), # UI 표시용 소수점 제한 
+            'current_x': round(self.current_x, 3), # UI 표시용 소수점 제한
             'current_y': round(self.current_y, 3)
         }
-        
+
         if status == 'patrolling':
             info['start_time'] = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
             if self.current_shelf_idx < len(self.shelf_list):
@@ -280,7 +280,7 @@ class PatrolNode(Node):
             info['start_time'] = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
             info['end_time'] = self.end_time.strftime('%Y-%m-%d %H:%M:%S')
             info['total_shelves'] = len(self.shelf_list)
-        
+
         msg = String()
         msg.data = json.dumps(info, ensure_ascii=False)
         self.patrol_status_pub.publish(msg)
@@ -296,10 +296,10 @@ class PatrolNode(Node):
         status = "IDLE"
         if self.is_patrolling:
             status = "SCANNING" if self.is_waiting_for_ai else "PATROLLING"
-        
+
         # 좌표값과 상관없이 로봇이 살아있음을 알리기 위해 무조건 전송 (DB 전송)
         self.db.report_robot_pose(self.current_x, self.current_y, status=status)
-        
+
         # UI 인터페이스(patrol_interface.py)가 5초 이내 토픽 수신 여부로 온라인 상태를 판별하므로, 지속 발행 추가
         status_for_ui = "patrolling" if self.is_patrolling else "idle"
         self.publish_status(status_for_ui)
@@ -318,11 +318,11 @@ class PatrolNode(Node):
         target_info = self.shelves[shelf_name]
         target_barcode = target_info.get('tag_barcode', 'UNKNOWN')
         waypoint_id = target_info.get('waypoint_id', -1)
-        
+
         found = False
         detected_barcode = ""
         detected_yolo_id = None
-        
+
         # 1. 최근 인식된 결과 중 타겟 바코드가 있는지 확인
         if target_barcode in self.latest_ai_barcodes:
             found = True
@@ -337,15 +337,15 @@ class PatrolNode(Node):
 
         # 타임아웃 체크 (8초)
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
-        
+
         if found or elapsed > 8.0: # 8초 경과 시 강제 종료 혹은 결과 리포팅
             self.is_waiting_for_ai = False
-            
+
             # 타이머 정리
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
                 self._delay_timer = None
-            
+
             # 인식 성공 또는 타임아웃에 따른 결과 리포팅
             self.last_detection = {
                 "tag_barcode": target_barcode,
@@ -353,7 +353,7 @@ class PatrolNode(Node):
                 "yolo_class_id": detected_yolo_id,
                 "confidence": 0.99 if found else 0.0
             }
-            
+
             if target_barcode not in self.reported_tags:
                 success, msg = self.db.report_detection(
                     tag_barcode=target_barcode,
@@ -368,7 +368,7 @@ class PatrolNode(Node):
                     self.reported_tags.add(target_barcode)
                 else:
                     self.get_logger().warn(f'Failed to report DB: {msg}')
-            
+
             # 다음 목적으로 이동
             self.proceed_to_next_shelf()
 
@@ -377,24 +377,24 @@ class PatrolNode(Node):
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = self.get_clock().now().to_msg()
-        
+
         # 위치 (0,0,0)
         msg.pose.pose.position.x = 0.0
         msg.pose.pose.position.y = 0.0
         msg.pose.pose.position.z = 0.0
-        
+
         # 자세 (정면)
         msg.pose.pose.orientation.x = 0.0
         msg.pose.pose.orientation.y = 0.0
         msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
-        
+
         # 공분산 초기화 (매우 낮은 값으로 설정하여 확신 부여)
         msg.pose.covariance = [0.0] * 36
         msg.pose.covariance[0] = 0.25 # x
         msg.pose.covariance[7] = 0.25 # y
         msg.pose.covariance[35] = 0.06 # yaw
-        
+
         self.initial_pose_pub.publish(msg)
         self.get_logger().info('Published Initial Pose to (0,0)')
 
