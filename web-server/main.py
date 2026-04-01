@@ -94,26 +94,43 @@ class WaypointUpdate(BaseModel):
 
 # 데이터베이스 연결 함수
 def get_db_connection():
+    db_mode = os.getenv("DB_MODE", "local").lower()
+    
+    if db_mode == "remote":
+        config = {
+            "host": os.getenv("REMOTE_DB_HOST", "16.184.56.119"),
+            "port": int(os.getenv("REMOTE_DB_PORT", 3306)),
+            "user": os.getenv("REMOTE_DB_USER", "gilbot"),
+            "password": os.getenv("REMOTE_DB_PASSWORD", "robot123"),
+            "database": os.getenv("REMOTE_DB_NAME", "gilbot")
+        }
+    else:  # default to local
+        config = {
+            "host": os.getenv("LOCAL_DB_HOST", "localhost"),
+            "port": int(os.getenv("LOCAL_DB_PORT", 3306)),
+            "user": os.getenv("LOCAL_DB_USER", "gilbot"),
+            "password": os.getenv("LOCAL_DB_PASSWORD", "robot123"),
+            "database": os.getenv("LOCAL_DB_NAME", "gilbot")
+        }
+        
     try:
         connection = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "localhost"),
-            port=int(os.getenv("DB_PORT", 3306)),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASSWORD", ""),
-            database=os.getenv("DB_NAME", "gilbot"),
+            **config,
             charset="utf8mb4"
         )
         return connection
     except Error as e:
-        print(f"Error connecting to MySQL: {e}")
+        print(f"Error connecting to MySQL ({db_mode}): {e}")
         return None
 
 @app.get("/")
 async def root():
+    db_mode = os.getenv("DB_MODE", "local").lower()
     return {
         "message": "Welcome to Gilbot API Server",
         "docs": "/docs",
-        "env": "production" if os.getenv("DB_HOST") == "16.184.56.119" else "local"
+        "db_mode": db_mode,
+        "db_host": os.getenv(f"{db_mode.upper()}_DB_HOST")
     }
 
 class PoseUpdate(BaseModel):
@@ -134,6 +151,9 @@ async def update_robot_pose(pose: PoseUpdate):
             WHERE status = '진행중' OR status = '중단'
             ORDER BY patrol_id DESC LIMIT 1
         """, (pose.odom_x, pose.odom_y))
+        
+        # 하트비트 테이블 갱신 추가
+        cursor.execute("UPDATE robot_status SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = 1")
         conn.commit()
         return {"status": "success"}
     except Exception as e:
@@ -147,6 +167,7 @@ async def get_status():
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
     
     # 기본값 설정
+    robot_online_status = "offline" # 로봇 통신 상태 (online/offline)
     res_status = "휴식중"
     res_cmd = "None"
     res_x = 0.0
@@ -156,14 +177,28 @@ async def get_status():
         try:
             cursor = conn.cursor(dictionary=True)
             
-            # 1. 최신 '모드 정의' 명령 확인 (일반 명령에 의해 비상 상태가 묻히는 것 방지)
+            # 1. 최신 '모드 정의' 명령 확인 (ID 기준 정렬로 클럭 드리프트 문제 방지)
             cursor.execute("""
-                SELECT command_type FROM robot_command 
+                SELECT command_type, command_id FROM robot_command 
                 WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
-                ORDER BY created_at DESC, command_id DESC LIMIT 1
+                ORDER BY command_id DESC LIMIT 1
             """)
             mode_cmd_row = cursor.fetchone()
             mode_cmd = str(mode_cmd_row['command_type']).upper().strip() if mode_cmd_row else "NONE"
+            mode_cmd_id = mode_cmd_row['command_id'] if mode_cmd_row else 0
+            
+            # --- 하트비트 기반 온라인/오프라인 판정 ---
+            cursor.execute("SELECT last_heartbeat FROM robot_status WHERE id = 1")
+            hb_row = cursor.fetchone()
+            if hb_row:
+                last_hb = hb_row['last_heartbeat']
+                # 시차 계산 (현재 시각 - 마지막 하트비트)
+                diff = (datetime.now() - last_hb).total_seconds()
+                if diff <= 10:
+                    robot_online_status = "online"
+                else:
+                    robot_online_status = "offline"
+            # ---------------------------------------
             
             # 2. 최신 순찰 로그 확인
             cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
@@ -195,20 +230,28 @@ async def get_status():
             actual_latest = cursor.fetchone()
             res_cmd = str(actual_latest['command_type']).strip() if actual_latest else "None"
 
+            # 디버깅용 로그 출력
+            db_mode = os.getenv("DB_MODE", "local").lower()
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] STATUS CHECK: mode_cmd={mode_cmd}(ID:{mode_cmd_id}), patrol_status={p_status}, db_mode={db_mode}")
+
         except Exception as e:
             # 에러 로그는 서버 측에만 남기고 판정은 기본값(휴식중) 유지
             print(f"Status Parse Error: {e}")
         finally:
             conn.close()
 
+    # 실제 접속된 DB 호스트 확인 (환경 변수 또는 기본값)
+    db_mode = os.getenv("DB_MODE", "local").lower()
+    actual_db_host = os.getenv(f"{db_mode.upper()}_DB_HOST", "localhost")
+
     return {
-        "status": "online",
+        "status": robot_online_status,
         "robot_status": res_status,
         "latest_cmd": res_cmd,
         "database": db_status,
         "odom_x": res_x,
         "odom_y": res_y,
-        "db_host": os.getenv("DB_HOST", "localhost"),
+        "db_host": actual_db_host,
         "server_time": datetime.now().strftime("%H:%M:%S")
     }
 

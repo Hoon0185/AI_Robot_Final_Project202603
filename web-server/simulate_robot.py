@@ -42,9 +42,23 @@ class VirtualRobot:
         self.current_pos = (0.0, 0.0)
         self.print_lock = threading.Lock()
         
+        # 하트비트(Pose) 전용 스레드 시작
+        self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        self.heartbeat_thread.start()
+        
     def safe_print(self, msg):
         with self.print_lock:
             print(msg)
+
+    def _heartbeat_loop(self):
+        """유휴 상태에서도 2초마다 서버에 위치(하트비트) 보고"""
+        while not self.stop_event.is_set():
+            try:
+                # 현재 위치 보고 (하트비트 역할)
+                self.send_pose(self.current_pos[0], self.current_pos[1])
+            except Exception:
+                pass
+            time.sleep(2.0)
 
     def print_menu(self):
         with self.print_lock:

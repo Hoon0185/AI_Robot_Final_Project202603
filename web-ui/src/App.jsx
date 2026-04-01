@@ -511,19 +511,31 @@ function App() {
 
         <div className="sidebar-section">
           <div className="status-indicator">
-            <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online pulsing' : 'offline'}`}></span>
-            <div>
-              <div className="robot-status-text">Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
-              <div className="robot-mode-text" style={{ 
-                fontSize: '12px', 
-                fontWeight: '600', 
-                color: status.robot_status === '순찰중' ? 'var(--accent-blue)' : 
-                       status.robot_status === '비상정지' ? 'var(--accent-red)' : '#8E8E93',
-                marginTop: '2px'
-              }}>
-                ● Robot {status.robot_status}
+            {/* 1. Robot Status Label */}
+            <div className="status-label">Robot Status</div>
+
+            {/* 2. Combined Status Value */}
+            <div className="status-row">
+              <span className={`dot ${
+                (status.status !== 'online' && status.status !== 'running') ? 'offline' :
+                status.robot_status === '순찰중' ? 'patrolling pulsing' : 
+                status.robot_status === '비상정지' ? 'emergency pulsing' : 'online pulsing'
+              }`}></span>
+              <div className={`robot-status-display ${
+                (status.status !== 'online' && status.status !== 'running') ? 'offline' :
+                status.robot_status === '순찰중' ? 'patrol' : 
+                status.robot_status === '비상정지' ? 'emergency' : 'online'
+              }`}>
+                {(status.status !== 'online' && status.status !== 'running') ? '로봇 오프라인' :
+                 status.robot_status === '순찰중' ? '순찰중' : 
+                 status.robot_status === '비상정지' ? '비상정지' : '로봇 온라인'}
               </div>
-              <div className="db-status-text">DB: {status.database}</div>
+            </div>
+            
+            <div className="db-status-row">
+              <div className="db-status-text">
+                Database: {status.database}
+              </div>
             </div>
           </div>
         </div>
@@ -535,20 +547,52 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button className="apple-button primary slim"
                 onClick={handleStartPatrol}
-                disabled={status.robot_status === '비상정지'}
-                style={{ padding: '12px', fontSize: '13px', background: status.robot_status === '비상정지' ? '#E5E5E7' : 'var(--accent-blue)', color: status.robot_status === '비상정지' ? '#86868B' : 'white', justifyContent: 'center' }}>🚀 순찰 개시</button>
+                disabled={(status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지'}
+                style={{ 
+                  padding: '12px', 
+                  fontSize: '13px', 
+                  background: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지') ? '#E5E5E7' : 'var(--accent-blue)', 
+                  color: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지') ? '#86868B' : 'white', 
+                  justifyContent: 'center',
+                  cursor: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지') ? 'not-allowed' : 'pointer'
+                }}>🚀 순찰 개시</button>
+              
               <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
-                style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-green)', color: 'white', justifyContent: 'center' }}>🏠 기지로 복귀</button>
+                disabled={status.status !== 'online' && status.status !== 'running'}
+                style={{ 
+                  padding: '12px', 
+                  fontSize: '13px', 
+                  background: (status.status !== 'online' && status.status !== 'running') ? '#E5E5E7' : 'var(--accent-green)', 
+                  color: (status.status !== 'online' && status.status !== 'running') ? '#86868B' : 'white', 
+                  justifyContent: 'center',
+                  cursor: (status.status !== 'online' && status.status !== 'running') ? 'not-allowed' : 'pointer'
+                }}>🏠 기지로 복귀</button>
 
               {status.robot_status === '비상정지' ? (
                 <button className="apple-button slim"
                   onClick={handleResumePatrol}
-                  style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-green)', color: 'white', justifyContent: 'center' }}>🔓 비상 해제 (재개)</button>
+                  disabled={status.status !== 'online' && status.status !== 'running'}
+                  style={{ 
+                    padding: '12px', 
+                    fontSize: '13px', 
+                    background: (status.status !== 'online' && status.status !== 'running') ? '#E5E5E7' : 'var(--accent-green)', 
+                    color: (status.status !== 'online' && status.status !== 'running') ? '#86868B' : 'white', 
+                    justifyContent: 'center',
+                    cursor: (status.status !== 'online' && status.status !== 'running') ? 'not-allowed' : 'pointer'
+                  }}>🔓 비상 해제 (재개)</button>
               ) : (
                 <button className="apple-button slim"
                   onClick={handleEmergencyStop}
-                  style={{ padding: '12px', fontSize: '13px', background: '#FF453A', color: 'white', justifyContent: 'center' }}>🛑 비상 정지</button>
+                  disabled={status.status !== 'online' && status.status !== 'running'}
+                  style={{ 
+                    padding: '12px', 
+                    fontSize: '13px', 
+                    background: (status.status !== 'online' && status.status !== 'running') ? '#E5E5E7' : '#FF453A', 
+                    color: (status.status !== 'online' && status.status !== 'running') ? '#86868B' : 'white', 
+                    justifyContent: 'center',
+                    cursor: (status.status !== 'online' && status.status !== 'running') ? 'not-allowed' : 'pointer'
+                  }}>🛑 비상 정지</button>
               )}
             </div>
           </div>
