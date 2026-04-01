@@ -385,7 +385,13 @@ class VirtualRobot:
                         
                         # 명령 완료 처리 알림
                         if cmd_id:
-                            requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                            try:
+                                requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                            except:
+                                pass
+                    
+                    # [추가] 대기 중(IDLE)이거나 명령 확인 시마다 현재 좌표와 하트비트 전송 (상시 위치 업데이트)
+                    self.send_pose(self.current_pos[0], self.current_pos[1])
                             
             except Exception as e:
                 pass
