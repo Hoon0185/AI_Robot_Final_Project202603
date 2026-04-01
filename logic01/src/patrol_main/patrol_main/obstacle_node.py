@@ -40,15 +40,15 @@ class ObstacleNode(Node):
     )
 
     # ---- 타이머 설정 ----
-    timer_pub = 0.1 #0.02
-    self.timer_second = 1/timer_pub # 1초당 타이머 콜백 횟수 계산
+    timer_pub = 0.02 # 50Hz로 상향 (정지 명령 빈도 강화)
+    self.timer_second = int(1/timer_pub) # 1초당 타이머 콜백 횟수 계산
     self.timer = self.create_timer(timer_pub, self.timer_callback)
 
     # ---- 초기 변수 설정 ----
     self.is_blocked = False # 길 막힘 체크
     self.clear_count = 0 # 장애물이 확실히 사라졌는지 체크
     self.wait_counter = 0 # 대기시간 측정
-    self.safe_distance = 0.35 # 35cm 기준 (적정 거리 조정중)
+    self.safe_distance = 0.40 # 40cm로 살짝 상향 (확실한 정지 보장)
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간
 
     # ---- 현재 로봇 좌표 저장 ----
