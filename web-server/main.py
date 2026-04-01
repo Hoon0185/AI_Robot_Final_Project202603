@@ -654,30 +654,29 @@ async def add_detection(data: DetectionInput):
         planned_product_id = plan['planned_product_id']
         row_num = plan['row_num']
 
-        # 3. 인식된 바코드 또는 YOLO ID로 실제 상품 ID 조회
-        detected_product_id = None
-        if data.detected_barcode:
-            cursor.execute("SELECT product_id FROM product_master WHERE barcode = %s", (data.detected_barcode,))
+        # 3. 인식된 바코드 또는 YOLO ID로 실제 바코드 및 상품 정보 조회
+        final_detected_barcode = data.detected_barcode
+        detected_product_id_internal = None # 판독용 내부 변수
+        
+        if not final_detected_barcode and data.yolo_class_id is not None and data.yolo_class_id not in [-1, 0]:
+            # YOLO 클래스 아이디로 상품 바코드 조회
+            cursor.execute("SELECT barcode, product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
             prod = cursor.fetchone()
             if prod:
-                detected_product_id = prod['product_id']
-        elif data.yolo_class_id is not None:
-            # -1 또는 0은 '상품 없음'으로 간주 (미진열 처리용)
-            if data.yolo_class_id in [-1, 0]:
-                detected_product_id = None
-            else:
-                cursor.execute("SELECT product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
-                prod = cursor.fetchone()
-                if prod:
-                    detected_product_id = prod['product_id']
+                final_detected_barcode = prod['barcode']
+                detected_product_id_internal = prod['product_id']
+        elif final_detected_barcode:
+            # 바코드가 직접 들어온 경우 내부 검증용 ID 조회
+            cursor.execute("SELECT product_id FROM product_master WHERE barcode = %s", (final_detected_barcode,))
+            prod = cursor.fetchone()
+            if prod:
+                detected_product_id_internal = prod['product_id']
 
         # 4. 판독 로직 (정상 / 결품 / 오진열)
         result_status = '정상'
-        if not data.detected_barcode and (data.yolo_class_id is None or data.yolo_class_id in [-1, 0]):
-            # 바코드도 없고, YOLO ID도 없거나 무효한 경우 결품
+        if not final_detected_barcode and (data.yolo_class_id is None or data.yolo_class_id in [-1, 0]):
             result_status = '결품'
-        elif detected_product_id != planned_product_id:
-            # 인식된 상품 ID가 계획과 다른 경우 오진열 (결품이 아닌 상황에서)
+        elif detected_product_id_internal != planned_product_id:
             result_status = '오진열'
 
         # 5. shelf_status 업데이트 (현재 매대 현황)
@@ -693,11 +692,10 @@ async def add_detection(data: DetectionInput):
 
         # 6. detection_log (인식 이력 기록)
         insert_log_sql = """
-            INSERT INTO detection_log (patrol_id, waypoint_id, product_id, detected_product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO detection_log (patrol_id, waypoint_id, product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        # product_id에는 '계획된' 상품 ID를, detected_product_id에는 '실제 인식된' 상품 ID를 저장
-        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, planned_product_id, detected_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
+        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, planned_product_id, final_detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
 
         # 7. Alert 생성 (이상 감제 시)
         if result_status != '정상':
@@ -747,7 +745,7 @@ async def list_detections():
                    p2.product_name as p_name_detected
             FROM detection_log d
             LEFT JOIN product_master p1 ON d.product_id = p1.product_id
-            LEFT JOIN product_master p2 ON d.detected_product_id = p2.product_id
+            LEFT JOIN product_master p2 ON d.detected_barcode = p2.barcode
             WHERE d.patrol_id = %s
             ORDER BY d.log_id ASC
         """
