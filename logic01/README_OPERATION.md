@@ -1,69 +1,82 @@
 # 순찰 로봇 시스템 작동 확인 가이드 (Patrol Operation Guide)
 
-이 문서는 완성된 순찰 로봇의 로직과 UI 통합 시스템이 정상적으로 작동하는지 확인하기 위한 절차를 설명합니다.
+이 문서는 순찰 로봇의 안정적인 가동을 위해 권장되는 **단계별 분리 실행** 절차를 설명합니다. 일괄 실행(`total_patrol.launch.py`) 시 하드웨어 자원이나 네트워크 문제로 오류가 발생할 경우, 아래의 순서대로 진행해 주십시오.
 
 ---
 
 ## 1. 사전 준비 사항
-시스템을 실행하기 전에 다음 환경이 준비되어 있어야 합니다.
-
-*   **ROS 2 Humble**: 로봇 제어 및 통신을 위해 필요합니다.
-*   **FastAPI 백엔드**: 재고 데이터 및 알림 처리를 위해 실행 중이어야 합니다 (기본 포트: 8000).
-*   **Navigation2 Stack**: 순찰 및 복귀 기능을 위해 반드시 실행 중이어야 합니다.
-*   **의존성**: `PyQt6`, `requests`, `rclpy`, `nav2_msgs`, `uvicorn`, `ultralytics`, `opencv-python` 등이 설치되어 있어야 합니다.
-*   **시간 동기화 (Chrony)**: 터틀봇과 PC 간의 시스템 시간이 일치해야 TF 에러가 발생하지 않습니다. (SLAM 가이드 참고)
+*   **ROS 2 Humble** 및 필수 의존성 설치
+*   **FastAPI 백엔드** 서버 가동 (`http://16.184.56.119`)
+*   **터틀봇3 하드웨어** 및 PC 간의 시간 동기화 완료 (`chrony`)
 
 ---
 
-## 2. 시스템 실행 순서
+## 2. 단계별 실행 절차 (권장: 분리 실행)
 
-### 가단계: 모든 시스템 일괄 실행 (Total Launch)
-내비게이션과 순찰 노드, AI 인식 노드들을 하나의 명령어로 일괄 실행합니다.
+가장 안정적인 방법은 내비게이션, 순찰 로직, AI 인식, 로봇 센서를 별도의 터미널에서 순차적으로 실행하는 것입니다.
 
+### [Step 0] 내비게이션 및 맵 실행 (PC)
+내비게이션 스택을 먼저 실행하여 맵과 위치 추정(AMCL)을 활성화합니다.
 ```bash
-# 워크스페이스 루트에서 실행
-colcon build --packages-select patrol_main logic2_pkg protect_product protect_product_msgs
-source install/setup.bash
-
-# 터미널 1: 모든 시스템 일괄 실행
-# [기본 실행 - 실제 카메라 사용]
-ros2 launch patrol_main total_patrol.launch.py
-
-# [시뮬레이션 - 카메라 미연결 또는 테스트 시] 
-ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=true
+# 터미널 1
+ros2 launch turtlebot3_navigation2 navigation2.launch.py \
+  use_sim_time:=false \
+  autostart:=true \
+  map:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/maps/my_store_map_01.yaml \
+  params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/nav2_params.yaml \
+  cmd_vel:=cmd_vel_nav
 ```
 
-### 나단계: 관리용 UI 실행 (PyQt6)
-로봇을 제어하고 상태를 모니터링할 UI를 실행합니다.
+### [Step 1] 순찰 시스템 실행 (PC)
+순찰 스케줄러, 메인 노드, 장애물 회피, 멀티플렉서를 실행합니다.
 ```bash
-# 리포지토리 루트에서 실행 (새 터미널)
+# 터미널 2 (PC)
+source install/setup.bash
+ros2 launch patrol_main patrol.launch.py
+```
+
+### [Step 2] AI 인식 시스템 실행 (PC)
+물품 탐지 및 바코드 검증 노드를 실행합니다.
+```bash
+# 터미널 3 (PC)
+source install/setup.bash
+# [실제 카메라 사용 시]
+ros2 launch protect_product ai_detection.launch.py
+# [카메라 없이 테스트 시] 
+ros2 launch protect_product ai_detection.launch.py use_ai_sim:=true
+```
+*(참고: `ai_detection.launch.py`가 없는 경우 `detector_node`와 `verifier_node`를 각각 실행하십시오.)*
+
+### [Step 3] RFID 센서 노드 실행 (Robot - SSH)
+로봇 본체(Raspberry Pi)에 직접 접속하여 RFID 리딩 및 위치 보정 노드를 실행합니다.
+```bash
+# 터미널 4 (PC에서 SSH 접속)
+ssh penguin@192.168.0.8
+
+# 로봇 접속 후 실행
+cd ~/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src
+python3 rfid_robot_node.py
+```
+
+### [Step 4] 관리용 UI 실행 (PC)
+최종 제어 UI를 실행하여 시스템을 모니터링합니다.
+```bash
+# 터미널 5 (PC)
 python3 main.py
 ```
 
 ---
 
-## 3. 기능별 작동 확인 방법
-
-### 🕹️ 수동 조작 및 비상 정지
-1.  UI에서 **"🕹 수동 조작 버튼"**을 클릭하여 조작 모드로 진입합니다.
-2.  **방향키**를 눌러 로봇이 이동하는지 확인합니다.
-3.  **"🚨 비상정지"** 버튼 클릭 시 모든 동작이 즉시 멈추는지 확인합니다.
-
-### 🤖 AI 물품 인식 및 실시간 리포팅
-1.  순찰 중 선반 도착 시 로봇이 **8초간** 정지하여 스캔을 수행합니다.
-2.  **모니터링**: `ros2 run rqt_image_view rqt_image_view`를 실행하고 `/verif_img/compressed` 토픽을 확인합니다.
-    *   YOLO가 물체를 탐지하고 바코드를 대조하여 `[OK]` 또는 `[ERR]` 표시가 나타나는지 확인합니다.
-3.  인식 결과는 즉시 서버 DB로 전송되며, UI의 재고 리스트에 반영됩니다.
-
-### 📡 로봇 상태 및 하트비트 모니터링
-1.  UI 상단 상태바에 로봇의 실시간 위치와 상태(`IDLE`, `PATROLLING`, `SCANNING`)가 표시되는지 확인합니다.
-2.  로봇 노드가 종료되거나 통신이 끊기면 UI에 `[OFFLINE]` 표시가 나타나는지 확인합니다.
+## 3. 통합 실행 (Total Launch - 간편 모드)
+시스템 자원이 충분하고 네트워크가 안정적인 경우, 아래 명령어로 한 번에 실행할 수 있습니다.
+```bash
+ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
+```
 
 ---
 
-## 4. 트러블슈팅
-
-*   **AI 노드 실행 실패**: `protect_product` 패키지가 정상적으로 빌드되었는지 확인하세요. (`detector_node`, `verifier_node` 이름 확인)
-*   **DB 연결 실패**: 서버(`http://16.184.56.119`) 접속 가능 여부를 확인하세요.
-*   **네비게이션 에러**: `nav2_params.yaml` 경로와 맵 파일 존재 여부를 확인하세요.
-*   **시간 동기화 문제**: 터틀봇과 PC의 시간이 일치하지 않으면 내비게이션이 작동하지 않습니다. `chrony` 설정을 확인하세요.
+## 4. 기능 확인 및 트러블슈팅
+*   **RFID 작동**: 로봇이 태그 근처를 지날 때 터미널 4에서 `Landmark Corrected!` 로그가 발생하는지 확인합니다.
+*   **AI 리포팅**: `/verif_img/compressed` 토픽을 통해 인식 결과를 확인합니다.
+*   **통신 오류**: 각 터미널의 로그를 확인하여 `Connection refused` 또는 `Timeout` 메시지가 있는지 점검하십시오.
+*   **리매핑**: 개별 실행 시 Nav2의 `cmd_vel`이 `/cmd_vel_nav`로 리매핑되어 `twist_mux`를 통과하는지 반드시 확인해야 합니다.
