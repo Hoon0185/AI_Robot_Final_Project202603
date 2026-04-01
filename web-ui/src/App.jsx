@@ -374,7 +374,6 @@ function App() {
       alert("⚠️ 비상정지 상태입니다. 비상해제를 먼저 눌러주세요.");
       return;
     }
-    if (!window.confirm("매대 순찰을 시작하시겠습니까?")) return;
 
     try {
       setLoading(true);
@@ -427,9 +426,8 @@ function App() {
     const travelTimeSec = distance / speed;
     const travelTimeMs = Math.max(travelTimeSec * 1000, 2000); // 최소 2초 대기
     
-    if (!window.confirm(`순찰을 마치고 복귀하시겠습니까? (이동 거리: ${distance.toFixed(2)}m, 예상 소요 시간: ${travelTimeSec.toFixed(1)}초)`)) {
-      return;
-    }
+    // 기지 복귀 명령 알림 (거리 및 시간 정보 포함)
+    console.log(`순찰을 마치고 복귀합니다. (이동 거리: ${distance.toFixed(2)}m, 예상 소요 시간: ${travelTimeSec.toFixed(1)}초)`);
 
     try {
       setTimeout(async () => {
@@ -445,7 +443,6 @@ function App() {
   };
 
   const handleEmergencyStop = async () => {
-    if (!window.confirm("🚨 비상 정지 하시겠습니까?")) return;
     try {
       const res = await fetch('/api/patrol/stop', { method: 'POST' });
       if (res.ok) {
@@ -458,7 +455,6 @@ function App() {
   };
 
   const handleResumePatrol = async () => {
-    if (!window.confirm("비상 상황이 해제되었습니까? 순찰을 재개합니다.")) return;
     try {
       const res = await fetch('/api/patrol/resume', { method: 'POST' });
       if (res.ok) {
