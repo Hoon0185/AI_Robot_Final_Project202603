@@ -31,19 +31,23 @@ class DetectorNode(Node):
         frame = self.bridge.compressed_imgmsg_to_cv2(msg)
 
         # YOLO 추론
-        results = self.model(frame)
+        results = self.model(frame, conf=0.45) #오인식 대비 - 신뢰도 45% 미만 무시
 
         # 메시지 생성 및 데이터 담기
         det_msg = DetectionArray()
         for box in results[0].boxes:
+            # 클래스 ID와 이름 추가
+            cls_id = int(box.cls[0])
+            #오인식 심한 89번 backside 차단
+            if cls_id == 89:
+                continue
+
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             det_msg.x1.append(x1)
             det_msg.y1.append(y1)
             det_msg.x2.append(x2)
             det_msg.y2.append(y2)
 
-            # 클래스 ID와 이름 추가
-            cls_id = int(box.cls[0])
             det_msg.class_ids.append(cls_id)
             det_msg.class_names.append(self.model.names[cls_id])
 
