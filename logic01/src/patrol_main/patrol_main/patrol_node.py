@@ -280,9 +280,14 @@ class PatrolNode(Node):
         self.current_y = msg.pose.pose.position.y
 
     def report_pose_to_server(self):
-        """2초마다 서버로 현재 위치를 보고"""
-        if self.current_x != 0.0 or self.current_y != 0.0:
-            self.db.report_robot_pose(self.current_x, self.current_y)
+        """정해진 주기(2초)마다 서버로 현재 위치 및 상태 보고 (Keep-alive Heartbeat)"""
+        # 상태 결정 로직
+        status = "IDLE"
+        if self.is_patrolling:
+            status = "SCANNING" if self.is_waiting_for_ai else "PATROLLING"
+        
+        # 좌표값과 상관없이 로봇이 살아있음을 알리기 위해 무조건 전송
+        self.db.report_robot_pose(self.current_x, self.current_y, status=status)
 
     def ai_callback(self, msg):
         """AI 인식 노드로부터 실시간 바코드 리스트 수신"""
