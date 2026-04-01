@@ -6,6 +6,7 @@ from cv_bridge import CvBridge
 import cv2
 import sqlite3
 import message_filters
+import numpy as np
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 class VerifierNode(Node):
@@ -13,148 +14,134 @@ class VerifierNode(Node):
         super().__init__('verifier_node')
         self.bridge = CvBridge()
 
-        # 1. DB 연결 (절대 경로 사용 권장)
+        # 1. QR 코드 디텍터 (내용 분석용)
+        self.qr_detector = cv2.QRCodeDetector()
+
+        # 2. DB 연결 (절대 경로 확인)
         db_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/product.db"
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
-        self.detector = cv2.QRCodeDetector()
 
-        # 2. QoS 설정 (터틀봇 환경)
+        # 3. QoS 및 메시지 동기화 설정
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             depth=10
         )
 
-        # 3. 메시지 필터 설정 (이미지와 좌표 동기화)
-        # 각 토픽을 구독하는 서브스크라이버 생성
+        # 이미지와 검출 좌표 토픽 구독
         self.img_sub = message_filters.Subscriber(
             self, CompressedImage, '/image_raw/compressed', qos_profile=qos_profile)
         self.det_sub = message_filters.Subscriber(
             self, DetectionArray, '/det_objs')
 
-        # 두 메시지의 시간차를 고려하여 동기화 (슬롭 0.1초 설정)
+        # 두 메시지의 시간차를 맞춤 (slop: 0.8초)
         self.ts = message_filters.ApproximateTimeSynchronizer(
             [self.img_sub, self.det_sub], queue_size=10, slop=0.8, allow_headerless=True)
         self.ts.registerCallback(self.sync_callback)
 
-        # 4. 검증 결과 이미지 발행
+        # 4. 결과 영상 발행
         self.publisher = self.create_publisher(
             CompressedImage, '/verif_img/compressed', qos_profile)
 
-        self.get_logger().info('Verifier Node : QR 인식 및 DB 대조 시작')
+        self.get_logger().info('✅ Verifier: 분산 처리 모드 가동 (DB 매칭 및 검증 전용)')
 
     def sync_callback(self, img_msg, det_msg):
-        # 1. 이미지 복원 및 화면 크기 획득
-        # 테스트를 위해 임시적으로 사이즈 줄임, 시현때는 full_frame떼고 frame으로 그대로
+        # 이미지 복원
         frame = self.bridge.compressed_imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
         h, w, _ = frame.shape
 
-        products = []
         labels = []
+        products = []
 
-        # 2. 객체 분류 및 좌표 안전제한 (Clipping)
+        # 1. Detector가 보내준 객체들을 라벨(QR)과 물체로 분리
         for i in range(len(det_msg.class_ids)):
-            cls_id = det_msg.class_ids[i]
             cls_name = det_msg.class_names[i]
-            # 좌표가 화면 밖으로 나가지 않도록 제한 (에러 방지)
-            x1 = max(0, det_msg.x1[i])
-            y1 = max(0, det_msg.y1[i])
-            x2 = min(w, det_msg.x2[i])
-            y2 = min(h, det_msg.y2[i])
-
-            # [과적합 대응] 물체 박스가 너무 커서 바코드를 가려 y2를 20% 정도 자름
-            y2 = y1 + int((y2 - y1) * 0.8)
+            x1, y1 = max(0, det_msg.x1[i]), max(0, det_msg.y1[i])
+            x2, y2 = min(w, det_msg.x2[i]), min(h, det_msg.y2[i])
 
             obj = {
                 'bbox': (x1, y1, x2, y2),
-                'name': cls_name[i],
-                'id': cls_id + 1, # DB product_id와 매칭 (0->1, 1->2 ...)
-                'matched': False,
-                'qr_data':None
+                'name': cls_name,
+                'id': det_msg.class_ids[i] + 1, # DB ID와 매칭 (0->1)
+                'area': (x2 - x1) * (y2 - y1)
             }
 
-            # YOLO가 찾은 바코드(쇼카드) 라벨인지, 실제 물건인지 분류
-            if "label" in obj['name'] or "barcode" in obj['name']:
-                # ROI가 너무 작으면 인식률이 떨어지므
-                roi = cv2.resize(roi, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC) # 바코드 영역 잘라내기
-                if roi.size > 0:
-                    # 필요 시 이미지 전처리 (흑백 전환 등)
-                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                    # 선명도 조절 (이진화)
-                    _, thresh_roi = cv2.threshold(gray_roi, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-                    data, _, _ = self.detector.detectAndDecode(thresh_roi)
-                    if data:
-                        obj['qr_data'] = data
-                        self.get_logger().info(f"QR 스캔 성공: {data}")
+            # Detector에서 보낸 999번(OpenCV QR) 혹은 이름에 label이 포함된 경우
+            if "label" in cls_name.lower() or "barcode" in cls_name.lower() or det_msg.class_ids[i] == 999:
                 labels.append(obj)
             else:
+                # 물체 박스는 하단 간섭 방지를 위해 살짝 위로 조정
+                y2_clipped = y1 + int((y2 - y1) * 0.8)
+                obj['bbox'] = (x1, y1, x2, y2_clipped)
                 products.append(obj)
 
-        # 3. 위치 기반 매칭 및 DB 검증 로직
-        for label in labels:
-            lx1, ly1, lx2, ly2 = label['bbox']
-            matched_product = None
+        # 2. 라벨이 없으면 원본 전송 후 종료
+        if not labels:
+            self.publish_frame(frame)
+            return
 
-            for prod in products:
-                px1, py1, px2, py2 = prod['bbox']
+        # 3. 최적의 라벨(가장 큰 것) 하나 선정 및 QR 읽기
+        best_label = max(labels, key=lambda x: x['area'])
+        lx1, ly1, lx2, ly2 = best_label['bbox']
 
-                # [매칭 조건] X축 중심 거리 60픽셀 이내 AND Y축 간격(물체하단-라벨상단) 130픽셀 이내
-                # abs()를 사용하여 박스가 서로 겹치더라도 매칭되도록 설정
-                if abs(px1 - lx1) < 60 and abs(ly1 - py2) < 130:
-                    matched_product = prod
-                    prod['matched'] = True
-                    #label['matched'] = True
-                    break
+        # Detector가 찾아준 박스 영역만 잘라서 QR 내용 추출 (매우 빠름)
+        roi = frame[ly1:ly2, lx1:lx2]
+        qr_text = None
+        if roi.size > 0:
+            # 인식률 향상을 위한 전처리
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            qr_text, _, _ = self.qr_detector.detectAndDecode(gray)
 
-            if matched_product:
-                # [핵심] DB에서 실제 상품명 조회
-                self.cursor.execute("SELECT product_name, product_id FROM products WHERE product_id=?", (matched_product['id'],))
-                row = self.cursor.fetchone()
-
-                if row and label['qr_data']:
-                    db_name = row[0]
-                    # [변경] YOLO 이름 대신 실제 'QR 스캔 데이터'와 'DB 정보'를 대조
-                    if str(row[1]) == label['qr_data'] or db_name in label['qr_data']:
-                        status_text = f"[OK] {db_name}"
-                        color = (0, 255, 0)
-                    else:
-                        status_text = f"[ERR] Scan:{label['qr_data']} != DB:{db_name}"
-                        color = (0, 0, 255)
-                elif not label['qr_data']:
-                    status_text = "[QR FAIL] Cannot Read"
-                    color = (0, 255, 255) # 노란색 (인식 실패)
-                else:
-                    status_text = "[DB ERR] No Data"
-                    color = (0, 0, 255)
-
-                self.draw_result(frame, matched_product['bbox'], status_text, color)
-
-            else:
-                # Case 4: 바코드(라벨)는 있는데 위에 물건이 없음 (재고 부족)
-                empty_msg = f"[EMPTY] {label['name']} Out of Stock"
-                self.draw_result(frame, label['bbox'], empty_msg, (255, 0, 255)) # 보라색
-
-        # 4. Case 3: 물품만 있고 매칭된 바코드가 없는 경우 (오인식 혹은 라벨 누락)
+        # 4. 위치 기반 매칭 (라벨과 가장 가까운 물체 찾기)
+        matched_prod = None
+        min_dist = 9999
         for prod in products:
-            if not prod['matched']:
-                self.draw_result(frame, prod['bbox'], "[CHECK] No Label", (0, 255, 255)) # 노란색
+            px1, _, px2, _ = prod['bbox']
+            # X축 중심점 간의 거리 계산
+            dist = abs((px1 + px2) / 2 - (lx1 + lx2) / 2)
+            if dist < min_dist and dist < 130: # 130픽셀 이내 매칭
+                min_dist = dist
+                matched_prod = prod
 
-        # 5. 최종 가공된 이미지를 전송
+        # 5. DB 검증 및 시각화
+        if matched_prod:
+            self.cursor.execute("SELECT product_name, product_id FROM products WHERE product_id=?", (matched_prod['id'],))
+            row = self.cursor.fetchone()
+
+            status, color = self.process_verification(row, qr_text)
+            self.draw_result(frame, matched_prod['bbox'], status, color)
+            # 라벨 박스도 강조 표시
+            cv2.rectangle(frame, (lx1, ly1), (lx2, ly2), color, 2)
+        else:
+            # 쇼카드만 있고 위에 물건이 없는 경우
+            self.draw_result(frame, (lx1, ly1, lx2, ly2), "[EMPTY] Stock Out", (255, 0, 255))
+
+        self.publish_frame(frame)
+
+    def process_verification(self, db_row, qr_text):
+        """DB 정보와 QR 텍스트를 대조하여 상태와 색상 반환"""
+        if db_row and qr_text:
+            db_name, db_id = db_row[0], str(db_row[1])
+            # QR 텍스트 안에 DB ID나 이름이 포함되어 있는지 확인
+            if db_id in qr_text or qr_text in db_id:
+                return f"[OK] {db_name}", (0, 255, 0) # 녹색
+            else:
+                return f"[ERR] Scan:{qr_text} != DB:{db_id}", (0, 0, 255) # 적색
+        elif not qr_text:
+            return "[QR FAIL] Reading...", (0, 255, 255) # 황색
+        else:
+            return "[DB ERR] No Data", (0, 0, 255) # 적색
+
+    def draw_result(self, frame, bbox, text, color):
+        x1, y1, x2, y2 = bbox
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+    def publish_frame(self, frame):
         res_msg = self.bridge.cv2_to_compressed_imgmsg(frame, dst_format='jpg')
         self.publisher.publish(res_msg)
-    def draw_result(self, frame, bbox, text, color):
-        #이미지에 사각형 박스와 상태 텍스트를 그리는 함수
-        x1, y1, x2, y2 = bbox
 
-        # 1. 객체 바운딩 박스 그리기 (선 두께 2)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-        # 2. 배경이 보일 수 있도록 텍스트 위치 선정 및 그리기
-        # 폰트, 크기(0.5~0.6), 색상, 두께 순서
-        cv2.putText(frame, text, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-    def __del__(self):  # 소멸자 - ctrl+C 종료로 인한 DB 커밋 오류 방지
+    def __del__(self):
         if hasattr(self, 'conn'):
             self.conn.close()
 
