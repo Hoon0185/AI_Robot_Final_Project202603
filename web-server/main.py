@@ -685,10 +685,10 @@ async def add_detection(data: DetectionInput):
         
         if existing_status:
             update_status_sql = "UPDATE shelf_status SET product_id = %s, status = %s, last_updated_at = NOW() WHERE barcode_tag = %s"
-            cursor.execute(update_status_sql, (detected_product_id or planned_product_id, result_status, data.tag_barcode))
+            cursor.execute(update_status_sql, (detected_product_id_internal or planned_product_id, result_status, data.tag_barcode))
         else:
             insert_status_sql = "INSERT INTO shelf_status (waypoint_id, barcode_tag, product_id, status) VALUES (%s, %s, %s, %s)"
-            cursor.execute(insert_status_sql, (waypoint_id, data.tag_barcode, detected_product_id or planned_product_id, result_status))
+            cursor.execute(insert_status_sql, (waypoint_id, data.tag_barcode, detected_product_id_internal or planned_product_id, result_status))
 
         # 6. detection_log (인식 이력 기록)
         insert_log_sql = """
