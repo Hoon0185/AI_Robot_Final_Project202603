@@ -159,29 +159,35 @@ async def get_status():
             """)
             latest_cmd = cursor.fetchone()
             
-            # --- 상태 및 위치 판단 로직 (절대 보안) ---
-            
-            # 비상 여부 판단: 가장 최신 명령이 'EMERGENCY_STOP'이면 무관하게 비상
+            # --- 상태 및 위치 판단 로직 (초강력 버전) ---
+            # 1. 비상 여부 판단 (DB 최신 명령 기반)
             is_emergency = False
             if latest_cmd:
-                cmd_type = latest_cmd['command_type'].strip() if isinstance(latest_cmd['command_type'], str) else latest_cmd['command_type']
+                raw_type = latest_cmd['command_type']
+                cmd_type = raw_type.strip() if isinstance(raw_type, str) else str(raw_type)
+                print(f"[DEBUG] Raw CMD Type: '{raw_type}', Cleaned: '{cmd_type}'")
+                
                 if cmd_type == 'EMERGENCY_STOP':
                     is_emergency = True
+                    print("[DEBUG] Emergency detected via command table.")
             
-            # 최신 순찰 로그 확인
+            # 2. 순찰 로그 기반 보조 판단
             cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
+                print("[DEBUG] Emergency detected via patrol_log status.")
 
-            # 2. 최종 상태 명칭 결정
+            # 3. 최종 상태 명칭 결정
             if is_emergency:
                 robot_mode = "비상정지"
             elif last_patrol and last_patrol['status'] == '진행중':
                 robot_mode = "순찰중"
             else:
                 robot_mode = "휴식중"
+            
+            print(f"[DEBUG] Final determined status: {robot_mode}")
 
             # 3. 위치(last_odom) 결정
             # 기지 휴식중이 아닌 경우(순찰중 버튼을 눌렀거나, 그 과정에서 비상정지된 경우)만 마지막 좌표 사용
