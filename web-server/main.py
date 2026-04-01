@@ -152,26 +152,26 @@ async def get_status():
         try:
             cursor = conn.cursor(dictionary=True)
             
-            # 1. 비상 정지 및 해제 명령 중 어느 쪽이 승자인지 확인
+            # 1. 아예 필터링 없이 가장 최신 명령을 1개 가져옵니다. (가장 확실함)
             cursor.execute("""
-                SELECT command_type, created_at FROM robot_command 
-                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL')
-                ORDER BY created_at DESC, command_id DESC LIMIT 1
+                SELECT command_type, status, created_at FROM robot_command 
+                ORDER BY command_id DESC LIMIT 1
             """)
-            last_emergency_signal = cursor.fetchone()
+            latest_cmd = cursor.fetchone()
             
-            # 2. 최신 순찰 로그 확인
-            cursor.execute("SELECT status, patrol_id, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
+            # --- 상태 및 위치 판단 로직 (절대 보안) ---
+            
+            # 비상 여부 판단: 가장 최신 명령이 'EMERGENCY_STOP'이면 무관하게 비상
+            is_emergency = False
+            if latest_cmd:
+                cmd_type = latest_cmd['command_type'].strip() if isinstance(latest_cmd['command_type'], str) else latest_cmd['command_type']
+                if cmd_type == 'EMERGENCY_STOP':
+                    is_emergency = True
+            
+            # 최신 순찰 로그 확인
+            cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
-            # --- 상태 및 위치 판단 로직 (철통 보안) ---
-            
-            # 가장 최근의 비상 신호가 '비상정지'이면, 기동 명령이 중간에 섞여도 비상이 우선
-            is_emergency = False
-            if last_emergency_signal and last_emergency_signal['command_type'] == 'EMERGENCY_STOP':
-                is_emergency = True
-            
-            # 강제로 patrol_log가 '중단'인 경우도 비상으로 간주
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
 
@@ -202,11 +202,12 @@ async def get_status():
     return {
         "status": "online",
         "robot_status": robot_mode,
+        "latest_cmd": latest_cmd['command_type'] if latest_cmd else "None",
         "database": db_status,
         "odom_x": last_odom['odom_x'],
         "odom_y": last_odom['odom_y'],
         "db_host": os.getenv("DB_HOST", "localhost"),
-        "server_time": datetime.now().strftime("%H:%M:%S") # 프레임 신선도 확인용
+        "server_time": datetime.now().strftime("%H:%M:%S")
     }
 
 @app.get("/patrol/list")
