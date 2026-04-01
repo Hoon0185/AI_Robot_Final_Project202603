@@ -7,6 +7,9 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 
+# [추가] pyzbar 라이브러리 임포트
+from pyzbar.pyzbar import decode
+
 class DetectorNode(Node):
     def __init__(self):
         super().__init__('detector_node')
@@ -15,7 +18,9 @@ class DetectorNode(Node):
         model_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt"
         self.model = YOLO(model_path)
         self.bridge = CvBridge()
-        self.qr_detector = cv2.QRCodeDetector()
+
+        # [삭제] 성능 저하의 원인인 OpenCV QRCodeDetector는 더 이상 사용하지 않습니다.
+        # self.qr_detector = cv2.QRCodeDetector()
 
         # 2. 발행자 설정 (좌표 데이터 전송)
         self.publisher = self.create_publisher(DetectionArray, '/det_objs', 10)
@@ -27,7 +32,7 @@ class DetectorNode(Node):
             self.callback,
             10)
 
-        self.get_logger().info('Detector 노드가 가동되었습니다. YOLO 추론을 시작합니다.')
+        self.get_logger().info('🚀 Detector 노드 가동: YOLO(물체) + pyzbar(QR) 강력 모드')
 
     def callback(self, msg):
         # 이미지를 OpenCV 포맷으로 변환
@@ -35,7 +40,8 @@ class DetectorNode(Node):
         det_msg = DetectionArray()
 
         # --- [작업 1] YOLO 추론 (물체 감지) ---
-        results = self.model(frame, conf=0.45, iou=0.5)
+        # conf=0.45, iou=0.3 (겹치는 박스를 더 강력하게 제거)
+        results = self.model(frame, conf=0.45, iou=0.3)
         for box in results[0].boxes:
             cls_id = int(box.cls[0])
             if cls_id == 89: continue # Backside 제외
@@ -43,17 +49,36 @@ class DetectorNode(Node):
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             self.add_to_msg(det_msg, x1, y1, x2, y2, cls_id, self.model.names[cls_id])
 
-        # --- [작업 2] OpenCV QR 직접 검출 (라벨 감지 보완) ---
-        # YOLO가 라벨을 못 찾을 경우를 대비해 직접 QR 위치를 추출
-        data, points, _ = self.qr_detector.detectAndDecode(frame)
-        if data and points is not None:
-            pts = points[0].astype(int)
-            lx1, ly1 = np.min(pts, axis=0)
-            lx2, ly2 = np.max(pts, axis=0)
+        # --- [작업 2] pyzbar 강력 QR 검출 (라벨 감지 보완) ---
+        # pyzbar는 그레이스케일 이미지에서 더 잘 작동할 수 있으므로 변환합니다.
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # [핵심] pyzbar로 QR 코드 디코딩 시도
+        decoded_objs = decode(gray)
+
+        for obj in decoded_objs:
+            # QR 코드 데이터를 UTF-8로 디코딩
+            qr_data = obj.data.decode('utf-8')
+
+            # pyzbar는 rect(left, top, width, height) 형식으로 좌표를 줍니다.
+            left, top, width, height = obj.rect
+
+            # Verifier가 인식할 수 있도록 좌표 변환 (x1, y1, x2, y2)
+            x1 = int(left)
+            y1 = int(top)
+            x2 = int(left + width)
+            y2 = int(top + height)
+
+            # 안전제한 (Clipping) - 이미지 밖으로 나가지 않게 함
+            h, w = gray.shape
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
 
             # Verifier가 인식할 수 있도록 'label'이라는 이름과 특정 ID(예: 999) 부여
-            self.add_to_msg(det_msg, int(lx1), int(ly1), int(lx2), int(ly2), 999, 'label')
-            self.get_logger().info(f"📍 QR 발견(Detector): {data}")
+            self.add_to_msg(det_msg, x1, y1, x2, y2, 999, 'label')
+
+            # [디버깅 로그] 이 로그가 뜨면 QR 인식이 성공한 것입니다!
+            self.get_logger().error(f"🎯 pyzbar QR 발견: {qr_data}")
 
         self.publisher.publish(det_msg)
 
@@ -65,7 +90,6 @@ class DetectorNode(Node):
         msg.class_ids.append(cls_id)
         msg.class_names.append(cls_name)
 
-# 이 부분이 누락되었거나 이름이 main이 아니면 에러가 납니다!
 def main(args=None):
     rclpy.init(args=args)
     node = DetectorNode()
