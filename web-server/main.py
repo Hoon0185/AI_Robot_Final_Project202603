@@ -346,6 +346,9 @@ async def start_patrol():
         if is_locked:
             raise HTTPException(status_code=403, detail="비상정지 상태입니다. 비상해제를 먼저 눌러주세요.")
 
+        # 0. 기존 인식 로그 초기화 (새 순찰 시작 시 클리어 요청 반영)
+        cursor.execute("DELETE FROM detection_log")
+
         # 1. 새로운 순찰 로그 생성
         cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
 
