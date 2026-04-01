@@ -28,6 +28,7 @@ class PatrolNode(Node):
         ns = self.get_namespace().strip('/')
         default_frame = f'{ns}/map' if ns else 'map'
         self.declare_parameter('map_frame', default_frame)
+        self.declare_parameter('use_ai_sim', False)
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.load_shelves()
 
@@ -195,9 +196,28 @@ class PatrolNode(Node):
         
         if status == GoalStatus.STATUS_SUCCEEDED:
             shelf_name = self.shelf_list[self.current_shelf_idx]
-            tag_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
+            target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
             
-            self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}. Waiting for AI verification...')
+            # 1. AI 시뮬레이션 모드일 때 (카메라 준비 안 됨)
+            if self.get_parameter('use_ai_sim').get_parameter_value().bool_value:
+                self.get_logger().info(f'[SIM] AI Simulation Mode active for {shelf_name}. Assuming success.')
+                detected = target_barcode # 시뮬레이션 성공 가정
+                
+                self.last_detection = {
+                    "tag_barcode": target_barcode,
+                    "detected_barcode": detected,
+                    "confidence": 1.0
+                }
+                
+                if target_barcode not in self.reported_tags:
+                    self.db.report_detection(target_barcode, detected, 1.0)
+                    self.reported_tags.add(target_barcode)
+                
+                self._delay_timer = self.create_timer(1.0, self.proceed_to_next_shelf)
+                return
+
+            # 2. 실제 AI 인식 모드
+            self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {target_barcode}. Waiting for AI verification...')
             
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True

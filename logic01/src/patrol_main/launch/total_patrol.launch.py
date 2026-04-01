@@ -20,12 +20,14 @@ def generate_launch_description():
     map_frame = LaunchConfiguration('map_frame', default='map')
     run_rfid = LaunchConfiguration('run_rfid', default='false')
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+    use_ai_sim = LaunchConfiguration('use_ai_sim', default='false')
 
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('map_frame', default_value='map'),
         DeclareLaunchArgument('run_rfid', default_value='false', description='Whether to run RFID localization node'),
+        DeclareLaunchArgument('use_ai_sim', default_value='false', description='Whether to use AI detection simulation'),
 
         # 1. Navigation2 Bringup (Forced Remap cmd_vel to cmd_vel_nav)
         # GroupAction과 SetRemap(상대+절대)을 모두 사용하여 컨테이너 내부 노드까지 강제 리매핑합니다.
@@ -61,7 +63,8 @@ def generate_launch_description():
             name='patrol_node',
             parameters=[{
                 'use_sim_time': use_sim_time,
-                'map_frame': map_frame
+                'map_frame': map_frame,
+                'use_ai_sim': use_ai_sim
             }],
             output='screen'
         ),
