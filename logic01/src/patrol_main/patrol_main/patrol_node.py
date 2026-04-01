@@ -35,6 +35,7 @@ class PatrolNode(Node):
         # 3. 순찰 상태 관리
         self.current_shelf_idx = 0
         self.is_patrolling = False
+        self.current_patrol_id = None # 현재 순찰 세션 ID
         self.last_detection = None
         self.reported_tags = set() # 중복 리포팅 방지를 위한 저장소
         self._goal_handle = None
@@ -56,6 +57,7 @@ class PatrolNode(Node):
         self.ai_sub = self.create_subscription(
             DetectionArray, '/verified_objs', self.ai_callback, 10)
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장 
+        self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
         self.is_waiting_for_ai = False 
         self.ai_wait_start_time = None
 
@@ -102,8 +104,8 @@ class PatrolNode(Node):
         cmd = msg.data
         if cmd == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence...')
-            # 서버에 순찰 시작 세션 등록
-            self.db.start_patrol_session()
+            # 서버에 순찰 시작 세션 등록 및 ID 저장
+            self.current_patrol_id = self.db.start_patrol_session()
             
             self.is_patrolling = True
             self.start_time = datetime.now()
@@ -139,6 +141,10 @@ class PatrolNode(Node):
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
         goal_msg.pose.pose.position.x = 0.0
         goal_msg.pose.pose.position.y = 0.0
+        goal_msg.pose.pose.position.z = 0.0
+        goal_msg.pose.pose.orientation.x = 0.0
+        goal_msg.pose.pose.orientation.y = 0.0
+        goal_msg.pose.pose.orientation.z = 0.0
         goal_msg.pose.pose.orientation.w = 1.0
         
         self._action_client.wait_for_server()
@@ -294,30 +300,40 @@ class PatrolNode(Node):
         self.publish_status(status_for_ui)
 
     def ai_callback(self, msg):
-        """AI 인식 노드로부터 실시간 바코드 리스트 수신"""
+        """AI 인식 노드로부터 실시간 바코드 및 YOLO ID 리스트 수신"""
         if self.is_waiting_for_ai:
             self.latest_ai_barcodes = msg.barcodes
+            self.latest_ai_class_ids = msg.class_ids
 
     def check_ai_result_and_proceed(self):
         """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행"""
         if not self.is_waiting_for_ai: return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
-        target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
+        target_info = self.shelves[shelf_name]
+        target_barcode = target_info.get('tag_barcode', 'UNKNOWN')
+        waypoint_id = target_info.get('waypoint_id', -1)
         
         found = False
         detected_barcode = ""
+        detected_yolo_id = None
         
-        # 최근 인식된 결과 중 타겟 바코드가 있는지 확인
+        # 1. 최근 인식된 결과 중 타겟 바코드가 있는지 확인
         if target_barcode in self.latest_ai_barcodes:
             found = True
             detected_barcode = target_barcode
-            self.get_logger().info(f'[AI] Found matching product: {target_barcode}')
+            self.get_logger().info(f'[AI] Found matching barcode: {target_barcode}')
 
-        # 타임아웃 체크 (10초)
+        # 2. 바코드가 없고 YOLO ID가 있는 경우 첫 번째 ID를 결과로 채택
+        if not found and len(self.latest_ai_class_ids) > 0:
+            found = True
+            detected_yolo_id = int(self.latest_ai_class_ids[0])
+            self.get_logger().info(f'[AI] Found YOLO ID: {detected_yolo_id}')
+
+        # 타임아웃 체크 (8초)
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
         
-        if found or elapsed > 8.0: # 8초 경과 시 강제 종료 혹은 불일치 처리
+        if found or elapsed > 8.0: # 8초 경과 시 강제 종료 혹은 결과 리포팅
             self.is_waiting_for_ai = False
             
             # 타이머 정리
@@ -328,12 +344,20 @@ class PatrolNode(Node):
             # 인식 성공 또는 타임아웃에 따른 결과 리포팅
             self.last_detection = {
                 "tag_barcode": target_barcode,
-                "detected_barcode": detected_barcode if found else "", # 못 찾았으면 빈 바코드 전송(결품 처리)
+                "detected_barcode": detected_barcode if found and detected_barcode else "",
+                "yolo_class_id": detected_yolo_id,
                 "confidence": 0.99 if found else 0.0
             }
             
             if target_barcode not in self.reported_tags:
-                success, msg = self.db.report_detection(target_barcode, self.last_detection["detected_barcode"], 0.99)
+                success, msg = self.db.report_detection(
+                    tag_barcode=target_barcode,
+                    patrol_id=self.current_patrol_id or 0,
+                    waypoint_id=waypoint_id,
+                    detected_barcode=self.last_detection["detected_barcode"] if self.last_detection["detected_barcode"] else None,
+                    yolo_class_id=detected_yolo_id,
+                    confidence=0.99 if found else 0.0
+                )
                 if success:
                     self.get_logger().info(f'Reported to DB (Found: {found}): {target_barcode}')
                     self.reported_tags.add(target_barcode)

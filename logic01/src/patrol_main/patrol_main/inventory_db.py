@@ -62,11 +62,14 @@ class InventoryDB:
         except Exception:
             return default
 
-    def report_detection(self, tag_barcode, detected_barcode, confidence=0.99):
-        """서버로 바코드 인식 결과 전송 (DetectionInput 형식)"""
+    def report_detection(self, tag_barcode, patrol_id, waypoint_id, detected_barcode=None, confidence=0.99, yolo_class_id=None):
+        """서버로 인식 결과 전송 (DetectionInput 형식)"""
         payload = {
+            "patrol_id": int(patrol_id),
+            "waypoint_id": int(waypoint_id),
             "tag_barcode": tag_barcode,
             "detected_barcode": detected_barcode if detected_barcode else None,
+            "yolo_class_id": yolo_class_id,
             "confidence": float(confidence),
             "odom_x": 0.0,
             "odom_y": 0.0,
@@ -189,6 +192,7 @@ class InventoryDB:
                     # 순찰 시퀀스 내의 유니크한 이름을 키로 사용
                     name = item.get('waypoint_name') or f"plan_{item['plan_id']}"
                     active_plan[name] = {
+                        'waypoint_id': wp_id,
                         'x': float(wp_info.get('loc_x', 0.0)),
                         'y': float(wp_info.get('loc_y', 0.0)),
                         'yaw': float(wp_info.get('loc_yaw', 0.0)),
