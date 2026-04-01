@@ -1,104 +1,81 @@
-import rclpy
-from rclpy.node import Node
-from nav_msgs.msg import OccupancyGrid
-from PyQt6.QtWidgets import QLabel
-from PyQt6.QtGui import QImage, QPixmap, QColor
+import os
+import yaml
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
+from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtCore import Qt
-import numpy as np
 
-class MinimapHandler(Node):
-    def __init__(self, ui_label: QLabel, debug_mode=True):
-        """
-        :param ui_label: robot_ui.py의 self.label_map_display 객체
-        :param debug_mode: True일 경우 테스트용 가상 맵 출력
-        """
-        super().__init__('minimap_handler')
-        self.display_label = ui_label
-        self.debug_mode = debug_mode
+class MinimapWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 1. 위젯 자체가 부모를 뚫고 커지지 않도록 크기 정책 설정
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(100, 100) # 최소 크기만 고정
 
-        if not self.debug_mode:
-            # ROS 2 정식 맵 토픽 설정 (QoS 필수)
-            from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
-            map_qos = QoSProfile(
-                reliability=ReliabilityPolicy.RELIABLE,
-                history=HistoryPolicy.KEEP_LAST,
-                depth=1,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL # 맵 데이터 수신 핵심 설정
-            )
+        # 맵을 표시할 라벨
+        self.map_label = QLabel("맵 로딩 중...")
+        self.map_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.map_label.setStyleSheet("background-color: #222; color: white; border: 1px solid #444;")
 
-            self.subscription = self.create_subscription(
-                OccupancyGrid,
-                '/map',
-                self.map_callback,
-                map_qos
-            )
-            self.get_logger().info("Minimap: Waiting for real /map topic...")
-        else:
-            self.get_logger().info("Minimap: DEBUG MODE - Showing Virtual Map")
-            self._generate_debug_map()
+        # 2. 라벨이 이미지 크기에 따라 늘어나는 것을 방지
+        self.map_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.map_label.setScaledContents(False) # 직접 계산해서 그릴 것이므로 False
 
-    def map_callback(self, msg):
-        """실제 터틀봇의 OccupancyGrid 데이터를 QImage로 변환"""
-        width = msg.info.width
-        height = msg.info.height
+        self.layout.addWidget(self.map_label)
 
-        # 1D 데이터를 2D 넘파이 배열로 변환
-        map_data = np.array(msg.data, dtype=np.int8).reshape((height, width))
+        self.map_data = None
+        self.map_info = {'resolution': 0.05, 'origin': [0.0, 0.0, 0.0]}
+        self.yaml_path = os.path.join(os.path.dirname(__file__), 'my_store_map_01.yaml')
 
-        # QImage 생성 (RGB32 형식)
-        img = QImage(width, height, QImage.Format.Format_RGB32)
+        self.load_map_data()
 
-        for y in range(height):
-            for x in range(width):
-                val = map_data[y, x]
-                # ROS 맵 값 매핑: -1(알수없음), 0(통로), 100(벽)
-                if val == 100:
-                    color = QColor(44, 62, 80).rgb()   # 벽: 진한 남색
-                elif val == 0:
-                    color = QColor(255, 255, 255).rgb() # 통로: 흰색
-                else:
-                    color = QColor(220, 220, 220).rgb() # 미탐사: 연회색
-
-                # 이미지 원점 보정 (ROS는 좌하단, Qt는 좌상단이 원점)
-                img.setPixel(x, height - 1 - y, color)
-
-        self._update_display(img)
-
-    def _generate_debug_map(self):
-        """로봇 연결이 없을 때 UI 확인용 가상 맵 생성"""
-        w, h = 400, 400
-        img = QImage(w, h, QImage.Format.Format_RGB32)
-        img.fill(QColor(255, 255, 255)) # 배경 흰색
-
-        # 가상 벽 그리기 (외곽선 및 내부 장애물)
-        for x in range(w):
-            for y in range(h):
-                # 테두리 벽
-                if x < 10 or x > 390 or y < 10 or y > 390:
-                    img.setPixel(x, y, QColor(44, 62, 80).rgb())
-                # 중앙 구조물 시뮬레이션
-                if (150 < x < 250 and 180 < y < 220) or (180 < x < 220 and 100 < y < 300):
-                    img.setPixel(x, y, QColor(44, 62, 80).rgb())
-
-        self._update_display(img)
-
-    def _update_display(self, q_img):
-        """변환된 이미지를 UI 레이블 크기에 맞춰 출력"""
-        if not self.display_label:
+    def load_map_data(self):
+        if not os.path.exists(self.yaml_path):
+            self.map_label.setText("YAML NotFound")
             return
 
-        pixmap = QPixmap.fromImage(q_img)
-        # 레이블 크기에 맞게 부드럽게 스케일링
-        scaled_pixmap = pixmap.scaled(
-            self.display_label.width(),
-            self.display_label.height(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.display_label.setPixmap(scaled_pixmap)
+        try:
+            with open(self.yaml_path, 'r') as f:
+                config = yaml.safe_load(f)
 
-    def clear_map(self):
-        """맵 데이터 초기화"""
-        self.display_label.clear()
-        self.display_label.setText("No Map Data Available")
+            self.map_info['resolution'] = config.get('resolution', 0.05)
+            self.map_info['origin'] = config.get('origin', [0.0, 0.0, 0.0])
+            pgm_filename = config.get('image', 'my_store_map_01.pgm')
+            pgm_path = os.path.join(os.path.dirname(self.yaml_path), pgm_filename)
+
+            if os.path.exists(pgm_path):
+                # 원본 이미지를 로드하되, 화면에 바로 뿌리지 않고 보관만 함
+                self.map_data = QPixmap.fromImage(QImage(pgm_path))
+                print(f"[SYSTEM] 미니맵 로드 성공: {self.map_data.width()}x{self.map_data.height()}")
+                # 로드 후 UI 갱신 유도
+                self.update_map_display()
+            else:
+                self.map_label.setText("PGM NotFound")
+
+        except Exception as e:
+            self.map_label.setText(f"Error: {e}")
+
+    def update_map_display(self):
+        """현재 라벨의 '실제 크기'에 맞춰 이미지를 스케일링하여 표시"""
+        if self.map_data and not self.map_data.isNull():
+            # 라벨의 현재 크기 가져오기
+            target_size = self.map_label.size()
+
+            # 3. 라벨 크기가 0보다 클 때만 스케일링 수행 (초기 로딩 시 방지)
+            if target_size.width() > 0 and target_size.height() > 0:
+                scaled_pixmap = self.map_data.scaled(
+                    target_size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.map_label.setPixmap(scaled_pixmap)
+
+    def resizeEvent(self, event):
+        """위젯 크기가 변할 때(부모 창이 커질 때 등)만 이미지를 다시 계산"""
+        super().resizeEvent(event)
+        # 4. 리사이즈 시 즉시 업데이트하여 꽉 차게 유지
+        self.update_map_display()
+
+    # world_to_pixel 함수는 동일 (생략)

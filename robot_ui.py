@@ -2,9 +2,9 @@ import cv2
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSlider, QFrame, QStackedWidget,
-                             QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView)
+                             QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit) # QTextEdit 추가
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QTextCursor # QTextCursor 추가
 
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 
@@ -137,9 +137,23 @@ class RobotControlPanel(QWidget):
             layout.addSpacing(12)
 
         layout.addSpacing(13)
-        self.logo_area = QFrame(); self.logo_area.setStyleSheet("QFrame { background-color: white; border: 2px dashed #D1D9E6; border-radius: 15px; }")
-        logo_label = QLabel("LOGO HERE"); logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter); QVBoxLayout(self.logo_area).addWidget(logo_label)
-        layout.addWidget(self.logo_area, stretch=2)
+        # --- [수정: 로고 영역을 로그 기록창으로 변경] ---
+        self.log_console = QTextEdit()
+        self.log_console.setReadOnly(True)
+        self.log_console.setStyleSheet("""
+            QTextEdit {
+                background-color: #2C2C2C;
+                color: #82E0AA;
+                font-family: 'Consolas', 'Malgun Gothic';
+                font-size: 12px;
+                border-radius: 15px;
+                border: 2px solid #D1D9E6;
+                padding: 10px;
+            }
+        """)
+        layout.addWidget(self.log_console, stretch=2)
+        self.append_log("System Ready. Waiting for commands...")
+        # ----------------------------------------------
 
         self._setup_remote_page()
         self.right_stack.addWidget(self.page_main); self.right_stack.addWidget(self.page_remote)
@@ -318,3 +332,13 @@ class RobotControlPanel(QWidget):
         for popup in [self.popup_box, self.patrol_popup_box, self.map_popup_box, self.db_popup_box, self.alarm_popup_box]:
             if popup.parentWidget().isVisible(): self.center_popup(popup)
         super().resizeEvent(event)
+
+    # --- [추가: 외부에서 로그를 추가할 수 있는 메서드] ---
+    def append_log(self, message):
+        """로직 및 디버그 메시지를 UI 로그창에 출력하고 자동 스크롤합니다."""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        self.log_console.append(log_entry)
+        # 자동 스크롤 처리
+        self.log_console.moveCursor(QTextCursor.MoveOperation.End)
