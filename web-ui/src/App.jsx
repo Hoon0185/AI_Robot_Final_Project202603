@@ -512,10 +512,10 @@ function App() {
         <div className="sidebar-section">
           <div className="status-indicator">
             {/* 1. Robot Status Label */}
-            <div className="status-label">Robot Status</div>
+            <div className="status-label" style={{ textAlign: 'center' }}>Robot Status</div>
 
             {/* 2. Combined Status Value */}
-            <div className="status-row">
+            <div className="status-row" style={{ justifyContent: 'center' }}>
               <span className={`dot ${
                 (status.status !== 'online' && status.status !== 'running') ? 'offline' :
                 status.robot_status === '순찰중' ? 'patrolling pulsing' : 
@@ -529,6 +529,13 @@ function App() {
                 {(status.status !== 'online' && status.status !== 'running') ? '로봇 오프라인' :
                  status.robot_status === '순찰중' ? '순찰중' : 
                  status.robot_status === '비상정지' ? '비상정지' : '로봇 온라인'}
+              </div>
+            </div>
+
+            {/* 3. Robot Position Display */}
+            <div className="pos-status-row">
+              <div className="pos-status-text">
+                📍 ({status.odom_x?.toFixed(2) || '0.00'}, {status.odom_y?.toFixed(2) || '0.00'})
               </div>
             </div>
             

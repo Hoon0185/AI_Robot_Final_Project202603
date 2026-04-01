@@ -256,10 +256,27 @@ html {
 .robot-mode-text.emergency { color: var(--accent-red); }
 .robot-mode-text.idle { color: var(--text-secondary); }
 
+.pos-status-row {
+  margin-top: 4px;
+  display: flex;
+  justify-content: center;
+}
+
+.pos-status-text {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-color);
+  padding: 4px 8px;
+  border-radius: 8px;
+  letter-spacing: 0.02em;
+}
+
 .db-status-row {
   margin-top: 4px;
   padding-top: 8px;
   border-top: 1px solid var(--divider-color);
+  text-align: center;
 }
 
 .db-status-text {
