@@ -1,0 +1,20 @@
+# AI Coding Assistant Rules for Gilbot Project
+
+이 프로젝트에서는 다음과 같은 규칙을 엄격히 준수해야 합니다.
+
+## Git Commit Rules
+- **한글 커밋 메시지**: 모든 Git 커밋 메시지는 반드시 **한글**로 작성하십시오.
+  - 예시: `feat: 로봇 위치 추적 모듈 추가`, `fix: 인식 로그 저장 오류 수정`
+- **커밋 단위**: 기능별로 논리적으로 나누어 커밋하십시오.
+
+## Deployment & Service Management
+- **백엔드 서비스**: 수정 후 반드시 `sudo systemctl restart gilbot-backend.service`로 재기동하십시오.
+- **배포 순서**: 
+  1. `git pull origin server`
+  2. `npm install` (프런트엔드 수정 시)
+  3. `npm run build` (프런트엔드 수정 시)
+  4. 서비스 재시작
+
+## Coding Style
+- **주석**: 주요 함수와 복잡한 로직 위에는 한글 주석을 남기십시오.
+- **DB 연동**: 로컬(`local`)과 리포트(`remote`) 모드가 `.env`에 정의되어 있으므로 적절히 활용하십시오.
