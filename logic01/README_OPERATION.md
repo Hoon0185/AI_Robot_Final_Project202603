@@ -51,7 +51,7 @@ ros2 launch protect_product ai_detection.launch.py use_ai_sim:=true
 로봇 본체(Raspberry Pi)에 직접 접속하여 RFID 리딩 및 위치 보정 노드를 실행합니다.
 ```bash
 # 터미널 4 (PC에서 SSH 접속)
-ssh penguin@192.168.0.8
+ssh penguin@192.168.0.3
 
 # 로봇 접속 후 실행 (홈 디렉토리의 rfid 폴더)
 cd ~/rfid
