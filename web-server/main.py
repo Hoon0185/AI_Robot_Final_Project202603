@@ -167,20 +167,23 @@ async def get_status():
             last_patrol = cursor.fetchone()
             p_status = str(last_patrol['status']).strip() if last_patrol else "완료"
 
-            # 3. 비상 여부 판정 (최우선)
-            # '==' 대신 'in'을 사용하여 보이지 않는 공백/바이너리 오차 무력화
-            if "EMERGENCY_STOP" in res_cmd or p_status == "중단":
+            # 3. 비상 여부 판정 (극강의 공격적 판정)
+            res_cmd_upper = res_cmd.upper()
+            if "EMERGENCY" in res_cmd_upper or p_status == "중단":
                 res_status = "비상정지"
+                print(f"DEBUG: EMERGENCY DETECTED! res_status is now: {res_status}")
                 if p_status != "완료" and last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
-            elif p_status == "진행중":
+            elif "진행" in p_status:
                 res_status = "순찰중"
+                print(f"DEBUG: PATROLLING... res_status is now: {res_status}")
                 if last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
             else:
                 res_status = "휴식중"
+                print(f"DEBUG: RESTING... res_status is now: {res_status}")
 
         except Exception as e:
             print(f"Status Parse Error: {e}")
