@@ -547,14 +547,14 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button className="apple-button primary slim"
                 onClick={handleStartPatrol}
-                disabled={(status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지'}
+                disabled={(status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중'}
                 style={{ 
                   padding: '12px', 
                   fontSize: '13px', 
-                  background: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지') ? '#E5E5E7' : 'var(--accent-blue)', 
-                  color: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지') ? '#86868B' : 'white', 
+                  background: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중') ? '#E5E5E7' : 'var(--accent-blue)', 
+                  color: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중') ? '#86868B' : 'white', 
                   justifyContent: 'center',
-                  cursor: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지') ? 'not-allowed' : 'pointer'
+                  cursor: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중') ? 'not-allowed' : 'pointer'
                 }}>🚀 순찰 개시</button>
               
               <button className="apple-button success-btn slim"
