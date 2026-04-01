@@ -54,32 +54,35 @@ class VerifierNode(Node):
 
         # 2. 객체 분류 및 좌표 안전제한 (Clipping)
         for i in range(len(det_msg.class_ids)):
+            cls_id = det_msg.class_ids[i]
+            cls_name = det_msg.class_names[i]
             # 좌표가 화면 밖으로 나가지 않도록 제한 (에러 방지)
             x1 = max(0, det_msg.x1[i])
             y1 = max(0, det_msg.y1[i])
             x2 = min(w, det_msg.x2[i])
             y2 = min(h, det_msg.y2[i])
 
-            # [과적합 대응] 물체 박스가 너무 커서 바코드를 가린다면 y2를 10% 정도 올림
-            # y2 = y2 - int((y2 - y1) * 0.1)
+            # [과적합 대응] 물체 박스가 너무 커서 바코드를 가려 y2를 20% 정도 자름
+            y2 = y1 + int((y2 - y1) * 0.8)
 
             obj = {
                 'bbox': (x1, y1, x2, y2),
-                'name': det_msg.class_names[i],
-                'id': det_msg.class_ids[i] + 1, # DB product_id와 매칭 (0->1, 1->2 ...)
+                'name': cls_name[i],
+                'id': cls_id + 1, # DB product_id와 매칭 (0->1, 1->2 ...)
                 'matched': False,
                 'qr_data':None
             }
 
-            if obj['name'] == 'backside': continue
-
             # YOLO가 찾은 바코드(쇼카드) 라벨인지, 실제 물건인지 분류
             if "label" in obj['name'] or "barcode" in obj['name']:
-                roi = frame[y1:y2, x1:x2] # 바코드 영역 잘라내기
+                # ROI가 너무 작으면 인식률이 떨어지므
+                roi = cv2.resize(roi, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC) # 바코드 영역 잘라내기
                 if roi.size > 0:
                     # 필요 시 이미지 전처리 (흑백 전환 등)
                     gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                    data, _, _ = self.detector.detectAndDecode(gray_roi)
+                    # 선명도 조절 (이진화)
+                    _, thresh_roi = cv2.threshold(gray_roi, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+                    data, _, _ = self.detector.detectAndDecode(thresh_roi)
                     if data:
                         obj['qr_data'] = data
                         self.get_logger().info(f"QR 스캔 성공: {data}")
