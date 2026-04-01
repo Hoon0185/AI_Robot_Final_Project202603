@@ -201,6 +201,12 @@ class PatrolNode(Node):
                 self.get_logger().warn(f'Failed to report to DB: {msg}')
             
             self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}, Detected: {detected}')
+            
+            # 이전 타이머가 혹시 살아있다면 정리
+            if hasattr(self, '_delay_timer') and self._delay_timer:
+                self.destroy_timer(self._delay_timer)
+                self._delay_timer = None
+                
             self._delay_timer = self.create_timer(2.0, self.proceed_to_next_shelf)
         else:
             self.get_logger().error(f'Navigation FAILED with status code: {status}. Stopping patrol for safety.')
@@ -209,11 +215,17 @@ class PatrolNode(Node):
             # 더 이상 send_next_goal()을 호출하지 않고 중단하여 무한 루프를 방지합니다.
 
     def proceed_to_next_shelf(self):
-        if self._delay_timer:
-            self._delay_timer.cancel()
+        """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""
+        if hasattr(self, '_delay_timer') and self._delay_timer:
+            self.destroy_timer(self._delay_timer)
+            self._delay_timer = None
+
+        if not self.is_patrolling:
+            self.get_logger().info('Patrol is no longer active. Stopping sequence.')
+            return
+
         self.current_shelf_idx += 1
-        if self.is_patrolling:
-            self.publish_status('patrolling')
+        self.publish_status('patrolling')
         self.send_next_goal()
 
     def publish_status(self, status):
