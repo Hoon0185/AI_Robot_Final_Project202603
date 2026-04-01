@@ -33,6 +33,7 @@ class PatrolInterface:
         self.latest_status = None
         self.status_sub = self.node.create_subscription(
             String, '/patrol_status', self._status_cb, 10)
+        self.last_status_received_time = 0.0
             
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
@@ -101,6 +102,8 @@ class PatrolInterface:
     def _status_cb(self, msg):
         try:
             self.latest_status = json.loads(msg.data)
+            import time
+            self.last_status_received_time = time.time()
         except Exception as e:
             self.node.get_logger().error(f"Failed to parse status JSON: {e}")
             self.latest_status = {"data": msg.data}
@@ -227,6 +230,13 @@ class PatrolInterface:
                 "error_found": latest.get('error_found', 0)
             }
         return None
+
+    def is_robot_online(self):
+        """최근 5초 이내에 상태 메시지를 수신했는지 확인하여 온라인 상태를 판별합니다."""
+        import time
+        if self.last_status_received_time == 0.0:
+            return False
+        return (time.time() - self.last_status_received_time) < 5.0
 
     def get_patrol_history_data(self):
         """DB에서 전체 순찰 이력을 가져옵니다."""

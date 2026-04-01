@@ -29,9 +29,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            #'detect_product=protect_product.detect_product:main',
-            'detector = protect_product.detector:main',
-            'verifier = protect_product.verifier:main',
+            'detector_node = protect_product.detector:main',
+            'verifier_node = protect_product.verifier:main',
             'viewer = protect_product.viewer:main',
         ],
     },

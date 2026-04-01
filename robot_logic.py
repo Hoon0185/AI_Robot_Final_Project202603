@@ -124,6 +124,10 @@ class RobotLogicHandler:
             else:
                 display_text = f"{time_info} ({s_type})"
 
+            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
+            if not self.ros_interface.is_robot_online():
+                display_text += " [OFFLINE]"
+
             self.ui.set_last_patrol_time(display_text)
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
@@ -228,9 +232,8 @@ class RobotLogicHandler:
     # 수동 순찰 명령
     def on_patrol_confirmed(self):
         """수동 순찰 명령 팝업에서 '시작'을 클릭했을 때 호출"""
-        print("[LOGIC] 수동 순찰 명령 확인됨. 순찰 로직 시작 프로세스 수행 가능.")
+        print("[LOGIC] 수동 순찰 명령 확인됨. 순찰 로직 시작 프로세스 수행.")
         if self.ros_interface:
-            # TODO: 담당자 구현 영역 (예: 순찰 노드 활성화 신호 송출 등)
-            pass
+            self.ros_interface.trigger_manual_patrol()
         elif self.is_debug:
             print("[DEBUG] Manual patrol sequence started in simulation")

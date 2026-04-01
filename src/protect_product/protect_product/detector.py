@@ -1,3 +1,7 @@
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
+from protect_product_msgs.msg import DetectionArray
 from cv_bridge import CvBridge
 from ultralytics import YOLO
 from ament_index_python.packages import get_package_share_directory
@@ -55,7 +59,6 @@ class DetectorNode(Node):
         # 발행
         self.publisher.publish(det_msg)
 
-# 이 부분이 누락되었거나 이름이 main이 아니면 에러가 납니다!
 def main(args=None):
     rclpy.init(args=args)
     node = DetectorNode()
