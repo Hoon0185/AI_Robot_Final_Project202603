@@ -18,7 +18,7 @@ class RFIDRobotNode(Node):
         
         # 태그 ID -> 좌표 매핑 (Hard-coded for standalone use)
         self.landmark_map = {
-            428801199154: {'x': 0.6213, 'y': 1.6028, 'yaw': 0.0},  # Shelf 1
+            428801199154: {'x': 0.0, 'y': 0.0, 'yaw': 0.0},        # Home Base (Standard Origin)
             291971004317: {'x': -1.0189, 'y': -0.2340, 'yaw': 0.0}  # Shelf 3
         }
         
