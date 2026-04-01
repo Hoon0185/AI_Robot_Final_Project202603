@@ -1,6 +1,8 @@
 import json
 import os
 import requests
+import mysql.connector
+from mysql.connector import Error
 from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 
@@ -198,13 +200,50 @@ class InventoryDB:
         return None
     def report_robot_pose(self, x, y, status="IDLE"):
         """서버로 로봇의 현재 실시간 좌표 및 상태 전송 (odom_x, odom_y, status)"""
+        # 1. API 방식 시도 (서버에 엔드포인트가 있을 경우)
         payload = {
             "odom_x": float(x),
             "odom_y": float(y),
-            "status": str(status) # IDLE, PATROLLING, WAITING, RETURNING, EMERGENCY 등
+            "status": str(status) 
         }
         try:
-            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=1.0)
-            return res.status_code == 200
+            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=0.5)
+            if res.status_code == 200:
+                return True
         except Exception:
-            return False
+            pass
+
+        # 2. DB 직접 업데이트 방식 (사용자 요청: 서버 코드 고정 대응)
+        return self.report_robot_pose_direct(x, y)
+
+    def report_robot_pose_direct(self, x, y):
+        """DB에 직접 접속하여 실시간 좌표 업데이트 (patrol_log)"""
+        db_config = {
+            "host": "16.184.56.119",
+            "port": 3306,
+            "user": "gilbot",
+            "password": "robot123", # 기본 비밀번호 시도
+            "database": "gilbot"
+        }
+        conn = None
+        try:
+            conn = mysql.connector.connect(**db_config)
+            if conn.is_connected():
+                cursor = conn.cursor()
+                # '진행중'이거나 가장 최근인 순찰 로그의 좌표 업데이트
+                query = """
+                    UPDATE patrol_log 
+                    SET last_odom_x = %s, last_odom_y = %s 
+                    WHERE status = '진행중' OR status = '중단'
+                    ORDER BY patrol_id DESC LIMIT 1
+                """
+                cursor.execute(query, (float(x), float(y)))
+                conn.commit()
+                return True
+        except Exception as e:
+            # print(f"[DB Error] {e}")
+            pass
+        finally:
+            if conn and conn.is_connected():
+                conn.close()
+        return False
