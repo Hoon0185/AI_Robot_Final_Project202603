@@ -152,8 +152,14 @@ async def update_robot_pose(pose: PoseUpdate):
             ORDER BY patrol_id DESC LIMIT 1
         """, (pose.odom_x, pose.odom_y))
         
-        # 하트비트 테이블 갱신 추가
-        cursor.execute("UPDATE robot_status SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = 1")
+        # 하트비트 테이블 및 최신 좌표 갱신 추가
+        cursor.execute("""
+            UPDATE robot_status 
+            SET last_heartbeat = CURRENT_TIMESTAMP, 
+                last_x = %s, 
+                last_y = %s 
+            WHERE id = 1
+        """, (pose.odom_x, pose.odom_y))
         conn.commit()
         return {"status": "success"}
     except Exception as e:
@@ -187,11 +193,14 @@ async def get_status():
             mode_cmd = str(mode_cmd_row['command_type']).upper().strip() if mode_cmd_row else "NONE"
             mode_cmd_id = mode_cmd_row['command_id'] if mode_cmd_row else 0
             
-            # --- 하트비트 기반 온라인/오프라인 판정 ---
-            cursor.execute("SELECT last_heartbeat FROM robot_status WHERE id = 1")
+            # --- 하트비트 기반 온라인/오프라인 판정 및 최신 좌표 추출 ---
+            cursor.execute("SELECT last_heartbeat, last_x, last_y FROM robot_status WHERE id = 1")
             hb_row = cursor.fetchone()
             if hb_row:
                 last_hb = hb_row['last_heartbeat']
+                res_x = round(hb_row['last_x'] or 0.0, 2)
+                res_y = round(hb_row['last_y'] or 0.0, 2)
+                
                 # 시차 계산 (현재 시각 - 마지막 하트비트)
                 diff = (datetime.now() - last_hb).total_seconds()
                 if diff <= 10:
@@ -224,6 +233,7 @@ async def get_status():
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
             else:
                 res_status = "휴식중"
+                # 휴식 중에도 로봇이 전송한 최신 좌표를 유지 (위에서 hb_row로 이미 설정됨)
 
             # 최종 응답용 최신 명령 (UI 표시용)
             cursor.execute("SELECT command_type FROM robot_command ORDER BY command_id DESC LIMIT 1")
