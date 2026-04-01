@@ -156,32 +156,44 @@ async def get_status():
         try:
             cursor = conn.cursor(dictionary=True)
             
-            # 1. 최신 명령 확인
-            cursor.execute("SELECT command_type FROM robot_command ORDER BY command_id DESC LIMIT 1")
-            latest_cmd = cursor.fetchone()
-            if latest_cmd:
-                res_cmd = str(latest_cmd['command_type']).strip()
+            # 1. 최신 '모드 정의' 명령 확인 (일반 명령에 의해 비상 상태가 묻히는 것 방지)
+            cursor.execute("""
+                SELECT command_type FROM robot_command 
+                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
+                ORDER BY created_at DESC, command_id DESC LIMIT 1
+            """)
+            mode_cmd_row = cursor.fetchone()
+            mode_cmd = str(mode_cmd_row['command_type']).upper().strip() if mode_cmd_row else "NONE"
             
             # 2. 최신 순찰 로그 확인
             cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
             p_status = str(last_patrol['status']).strip() if last_patrol else "완료"
 
-            # 3. 비상 여부 판정 (최우선)
-            res_cmd_upper = res_cmd.upper()
-            if "EMERGENCY" in res_cmd_upper or p_status == "중단":
+            # 3. 비상 여부 판론 (최우선: 명령이 EMERGENCY거나 로그가 중단인 경우)
+            if "EMERGENCY" in mode_cmd or p_status == "중단":
                 res_status = "비상정지"
                 # 비상정지 시에도 진행 중이었다면 마지막 좌표를 유지, 아니면 (기지 복귀 완료 시 등) 0,0
                 if p_status != "완료" and last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
-            elif "진행" in p_status:
+            elif "진행" in p_status or "START" in mode_cmd:
                 res_status = "순찰중"
+                if last_patrol:
+                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
+                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+            elif "RETURN" in mode_cmd and p_status != "완료":
+                res_status = "순찰중" # 복귀 중도 순찰중으로 표시 (또는 '복귀중' 추가 가능)
                 if last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
             else:
                 res_status = "휴식중"
+
+            # 최종 응답용 최신 명령 (UI 표시용)
+            cursor.execute("SELECT command_type FROM robot_command ORDER BY command_id DESC LIMIT 1")
+            actual_latest = cursor.fetchone()
+            res_cmd = str(actual_latest['command_type']).strip() if actual_latest else "None"
 
         except Exception as e:
             # 에러 로그는 서버 측에만 남기고 판정은 기본값(휴식중) 유지
@@ -408,8 +420,8 @@ async def clear_pending_commands():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor()
-        # 1. 미완료된 로봇 명령 초기화
-        cursor.execute("UPDATE robot_command SET status = 'CANCELED' WHERE status IN ('PENDING', 'PROCESSING')")
+        # 1. 미완료된 로봇 명령 초기화 (DB Enum에 맞춰 FAILED로 변경)
+        cursor.execute("UPDATE robot_command SET status = 'FAILED' WHERE status IN ('PENDING', 'PROCESSING')")
         cmd_count = cursor.rowcount
         
         # 2. '진행중'인 순찰 로그 모두 강제 중단 처리 (잔류 로그 정리)
