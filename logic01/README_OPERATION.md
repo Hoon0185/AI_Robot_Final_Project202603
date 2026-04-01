@@ -53,8 +53,8 @@ ros2 launch protect_product ai_detection.launch.py use_ai_sim:=true
 # 터미널 4 (PC에서 SSH 접속)
 ssh penguin@192.168.0.8
 
-# 로봇 접속 후 실행
-cd ~/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src
+# 로봇 접속 후 실행 (홈 디렉토리의 rfid 폴더)
+cd ~/rfid
 python3 rfid_robot_node.py
 ```
 
