@@ -106,6 +106,22 @@ def generate_launch_description():
             parameters=[{'use_sim_time': use_sim_time}],
             output='screen',
             condition=IfCondition(run_rfid)
+        ),
+
+        # 8. AI Product Detection System (added from main branch)
+        Node(
+            package='protect_product',
+            executable='detector_node',
+            name='detector_node',
+            parameters=[{'use_sim_time': use_sim_time}],
+            output='screen'
+        ),
+        Node(
+            package='protect_product',
+            executable='verifier_node',
+            name='verifier_node',
+            parameters=[{'use_sim_time': use_sim_time}],
+            output='screen'
         )
     ])
 

@@ -6,8 +6,9 @@ from cv_bridge import CvBridge
 import cv2
 from ultralytics import YOLO
 import sqlite3
-import os
 from rclpy.qos import QoSProfile, ReliabilityPolicy
+from ament_index_python.packages import get_package_share_directory
+import os
 
 class DetectProductNode(Node):
     def __init__(self):
@@ -18,13 +19,19 @@ class DetectProductNode(Node):
             depth=10
         )
 
-        # 1. 모델 및 DB 초기화 (기존 main의 설정 부분)
-        # 경로 주의: 임시 더미데이터(product.db)를 사용했기에 DB에 맞게 경로 바꿔야합니다.
-        # products.pt = 학습된 파일, 들고가야합니다
-        # product.db = 더미데이터 테스트 파일, 버리고 DB와 연결해야합니다
-        # setup도 수정해야합니다
-        self.model = YOLO("/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt")
-        self.conn = sqlite3.connect("/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/product.db", check_same_thread=False)
+        # 1. 모델 및 DB 초기화 (동적 경로 사용)
+        pkg_dir = get_package_share_directory('protect_product')
+        model_path = os.path.join(pkg_dir, 'models', 'products.pt')
+        db_path = os.path.join(pkg_dir, 'models', 'product.db')
+        
+        # 소스 경로 대비
+        if not os.path.exists(model_path):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_dir, '..', 'models', 'products.pt')
+            db_path = os.path.join(current_dir, '..', 'models', 'product.db')
+
+        self.model = YOLO(model_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.detector = cv2.QRCodeDetector()
         self.bridge = CvBridge()

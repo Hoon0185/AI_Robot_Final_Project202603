@@ -5,6 +5,7 @@ from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import String, Bool
 from action_msgs.msg import GoalStatus
+from protect_product_msgs.msg import DetectionArray # AI 인식 메시지 추가
 import yaml
 import os
 import time
@@ -49,6 +50,13 @@ class PatrolNode(Node):
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
         self.pose_timer = self.create_timer(2.0, self.report_pose_to_server)
+        
+        # 7. AI 인식 연동 (Verifier 노드 데이터 수신)
+        self.ai_sub = self.create_subscription(
+            DetectionArray, '/verified_objs', self.ai_callback, 10)
+        self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장 
+        self.is_waiting_for_ai = False 
+        self.ai_wait_start_time = None
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
@@ -184,45 +192,29 @@ class PatrolNode(Node):
         # 액션 종료 시 핸들 초기화
         self._goal_handle = None
         status = future.result().status
+        
         if status == GoalStatus.STATUS_SUCCEEDED:
             shelf_name = self.shelf_list[self.current_shelf_idx]
             tag_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
             
-            # 가상 바코드 판독 시뮬레이션 (Server 로직 대응)
-            # 예: 짝수 선반은 정상, 홀수 선반은 결품(공백) 시뮬레이션
-            detected = "880" + str(1111111111 + self.current_shelf_idx)
-            if self.current_shelf_idx % 2 != 0: detected = "" 
+            self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}. Waiting for AI verification...')
             
-            self.last_detection = {
-                "tag_barcode": tag_barcode,
-                "detected_barcode": detected,
-                "confidence": 0.98
-            }
+            # AI 인식 대기 모드 진입
+            self.is_waiting_for_ai = True
+            self.ai_wait_start_time = self.get_clock().now()
+            self.latest_ai_barcodes = [] 
             
-            # DB 서버로 인식 결과 전송 (중복 전송 방지 로직 적용)
-            if tag_barcode not in self.reported_tags:
-                success, msg = self.db.report_detection(tag_barcode, detected, 0.98)
-                if success:
-                    self.get_logger().info(f'Successfully reported to DB: {tag_barcode}')
-                    self.reported_tags.add(tag_barcode)
-                else:
-                    self.get_logger().warn(f'Failed to report to DB: {msg}')
-            else:
-                self.get_logger().info(f'Skipping duplicate report for: {tag_barcode}')
-            
-            self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {tag_barcode}, Detected: {detected}')
-            
-            # 이전 타이머가 혹시 살아있다면 정리
+            # 이전에 설정된 타이머가 있다면 제거
             if hasattr(self, '_delay_timer') and self._delay_timer:
                 self.destroy_timer(self._delay_timer)
                 self._delay_timer = None
                 
-            self._delay_timer = self.create_timer(2.0, self.proceed_to_next_shelf)
+            # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
+            self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
         else:
             self.get_logger().error(f'Navigation FAILED with status code: {status}. Stopping patrol for safety.')
             self.is_patrolling = False
             self.publish_status('error')
-            # 더 이상 send_next_goal()을 호출하지 않고 중단하여 무한 루프를 방지합니다.
 
     def proceed_to_next_shelf(self):
         """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""
@@ -271,6 +263,56 @@ class PatrolNode(Node):
         """2초마다 서버로 현재 위치를 보고"""
         if self.current_x != 0.0 or self.current_y != 0.0:
             self.db.report_robot_pose(self.current_x, self.current_y)
+
+    def ai_callback(self, msg):
+        """AI 인식 노드로부터 실시간 바코드 리스트 수신"""
+        if self.is_waiting_for_ai:
+            self.latest_ai_barcodes = msg.barcodes
+
+    def check_ai_result_and_proceed(self):
+        """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행"""
+        if not self.is_waiting_for_ai: return
+
+        shelf_name = self.shelf_list[self.current_shelf_idx]
+        target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
+        
+        found = False
+        detected_barcode = ""
+        
+        # 최근 인식된 결과 중 타겟 바코드가 있는지 확인
+        if target_barcode in self.latest_ai_barcodes:
+            found = True
+            detected_barcode = target_barcode
+            self.get_logger().info(f'[AI] Found matching product: {target_barcode}')
+
+        # 타임아웃 체크 (10초)
+        elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
+        
+        if found or elapsed > 8.0: # 8초 경과 시 강제 종료 혹은 불일치 처리
+            self.is_waiting_for_ai = False
+            
+            # 타이머 정리
+            if self._delay_timer:
+                self.destroy_timer(self._delay_timer)
+                self._delay_timer = None
+            
+            # 인식 성공 또는 타임아웃에 따른 결과 리포팅
+            self.last_detection = {
+                "tag_barcode": target_barcode,
+                "detected_barcode": detected_barcode if found else "", # 못 찾았으면 빈 바코드 전송(결품 처리)
+                "confidence": 0.99 if found else 0.0
+            }
+            
+            if target_barcode not in self.reported_tags:
+                success, msg = self.db.report_detection(target_barcode, self.last_detection["detected_barcode"], 0.99)
+                if success:
+                    self.get_logger().info(f'Reported to DB (Found: {found}): {target_barcode}')
+                    self.reported_tags.add(target_barcode)
+                else:
+                    self.get_logger().warn(f'Failed to report DB: {msg}')
+            
+            # 다음 목적으로 이동
+            self.proceed_to_next_shelf()
 
 def main(args=None):
     rclpy.init(args=args)

@@ -7,14 +7,23 @@ import cv2
 import sqlite3
 import message_filters
 from rclpy.qos import QoSProfile, ReliabilityPolicy
+from ament_index_python.packages import get_package_share_directory
+import os
 
 class VerifierNode(Node):
     def __init__(self):
         super().__init__('verifier_node')
         self.bridge = CvBridge()
 
-        # 1. DB 연결 (절대 경로 사용 권장)
-        db_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/product.db"
+        # 1. DB 연결 (동적 경로 사용)
+        pkg_dir = get_package_share_directory('protect_product')
+        db_path = os.path.join(pkg_dir, 'models', 'product.db')
+        
+        # 소스 경로 대비
+        if not os.path.exists(db_path):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            db_path = os.path.join(current_dir, '..', 'models', 'product.db')
+            
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.detector = cv2.QRCodeDetector()
@@ -37,9 +46,11 @@ class VerifierNode(Node):
             [self.img_sub, self.det_sub], queue_size=10, slop=0.1, allow_headerless=True)
         self.ts.registerCallback(self.sync_callback)
 
-        # 4. 검증 결과 이미지 발행
+        # 4. 검증 결과 이미지 및 데이터 발행
         self.publisher = self.create_publisher(
             CompressedImage, '/verif_img/compressed', qos_profile)
+        self.data_publisher = self.create_publisher(
+            DetectionArray, '/verified_objs', 10)
 
         self.get_logger().info('Verifier 노드 가동: QR 인식 및 DB 대조를 시작합니다.')
 
@@ -95,6 +106,17 @@ class VerifierNode(Node):
         # 최종 가공된 이미지를 전송
         res_msg = self.bridge.cv2_to_compressed_imgmsg(frame, dst_format='jpg')
         self.publisher.publish(res_msg)
+
+        # 검증 데이터 발행 (PatrolNode 등에서 수집 가능)
+        v_msg = DetectionArray()
+        v_msg.x1 = det_msg.x1
+        v_msg.y1 = det_msg.y1
+        v_msg.x2 = det_msg.x2
+        v_msg.y2 = det_msg.y2
+        v_msg.class_ids = det_msg.class_ids
+        v_msg.class_names = det_msg.class_names
+        v_msg.barcodes = detected_codes # 인식된 바코드들 (순서 불일치 가능성 대비 필요하나 현재는 단순 리스트)
+        self.data_publisher.publish(v_msg)
 
     def __del__(self):
         if hasattr(self, 'conn'):

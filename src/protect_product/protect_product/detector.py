@@ -1,16 +1,21 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
-from protect_product_msgs.msg import DetectionArray  # 메시지 패키지 이름 확인
 from cv_bridge import CvBridge
 from ultralytics import YOLO
+from ament_index_python.packages import get_package_share_directory
+import os
 
 class DetectorNode(Node):
     def __init__(self):
         super().__init__('detector_node')
 
-        # 1. 모델 로드 (경로 확인 필수)
-        model_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt"
+        # 1. 모델 로드 (동적 경로 사용)
+        pkg_dir = get_package_share_directory('protect_product')
+        model_path = os.path.join(pkg_dir, 'models', 'products.pt')
+        
+        # 만약 설치 경로가 아닌 소스 경로에서 실행 중일 경우 대비
+        if not os.path.exists(model_path):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_dir, '..', 'models', 'products.pt')
+            
         self.model = YOLO(model_path)
         self.bridge = CvBridge()
 
@@ -28,7 +33,7 @@ class DetectorNode(Node):
 
     def callback(self, msg):
         # 이미지를 OpenCV 포맷으로 변환
-        frame = self.bridge.compressed_imgmsg_to_cv2(msg)
+        frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
         # YOLO 추론
         results = self.model(frame)
