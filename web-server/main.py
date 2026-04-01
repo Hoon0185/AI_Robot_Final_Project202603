@@ -177,26 +177,10 @@ async def get_status():
             if last_patrol and (str(last_patrol.get('status', '')).strip() == '중단'):
                 is_emergency = True
 
-            # 최종 상태 명칭 결정
-            if is_emergency:
+            # --- 마지막 예외 처리 (절대 방어) ---
+            # 모든 판정 로직 이후, 만약 최신 명령이 'EMERGENCY_STOP'이면 어떤 이유에서든 '비상정지'로 강제 고정
+            if latest_cmd and 'EMERGENCY_STOP' in str(latest_cmd.get('command_type', '')):
                 robot_mode = "비상정지"
-            elif last_patrol and (str(last_patrol.get('status', '')).strip() == '진행중'):
-                robot_mode = "순찰중"
-            else:
-                robot_mode = "휴식중"
-            
-            print(f"[DEBUG] Final determined status: {robot_mode}")
-
-            # 3. 위치(last_odom) 결정
-            # 기지 휴식중이 아닌 경우(순찰중 버튼을 눌렀거나, 그 과정에서 비상정지된 경우)만 마지막 좌표 사용
-            if robot_mode in ["순찰중", "비상정지"] and last_patrol and last_patrol['status'] != '완료':
-                last_odom = {
-                    "odom_x": round(last_patrol.get('last_odom_x', 0.0), 2),
-                    "odom_y": round(last_patrol.get('last_odom_y', 0.0), 2)
-                }
-            else:
-                # 그 외(기지 휴식중, 혹은 기지에서 발생한 비상정지)는 무조건 기지(0,0)
-                last_odom = {"odom_x": 0.0, "odom_y": 0.0}
 
         except Exception as e:
             print(f"Error fetching robot status: {e}")
