@@ -693,11 +693,11 @@ async def add_detection(data: DetectionInput):
 
         # 6. detection_log (인식 이력 기록)
         insert_log_sql = """
-            INSERT INTO detection_log (patrol_id, waypoint_id, product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO detection_log (patrol_id, waypoint_id, product_id, detected_product_id, detected_barcode, tag_barcode, confidence, result, odom_x, odom_y)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        # product_id에는 '계획된' 상품 ID를 저장하여 로그에서 무엇이 있어야 했는지 알 수 있게 함
-        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, planned_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
+        # product_id에는 '계획된' 상품 ID를, detected_product_id에는 '실제 인식된' 상품 ID를 저장
+        cursor.execute(insert_log_sql, (patrol_id, waypoint_id, planned_product_id, detected_product_id, data.detected_barcode, data.tag_barcode, data.confidence, result_status, data.odom_x, data.odom_y))
 
         # 7. Alert 생성 (이상 감제 시)
         if result_status != '정상':
@@ -747,7 +747,7 @@ async def list_detections():
                    p2.product_name as p_name_detected
             FROM detection_log d
             LEFT JOIN product_master p1 ON d.product_id = p1.product_id
-            LEFT JOIN product_master p2 ON d.detected_barcode = p2.barcode
+            LEFT JOIN product_master p2 ON d.detected_product_id = p2.product_id
             WHERE d.patrol_id = %s
             ORDER BY d.log_id ASC
         """
