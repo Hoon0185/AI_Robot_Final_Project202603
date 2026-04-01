@@ -23,13 +23,7 @@ function App() {
     }
   }, [alerts, notificationMsg.type]);
 
-  // 실시간 인식 로그 자동 스크롤 (CRT 스타일 효과)
-  const detectionLogRef = useRef(null);
-  useEffect(() => {
-    if (detectionLogRef.current) {
-      detectionLogRef.current.scrollTop = detectionLogRef.current.scrollHeight;
-    }
-  }, [detections]);
+
 
   // 알림 사운드 재생 함수 (내장 오디오 객체 사용)
   const playAlertSound = () => {
@@ -683,7 +677,7 @@ function App() {
 
             <section className="apple-card">
               <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
-              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }} ref={detectionLogRef}>
+              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <table className="fixed-table">
                   <thead>
                     <tr>
