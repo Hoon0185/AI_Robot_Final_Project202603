@@ -145,55 +145,55 @@ async def update_robot_pose(pose: PoseUpdate):
 async def get_status():
     conn = get_db_connection()
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
-    robot_mode = "휴식중"
-    last_odom = {"odom_x": 0.0, "odom_y": 0.0}
+    
+    # 기본값 설정
+    res_status = "휴식중"
+    res_cmd = "None"
+    res_x = 0.0
+    res_y = 0.0
     
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
             
-            # 1. 아예 필터링 없이 가장 최신 명령을 1개 가져옵니다. (가장 확실함)
-            cursor.execute("""
-                SELECT command_type, status, created_at FROM robot_command 
-                ORDER BY command_id DESC LIMIT 1
-            """)
+            # 1. 최신 명령 확인
+            cursor.execute("SELECT command_type FROM robot_command ORDER BY command_id DESC LIMIT 1")
             latest_cmd = cursor.fetchone()
-            
-            # --- 상태 및 위치 판단 로직 (데이터 타입 철통 보안) ---
-            is_emergency = False
             if latest_cmd:
-                # DB의 command_type이 일반 문자열이 아닌 bytes일 경우를 완벽 대비
-                raw_type = latest_cmd['command_type']
-                cmd_type = str(raw_type).strip() if raw_type else ""
-                
-                # 'EMERGENCY_STOP'이 포함되어 있거나 b'EMERGENCY_STOP'과 매칭되는지 확인
-                if 'EMERGENCY_STOP' in cmd_type:
-                    is_emergency = True
+                res_cmd = str(latest_cmd['command_type']).strip()
             
-            # 순찰 로그 기준 보조 판단
+            # 2. 최신 순찰 로그 확인
             cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
+            p_status = str(last_patrol['status']).strip() if last_patrol else "완료"
 
-            if last_patrol and (str(last_patrol.get('status', '')).strip() == '중단'):
-                is_emergency = True
-
-            # --- 마지막 예외 처리 (절대 방어) ---
-            # 모든 판정 로직 이후, 만약 최신 명령이 'EMERGENCY_STOP'이면 어떤 이유에서든 '비상정지'로 강제 고정
-            if latest_cmd and 'EMERGENCY_STOP' in str(latest_cmd.get('command_type', '')):
-                robot_mode = "비상정지"
+            # 3. 비상 여부 판정 (최우선)
+            if res_cmd == "EMERGENCY_STOP" or p_status == "중단":
+                res_status = "비상정지"
+                # 비상정지 시에도 진행 중이었다면 위치를 유지
+                if p_status != "완료" and last_patrol:
+                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
+                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+            elif p_status == "진행중":
+                res_status = "순찰중"
+                if last_patrol:
+                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
+                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+            else:
+                res_status = "휴식중"
 
         except Exception as e:
-            print(f"Error fetching robot status: {e}")
+            print(f"Status Parse Error: {e}")
         finally:
             conn.close()
 
     return {
         "status": "online",
-        "robot_status": robot_mode,
-        "latest_cmd": latest_cmd['command_type'] if latest_cmd else "None",
+        "robot_status": res_status,
+        "latest_cmd": res_cmd,
         "database": db_status,
-        "odom_x": last_odom['odom_x'],
-        "odom_y": last_odom['odom_y'],
+        "odom_x": res_x,
+        "odom_y": res_y,
         "db_host": os.getenv("DB_HOST", "localhost"),
         "server_time": datetime.now().strftime("%H:%M:%S")
     }
