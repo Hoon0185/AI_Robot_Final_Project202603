@@ -35,11 +35,12 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 먼저 ROS 2 워크스페이스를 빌드하고 전체 시스템을 실행합니다.
 ```bash
 # 워크스페이스 루트에서 실행
-colcon build --packages-select patrol_main logic2_pkg
+colcon build --packages-select patrol_main logic2_pkg protect_product protect_product_msgs
 source install/setup.bash
 
 # 터미널 2: 순찰 시스템 실행 (순찰 로직 + 장애물 회피 + 멀티플렉서)
 # [기본] ros2 launch patrol_main patrol.launch.py
+# [카메라 없이 테스트 시] ros2 launch patrol_main patrol.launch.py use_ai_sim:=true
 ros2 launch patrol_main patrol.launch.py
 ```
 
@@ -51,8 +52,12 @@ ros2 launch patrol_main patrol.launch.py
 
 ```bash
 # 터미널 1: 모든 시스템 일괄 실행
-# (내비게이션 + 맵 + 순찰 로직 + 장애물 회피 + 멀티플렉서)
+# (내비게이션 + 맵 + 순찰 로직 + 장애물 회피 + AI 인식 + 멀티플렉서)
+# [기본 실행 - 실제 카메라 사용]
 ros2 launch patrol_main total_patrol.launch.py
+
+# [시뮬레이션 - IP 카메라 미연결 시] 
+ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=true
 ```
 
 ---
@@ -98,10 +103,15 @@ python3 main.py
 3.  순찰이 시작되면 `(순찰 중: shelf_1 1/4)`와 같은 형식으로 실시간 진행 상태가 업데이트되는지 확인하십시오.
 4.  각 선반 도착 시 인식된 바코드 정보가 서버로 리포팅되는지 확인합니다: `Successfully reported to DB: ...`
 
-### 📡 원격 대시보드 명령 (Remote Dashboard)
-1.  **웹 브라우저**에서 `http://16.184.56.119/` (또는 서버 IP)에 접속합니다.
-2.  대시보드 상단의 **[순찰 개시]** 또는 **[비상 정지]** 버튼을 클릭합니다.
-3.  로봇 UI 터미널에 `[REMOTE] New command received: ...` 로그가 출력되며 로봇이 즉시 자율 순찰을 시작하거나 멈추는지 확인하십시오. (약 2초 이내 반응)
+109. 로봇 UI 터미널에 `[REMOTE] New command received: ...` 로그가 출력되며 로봇이 즉시 자율 순찰을 시작하거나 멈추는지 확인하십시오. (약 2초 이내 반응)
+
+### 🤖 AI 물품 및 바코드 실시간 인식 (AI Integration)
+1.  순찰 중 선반 도착 시 로봇이 **최대 8초간** 정지하여 물품을 스캔합니다.
+2.  **모니터링**: 다른 터미널에서 `ros2 run rqt_image_view rqt_image_view`를 실행하고 `/verif_img/compressed` 토픽을 선택합니다.
+    *   YOLO가 물체를 잡고(BBox), 하단의 QR/바코드를 인식하여 `[OK]` 또는 `[ERR]` 텍스트를 오버레이하는지 확인하십시오.
+3.  **데이터 검증**: 바코드 인식 성공 시 터미널에 `[AI] Found matching product: ...` 로그가 출력되며 서버에 즉시 보고됩니다.
+4.  **IP 카메라 미연결 대응**: 카메라가 없는 경우 `use_ai_sim:=true` 옵션을 주면 8초 대기 없이 즉시 시뮬레이션 데이터로 성공 보고를 수행합니다.
+    *   `ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=true`
 
 ---
 
