@@ -38,12 +38,11 @@ def generate_launch_description():
 
     # 2. 설정 파일 경로
     shelf_config = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
-    twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
+    # LOGIC_02의 설정을 우선하여 사용
+    twist_mux_config = os.path.join(get_package_share_directory('logic2_pkg'), 'config', 'twist_mux.yaml')
 
-    # 3. 모든 순찰 관련 노드를 그룹화
-    patrol_group = GroupAction(
-        actions=[
-            PushRosNamespace(namespace_config),
+    # 3. 모든 순찰 관련 노드 실행 (네임스페이스 제거됨)
+    patrol_actions = [
             
             # (1) 순찰 스케줄러 (주기적/예약 실행 관리)
             Node(
@@ -66,11 +65,11 @@ def generate_launch_description():
                 output='screen'
             ),
             
-            # (3) 장애물 회피 제어 노드
+            # (3) 장애물 회피 제어 노드 (LOGIC_02 패키지 사용)
             Node(
-                package='patrol_main',
+                package='logic2_pkg',
                 executable='obstacle_node',
-                name='patrol_obstacle_node',
+                name='obstacle_node',
                 parameters=[{
                     'use_sim_time': use_sim_time,
                     'obstacle_wait_time': 10
@@ -107,13 +106,12 @@ def generate_launch_description():
                 output='screen',
                 condition=IfCondition(run_rfid)
             )
-        ]
-    )
+    ]
 
     return LaunchDescription([
         namespace_arg,
         map_frame_arg,
         use_sim_time_arg,
         run_rfid_arg,
-        patrol_group
+        *patrol_actions
     ])

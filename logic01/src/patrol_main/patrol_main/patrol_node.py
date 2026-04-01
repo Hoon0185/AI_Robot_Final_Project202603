@@ -58,6 +58,8 @@ class PatrolNode(Node):
             DetectionArray, '/verified_objs', self.ai_callback, 10)
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장 
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
+        # 8. 위치 초기화 발행 (AMCL 보정용)
+        self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False 
         self.ai_wait_start_time = None
 
@@ -122,8 +124,8 @@ class PatrolNode(Node):
             self.cancel_nav()
             self.go_to_origin()
         elif cmd == 'RESET_POSE':
-            self.get_logger().info('Resetting Robot Pose...')
-            # RESET_POSE는 추후 /initialpose 발행 등으로 확장 가능
+            self.get_logger().info('Moving back to Initial Position (No Jump)...')
+            self.go_to_origin()
 
     def cancel_nav(self):
         """현재 진행 중인 Nav2 액션 목표를 취소합니다."""
@@ -154,13 +156,16 @@ class PatrolNode(Node):
 
     def send_next_goal(self):
         if self.current_shelf_idx >= len(self.shelf_list):
-            self.get_logger().info('Patrol Completed!')
+            self.get_logger().info('Patrol Completed! Navigating back to HOME (0,0)...')
             # 서버에 순찰 종료 세션 등록
             self.db.finish_patrol_session()
             
             self.is_patrolling = False
             self.end_time = datetime.now()
             self.publish_status('completed')
+            
+            # 모든 순찰 완료 후 원점으로 자동 복귀
+            self.go_to_origin()
             return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
@@ -366,6 +371,32 @@ class PatrolNode(Node):
             
             # 다음 목적으로 이동
             self.proceed_to_next_shelf()
+
+    def reset_pose_to_origin(self):
+        """로봇의 위치 추정치를 (0,0)으로 초기화합니다."""
+        msg = PoseWithCovarianceStamped()
+        msg.header.frame_id = self.map_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        
+        # 위치 (0,0,0)
+        msg.pose.pose.position.x = 0.0
+        msg.pose.pose.position.y = 0.0
+        msg.pose.pose.position.z = 0.0
+        
+        # 자세 (정면)
+        msg.pose.pose.orientation.x = 0.0
+        msg.pose.pose.orientation.y = 0.0
+        msg.pose.pose.orientation.z = 0.0
+        msg.pose.pose.orientation.w = 1.0
+        
+        # 공분산 초기화 (매우 낮은 값으로 설정하여 확신 부여)
+        msg.pose.covariance = [0.0] * 36
+        msg.pose.covariance[0] = 0.25 # x
+        msg.pose.covariance[7] = 0.25 # y
+        msg.pose.covariance[35] = 0.06 # yaw
+        
+        self.initial_pose_pub.publish(msg)
+        self.get_logger().info('Published Initial Pose to (0,0)')
 
 def main(args=None):
     rclpy.init(args=args)

@@ -12,7 +12,8 @@ def generate_launch_description():
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     
     # Configuration file paths
-    twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
+    # LOGIC_02의 설정을 우선하여 사용
+    twist_mux_config = os.path.join(get_package_share_directory('logic2_pkg'), 'config', 'twist_mux.yaml')
     nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml') # 우리 패키지의 파라미터 사용
     map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_01.yaml') # 실제 지도 이름으로 수정
 
@@ -69,11 +70,11 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 4. Obstacle Avoidance Node
+        # 4. Obstacle Avoidance Node (LOGIC_02 패키지 사용)
         Node(
-            package='patrol_main',
+            package='logic2_pkg',
             executable='obstacle_node',
-            name='patrol_obstacle_node',
+            name='obstacle_node',
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'obstacle_wait_time': 10
