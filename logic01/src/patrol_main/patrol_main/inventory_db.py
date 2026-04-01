@@ -196,3 +196,14 @@ class InventoryDB:
         except Exception as e:
             print(f"[DB] Error fetching patrol plan: {e}")
         return None
+    def report_robot_pose(self, x, y):
+        """서버로 로봇의 현재 실시간 좌표 전송 (odom_x, odom_y)"""
+        payload = {
+            "odom_x": float(x),
+            "odom_y": float(y)
+        }
+        try:
+            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=1.0)
+            return res.status_code == 200
+        except Exception:
+            return False

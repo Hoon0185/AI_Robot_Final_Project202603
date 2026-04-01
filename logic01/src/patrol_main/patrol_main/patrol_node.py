@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import String, Bool
 from action_msgs.msg import GoalStatus
 import yaml
@@ -43,8 +43,12 @@ class PatrolNode(Node):
 
         # 5. 순찰 상태 발행 (UI용)
         self.patrol_status_pub = self.create_publisher(String, '/patrol_status', 10)
-        self.start_time = None
-        self.end_time = None
+        # 6. 실시간 위치 리포팅 (서버 대시보드용)
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
+        self.pose_timer = self.create_timer(2.0, self.report_pose_to_server)
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
@@ -237,7 +241,9 @@ class PatrolNode(Node):
     def publish_status(self, status):
         info = {
             'status': status,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'current_x': round(self.current_x, 3), # UI 표시용 소수점 제한 
+            'current_y': round(self.current_y, 3)
         }
         
         if status == 'patrolling':
@@ -255,6 +261,16 @@ class PatrolNode(Node):
         msg = String()
         msg.data = json.dumps(info, ensure_ascii=False)
         self.patrol_status_pub.publish(msg)
+
+    def pose_callback(self, msg):
+        """로봇의 현재 좌표(x, y)를 실시간으로 업데이트"""
+        self.current_x = msg.pose.pose.position.x
+        self.current_y = msg.pose.pose.position.y
+
+    def report_pose_to_server(self):
+        """2초마다 서버로 현재 위치를 보고"""
+        if self.current_x != 0.0 or self.current_y != 0.0:
+            self.db.report_robot_pose(self.current_x, self.current_y)
 
 def main(args=None):
     rclpy.init(args=args)
