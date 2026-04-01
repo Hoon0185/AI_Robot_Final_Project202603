@@ -159,30 +159,28 @@ async def get_status():
             """)
             latest_cmd = cursor.fetchone()
             
-            # --- 상태 및 위치 판단 로직 (초강력 버전) ---
-            # 1. 비상 여부 판단 (DB 최신 명령 기반)
+            # --- 상태 및 위치 판단 로직 (데이터 타입 철통 보안) ---
             is_emergency = False
             if latest_cmd:
+                # DB의 command_type이 일반 문자열이 아닌 bytes일 경우를 완벽 대비
                 raw_type = latest_cmd['command_type']
-                cmd_type = raw_type.strip() if isinstance(raw_type, str) else str(raw_type)
-                print(f"[DEBUG] Raw CMD Type: '{raw_type}', Cleaned: '{cmd_type}'")
+                cmd_type = str(raw_type).strip() if raw_type else ""
                 
-                if cmd_type == 'EMERGENCY_STOP':
+                # 'EMERGENCY_STOP'이 포함되어 있거나 b'EMERGENCY_STOP'과 매칭되는지 확인
+                if 'EMERGENCY_STOP' in cmd_type:
                     is_emergency = True
-                    print("[DEBUG] Emergency detected via command table.")
             
-            # 2. 순찰 로그 기반 보조 판단
+            # 순찰 로그 기준 보조 판단
             cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
-            if last_patrol and last_patrol['status'] == '중단':
+            if last_patrol and (str(last_patrol.get('status', '')).strip() == '중단'):
                 is_emergency = True
-                print("[DEBUG] Emergency detected via patrol_log status.")
 
-            # 3. 최종 상태 명칭 결정
+            # 최종 상태 명칭 결정
             if is_emergency:
                 robot_mode = "비상정지"
-            elif last_patrol and last_patrol['status'] == '진행중':
+            elif last_patrol and (str(last_patrol.get('status', '')).strip() == '진행중'):
                 robot_mode = "순찰중"
             else:
                 robot_mode = "휴식중"
