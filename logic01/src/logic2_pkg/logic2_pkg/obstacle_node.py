@@ -83,16 +83,11 @@ class ObstacleNode(Node):
           self.get_logger().warn(f'장애물이 감지되었습니다! 거리: {min_distance:.2f}m')
           self.is_blocked = True
           self.wait_counter = 0
-          self.stop_robot() # 발견 -> 정지
+        self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
       else:
-        ## ---- 장애물이 사라졌을 때(수정 예정) ----
+        ## ---- 장애물이 사라졌을 때 (10초 강제 대기를 위해 조기 취소 로직 비활성화) ----
         if self.is_blocked and self.wait_counter >= 0:
-          self.clear_count += 1  # 판단용 카운트
-          if self.clear_count > self.timer_second * 0.5: # 0.5초 이상 장애물 사라짐 -> 재주행
-            self.get_logger().info('장애물이 사라졌습니다. 재주행을 시작합니다.')
-            self.is_blocked = False
-            self.clear_count = 0
-            self.wait_counter = 0
+          pass # 기존의 0.5초만에 재출발 해버리는 로직을 무효화하여 무조건 10초 대기 타이머를 타게 함.
 
   def timer_callback(self):
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간 실시간 업데이트

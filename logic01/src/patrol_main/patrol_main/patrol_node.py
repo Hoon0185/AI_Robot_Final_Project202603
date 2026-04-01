@@ -286,8 +286,12 @@ class PatrolNode(Node):
         if self.is_patrolling:
             status = "SCANNING" if self.is_waiting_for_ai else "PATROLLING"
         
-        # 좌표값과 상관없이 로봇이 살아있음을 알리기 위해 무조건 전송
+        # 좌표값과 상관없이 로봇이 살아있음을 알리기 위해 무조건 전송 (DB 전송)
         self.db.report_robot_pose(self.current_x, self.current_y, status=status)
+        
+        # UI 인터페이스(patrol_interface.py)가 5초 이내 토픽 수신 여부로 온라인 상태를 판별하므로, 지속 발행 추가
+        status_for_ui = "patrolling" if self.is_patrolling else "idle"
+        self.publish_status(status_for_ui)
 
     def ai_callback(self, msg):
         """AI 인식 노드로부터 실시간 바코드 리스트 수신"""

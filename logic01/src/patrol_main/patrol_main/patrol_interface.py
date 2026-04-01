@@ -215,21 +215,30 @@ class PatrolInterface:
         return True, "Manual patrol trigger sent via topic"
 
     def get_recent_patrol_time(self):
-        """최근 순찰 상태 및 시간 정보를 가져옵니다. (ROS 토픽 우선, 없으면 DB 로그)"""
-        if self.latest_status:
-            return self.latest_status
-        
-        # ROS 토픽에 데이터가 없으면 DB에서 최신 로그를 가져옴
+        """최근 순찰 상태 및 시간 정보를 가져옵니다. (DB 로그 시간 기준 + ROS 실시간 상태 덮어쓰기)"""
+        res = {}
         history = self.db.get_patrol_history()
+        
+        # 1. DB에서 가장 최근에 있었던 순찰의 시간 정보를 기본으로 가져옴
         if history and len(history) > 0:
             latest = history[0]
-            return {
+            res = {
                 "status": latest.get('status', 'Completed'),
                 "start_time": latest.get('start_time', 'No Data'),
                 "end_time": latest.get('end_time', '-'),
                 "error_found": latest.get('error_found', 0)
             }
-        return None
+        
+        # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 덮어씀
+        if self.latest_status:
+            res["status"] = self.latest_status.get("status", res.get("status", "idle"))
+            if "start_time" in self.latest_status:
+                res["start_time"] = self.latest_status["start_time"]  # 진행 중이면 갱신
+            if res["status"] == "patrolling" and "current_shelf" in self.latest_status:
+                res["current_shelf"] = self.latest_status["current_shelf"]
+                res["progress"] = self.latest_status.get("progress", "")
+                
+        return res if res else None
 
     def is_robot_online(self):
         """최근 5초 이내에 상태 메시지를 수신했는지 확인하여 온라인 상태를 판별합니다."""
