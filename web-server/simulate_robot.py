@@ -8,9 +8,22 @@ from datetime import datetime
 from typing import List, Optional
 
 # --- Configuration ---
-# 로컬 개발 환경 보호: 기본 서버 주소를 localhost로 변경 (배포 시 CLI 아규먼트로 Lightsail IP 제공 가능)
-DEFAULT_SERVER = "http://localhost:8000/api"
-BASE_URL = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SERVER
+LOCAL_URL = "http://localhost:8000/api"
+SERVER_URL = "http://16.184.56.119/api"
+
+if len(sys.argv) > 1:
+    arg = sys.argv[1].lower()
+    if arg == "local":
+        BASE_URL = LOCAL_URL
+    elif arg == "server":
+        BASE_URL = SERVER_URL
+    elif arg.startswith("http"):
+        BASE_URL = arg
+    else:
+        # If it's not a keyword or URL, assume it's an IP or hostname
+        BASE_URL = f"http://{arg}:8000/api"
+else:
+    BASE_URL = LOCAL_URL
 
 DETECT_URL = f"{BASE_URL}/detections/add"
 CONFIG_URL = f"{BASE_URL}/patrol/config"
