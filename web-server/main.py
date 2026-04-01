@@ -152,28 +152,30 @@ async def get_status():
         try:
             cursor = conn.cursor(dictionary=True)
             
-            # 1. 최신 명령 확인 (전체 타입 중 가장 최근 것)
+            # 1. 비상 정지 및 해제 명령 중 어느 쪽이 승자인지 확인
             cursor.execute("""
                 SELECT command_type, created_at FROM robot_command 
+                WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL')
                 ORDER BY created_at DESC, command_id DESC LIMIT 1
             """)
-            latest_cmd = cursor.fetchone()
+            last_emergency_signal = cursor.fetchone()
             
             # 2. 최신 순찰 로그 확인
             cursor.execute("SELECT status, patrol_id, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
 
-            # --- 상태 및 위치 판단 로직 (전면 통합) ---
+            # --- 상태 및 위치 판단 로직 (철통 보안) ---
             
-            # 1. 비상 여부 판단 (명령 테이블 기준)
-            # 가장 최신 명령이 'EMERGENCY_STOP'이거나, 순찰 로그가 명시적으로 '중단'이면 비상정지
+            # 가장 최근의 비상 신호가 '비상정지'이면, 기동 명령이 중간에 섞여도 비상이 우선
             is_emergency = False
-            if latest_cmd and latest_cmd['command_type'] == 'EMERGENCY_STOP':
+            if last_emergency_signal and last_emergency_signal['command_type'] == 'EMERGENCY_STOP':
                 is_emergency = True
+            
+            # 강제로 patrol_log가 '중단'인 경우도 비상으로 간주
             if last_patrol and last_patrol['status'] == '중단':
                 is_emergency = True
 
-            # 2. 최종 상태 명칭(robot_mode) 결정
+            # 2. 최종 상태 명칭 결정
             if is_emergency:
                 robot_mode = "비상정지"
             elif last_patrol and last_patrol['status'] == '진행중':
