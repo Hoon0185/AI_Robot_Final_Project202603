@@ -167,25 +167,24 @@ async def get_status():
             last_patrol = cursor.fetchone()
             p_status = str(last_patrol['status']).strip() if last_patrol else "완료"
 
-            # 3. 비상 여부 판정 (극강의 공격적 판정)
+            # 3. 비상 여부 판정 (최우선)
             res_cmd_upper = res_cmd.upper()
             if "EMERGENCY" in res_cmd_upper or p_status == "중단":
                 res_status = "비상정지"
-                print(f"DEBUG: EMERGENCY DETECTED! res_status is now: {res_status}")
+                # 비상정지 시에도 진행 중이었다면 마지막 좌표를 유지, 아니면 (기지 복귀 완료 시 등) 0,0
                 if p_status != "완료" and last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
             elif "진행" in p_status:
                 res_status = "순찰중"
-                print(f"DEBUG: PATROLLING... res_status is now: {res_status}")
                 if last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
             else:
                 res_status = "휴식중"
-                print(f"DEBUG: RESTING... res_status is now: {res_status}")
 
         except Exception as e:
+            # 에러 로그는 서버 측에만 남기고 판정은 기본값(휴식중) 유지
             print(f"Status Parse Error: {e}")
         finally:
             conn.close()
@@ -194,8 +193,6 @@ async def get_status():
         "status": "online",
         "robot_status": res_status,
         "latest_cmd": res_cmd,
-        "debug_cmd_repr": repr(res_cmd), # 유령 문자 확인용
-        "debug_cmd_len": len(res_cmd),   # 문자열 길이 확인용
         "database": db_status,
         "odom_x": res_x,
         "odom_y": res_y,
