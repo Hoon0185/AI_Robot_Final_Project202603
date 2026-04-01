@@ -3,7 +3,8 @@ from rclpy.node import Node
 from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import threading
-import datetime # 저장 시간대 기록 - DB에서 필요 없으면 제거
+import datetime
+from .inventory_db import InventoryDB
 
 class ObstacleInterface:
   def __init__(self, node_name='ui_obstacle_interface'):
@@ -18,9 +19,9 @@ class ObstacleInterface:
     )
 
     # ---- 기본값 및 상태 관리 변수 ----
-    self.current_wait_time = 10 #  기본 대기 시간(초)
-    self.is_db_connected = False # DB 연결 상태
-    self.pending_data = None # DB 저장에 실패한 임시데이터 저장 변수
+    # ---- DB 연동 객체 생성 ----
+    self.db = InventoryDB()
+    self.is_db_connected = True # 기본값 설정
 
     # ---- DB 저장 실패 재시도 타이머 설정 (10초) ----
     self.retry_timer = self.node.create_timer(10.0, self.check_pending_data)
@@ -38,20 +39,18 @@ class ObstacleInterface:
     초기 구동 시 DB 접속 시도 후 장애물 대기 시간 값을 가져오는 함수
     """
     try:
-      # ---- DB 연결 시도 ----
-      # TODO: 실제 DB 연결 시 성공 여부에 따라 True/False 설정
-      self.is_db_connected = False # 임시로 True/False 변형해가며 실행
-
-      if self.is_db_connected:
-        db_value = 5 # TODO: DB에서 실제 대기 시간 값을 가져와서 설정
-        self.current_wait_time = db_value
-        self.set_wait_time(db_value) # 노드에 초기값 전송
-        self.node.get_logger().info(f"DB 연결 성공: 현재 대기시간 {db_value}초")
+      config = self.db.get_patrol_config()
+      if config:
+        db_value = config.get('avoidance_wait_time', 10)
+        self.current_wait_time = int(db_value)
+        self.set_wait_time(self.current_wait_time)
+        self.node.get_logger().info(f"DB 초기값 동기화 성공: 현재 대기시간 {self.current_wait_time}초")
+        self.is_db_connected = True
       else:
-        self.node.get_logger().warn("DB 연결 실패: 기본 대기시간 10초를 사용합니다.")
-
+        self.node.get_logger().warn("DB 설정 조회를 실패했습니다. 기본값(10초)을 유지합니다.")
+        self.is_db_connected = False
     except Exception as e:
-      self.node.get_logger().error(f"DB 초기 연결 예외 발생: {e}")
+      self.node.get_logger().error(f"DB 초기 동기화 예외 발생: {e}")
       self.is_db_connected = False
 
 
@@ -102,19 +101,22 @@ class ObstacleInterface:
 
   def save_to_db(self, seconds:int, timestamp:str):
     """
-    장애물 대기 시간과 저장 시간대를 DB에 저장하는 함수
+    장애물 대기 시간을 DB의 patrol_config에 저장합니다.
     """
-    if self.is_db_connected:
-      # TODO : 실제 DB 저장 로직 구현 필요
-      # DB 저장 코드 작성 예시
-      # table  = self.server.send_log(
-      #   log_type="obstacle_wait_time",
-      #   value=seconds,
-      #   timestamp=timestamp
-      # )
-      return True, "DB에 저장되었습니다."
-    else:
-      return False, "DB 연결이 되어 있지 않습니다. 저장에 실패했습니다."
+    try:
+      # InventoryDB의 update_patrol_config를 활용
+      # 다른 값들은 현재 값을 유지해야 하므로, 먼저 현재 설정을 가져와야 할 수도 있습니다.
+      # 여기서는 대기 시간만 업데이트하는 것으로 가정하거나, API 명세에 따라 처리합니다.
+      success = self.db.update_patrol_config(avoidance_wait=seconds)
+      if success:
+          self.is_db_connected = True
+          return True, "DB 설정이 업데이트되었습니다."
+      else:
+          self.is_db_connected = False
+          return False, "DB 업데이트 요청이 실패했습니다."
+    except Exception as e:
+      self.is_db_connected = False
+      return False, f"DB 저장 중 예외 발생: {e}"
 
   def check_pending_data(self):
     """
