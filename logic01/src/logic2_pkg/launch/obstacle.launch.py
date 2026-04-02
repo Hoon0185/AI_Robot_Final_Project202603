@@ -1,37 +1,38 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch_ros.actions import Node, PushRosNamespace
-from launch.actions import GroupAction, DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 def generate_launch_description():
-  # Obstacle node 노드
-  obstacle_node = Node(
-    package='logic2_pkg',
-    executable='obstacle_node',
-    name='obstacle_node',
-    parameters=[{'use_sim_time': True}],
-    output='screen'
-  )
+    # 패키지 공유 디렉토리 경로 획득
+    logic2_pkg_share = get_package_share_directory('logic2_pkg')
+    
+    # twist_mux 설정 파일 경로 (절대 경로)
+    twist_mux_config = os.path.join(logic2_pkg_share, 'config', 'twist_mux.yaml')
 
-  # Twist Mux 노드 (교통 정리)
-  twist_mux_node = Node(
-    package='twist_mux',
-    executable='twist_mux',
-    name='twist_mux',
-    parameters=[os.path.join(
-      get_package_share_directory('logic2_pkg'),
-      'config',
-      'twist_mux.yaml'
-    ), {
-      'use_sim_time': True
-    }],
-    remappings=[('cmd_vel_out', 'cmd_vel')],
-    output='screen'
-  )
+    # Obstacle node (장애물 감지 및 우회 제어)
+    obstacle_node = Node(
+        package='logic2_pkg',
+        executable='obstacle_node',
+        name='obstacle_node',
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
 
-  return LaunchDescription([
-    obstacle_node,
-    twist_mux_node
-  ])
+    # Twist Mux node (명령어 우선순위 관리)
+    twist_mux_node = Node(
+        package='twist_mux',
+        executable='twist_mux',
+        name='twist_mux',
+        parameters=[{
+            'use_sim_time': True,
+            'config_topics': twist_mux_config # twist_mux v3+ 에서는 config_topics 로 전달 권장
+        }],
+        remappings=[('cmd_vel_out', 'cmd_vel')],
+        output='screen'
+    )
+
+    return LaunchDescription([
+        obstacle_node,
+        twist_mux_node
+    ])

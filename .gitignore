@@ -218,6 +218,6 @@ build/
 
 
 # Project Specific
-logic01/notion_records/
+#logic01/notion_records/
 logic01/*.rviz
 DOCS_logic2/
