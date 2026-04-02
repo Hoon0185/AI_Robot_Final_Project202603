@@ -19,10 +19,10 @@ class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
 
+    self.interface = ObstacleInterface()
     db_wait_time = self.interface.current_wait_time # DB에서 초기값 동기화
 
     self.declare_parameter('obstacle_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
-    self.add_on_set_parameters_callback(self.parameter_callback)
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,
