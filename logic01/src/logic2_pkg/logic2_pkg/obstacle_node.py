@@ -17,12 +17,13 @@ class ObstacleNode(Node):
         response = requests.get("http://16.184.56.119/api/patrol/config", timeout=2.0)
         if response.status_code == 200:
             config = response.json()
-            default_wait_time = int(config.get('avoidance_wait_time', 10))
+            raw_val = config.get('avoidance_wait_time', 10)
+            default_wait_time = int(raw_val)
             self.get_logger().info(f'[DB] 초기 설정 수신 성공: {default_wait_time}s')
         else:
-            self.get_logger().warn(f'[DB] 초기 설정 수신 실패 (HTTP {response.status_code})')
+            self.get_logger().warn(f'[DB] 초기 설정 수신 실패 (HTTP {response.status_code}), 기본값 10s 사용')
     except Exception as e:
-        self.get_logger().error(f'[DB] 초기 설정 서버 연결 실패: {e}')
+        self.get_logger().error(f'[DB] 초기 설정 서버 연결 실패: {e}, 기본값 10s 사용')
 
     self.declare_parameter('obstacle_wait_time', default_wait_time)
 
@@ -177,18 +178,22 @@ class ObstacleNode(Node):
         
         if response.status_code == 200:
             config = response.json()
-            new_wait_time = int(config.get('avoidance_wait_time', 10))
+            raw_val = config.get('avoidance_wait_time')
             
-            if new_wait_time != self.wait_time_s:
-                # rclpy 방식을 사용하여 파라미터 업데이트 (Type 2: INTEGER)
-                import rclpy.parameter
-                new_param = rclpy.parameter.Parameter(
-                    'obstacle_wait_time',
-                    rclpy.parameter.Parameter.Type.INTEGER,
-                    new_wait_time
-                )
-                self.set_parameters([new_param])
-                self.get_logger().info(f'[DB] 회피 대기시간 동기화 완료: {self.wait_time_s}s -> {new_wait_time}s')
+            if raw_val is not None:
+                new_wait_time = int(raw_val)
+                
+                if new_wait_time != self.wait_time_s:
+                    old_val = self.wait_time_s
+                    # rclpy 방식을 사용하여 파라미터 업데이트 (Type 2: INTEGER)
+                    import rclpy.parameter
+                    new_param = rclpy.parameter.Parameter(
+                        'obstacle_wait_time',
+                        rclpy.parameter.Parameter.Type.INTEGER,
+                        new_wait_time
+                    )
+                    self.set_parameters([new_param])
+                    self.get_logger().info(f'[DB] 실시간 설정 업데이트 완료: {old_val}s -> {new_wait_time}s')
         else:
             self.get_logger().warn(f'[DB] 주기적 동기화 실패: HTTP {response.status_code}')
 
