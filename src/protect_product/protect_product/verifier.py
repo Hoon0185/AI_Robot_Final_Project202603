@@ -34,51 +34,71 @@ class VerifierNode(Node):
         h, w, _ = frame.shape
         products, labels = [], []
 
-        # [1단계] 객체 분류 및 기초 시각화
+        # [1단계] 객체 분류 및 노이즈 제거
         for i in range(len(det_msg.class_ids)):
+            cls_id = det_msg.class_ids[i]
+
+            # [누락보완 1] 빛 반사로 인한 Backside(89번)는 아예 무시 (인식 리스트에서 제외)
+            if cls_id == 89:
+                continue
+
             x1, y1, x2, y2 = max(0, det_msg.x1[i]), max(0, det_msg.y1[i]), min(w, det_msg.x2[i]), min(h, det_msg.y2[i])
-            name, cls_id = det_msg.class_names[i], det_msg.class_ids[i]
+            name = det_msg.class_names[i]
             obj = {'bbox': (x1, y1, x2, y2), 'name': name, 'id': cls_id + 1}
 
             if "label" in name.lower() or cls_id == 999:
                 labels.append(obj)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 3) # 노란색 굵은 박스
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 3) # QR: 노란색 굵게
             else:
                 products.append(obj)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (180, 180, 180), 1) # 회색 얇은 박스
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (180, 180, 180), 1) # 물체: 회색 얇게
 
-        # [2단계] 매칭 및 QR 데이터 비교 (핵심 로직)
-        if labels and products:
+        # [2단계] 판별 로직 (QR이 감지되었을 때)
+        if labels:
             best_label = max(labels, key=lambda x: (x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))
             lx1, ly1, lx2, ly2 = best_label['bbox']
 
-            # 매칭된 물체 찾기
-            matched_prod = min(products, key=lambda p: abs((p['bbox'][0]+p['bbox'][2])/2 - (lx1+lx2)/2))
+            # [누락보완 2] 매칭 시도 및 과자 부재(Empty) 판정
+            matched_prod = None
+            if products:
+                candidate = min(products, key=lambda p: abs((p['bbox'][0]+p['bbox'][2])/2 - (lx1+lx2)/2))
+                # QR과 과자의 수직 중심선 거리가 150px 이내인 경우만 인정
+                if abs((candidate['bbox'][0]+candidate['bbox'][2])/2 - (lx1+lx2)/2) < 150:
+                    matched_prod = candidate
 
-            if matched_prod and abs((matched_prod['bbox'][0]+matched_prod['bbox'][2])/2 - (lx1+lx2)/2) < 150:
-                # 2-1. DB 정보 조회
+            if matched_prod:
+                # 2-1. 과자가 정상적으로 매칭된 경우
                 self.cursor.execute("SELECT product_name, product_id FROM products WHERE product_id=?", (matched_prod['id'],))
                 row = self.cursor.fetchone()
 
                 if row:
                     db_name, db_id = row[0], str(row[1])
 
-                    # 2-2. QR 내용 실제 스캔 (비교 기능)
+                    # QR 영역 전처리 (속도/거리 개선)
                     roi = frame[ly1:ly2, lx1:lx2]
-                    decoded = decode(roi)
-                    qr_content = decoded[0].data.decode('utf-8') if decoded else "SCAN_FAIL"
-
-                    # 2-3. 비교 판정 및 시각화
-                    if qr_content != "SCAN_FAIL" and db_id in qr_content:
-                        result_text = f"[OK] {db_name}"
-                        color = (0, 255, 0) # 일치하면 녹색
+                    if roi.size > 0:
+                        roi_resized = cv2.resize(roi, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                        decoded = decode(roi_resized)
+                        qr_content = decoded[0].data.decode('utf-8') if decoded else None
                     else:
-                        result_text = f"[MISMATCH] QR:{qr_content} / DB:{db_id}"
-                        color = (0, 0, 255) # 불일치하면 적색
+                        qr_content = None
 
-                    # 결과 출력
+                    # [누락보완 3] 판정 상태 세분화 (Scan Fail vs OK vs Mismatch)
+                    if qr_content is None:
+                        # QR은 보이지만 텍스트를 못 읽은 경우 (주황색)
+                        result_text, color = f"[SCAN FAIL] {db_name}", (255, 128, 0)
+                    elif db_id in qr_content:
+                        # DB ID와 QR 텍스트가 일치하는 경우 (녹색)
+                        result_text, color = f"[OK] {db_name}", (0, 255, 0)
+                    else:
+                        # 읽기는 했으나 ID가 다른 경우 (빨간색)
+                        result_text, color = f"[MISMATCH] QR:{qr_content} / DB:{db_id}", (0, 0, 255)
+
                     cv2.putText(frame, result_text, (lx1, ly1-15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
                     cv2.line(frame, (int((lx1+lx2)/2), ly1), (int((matched_prod['bbox'][0]+matched_prod['bbox'][2])/2), matched_prod['bbox'][3]), color, 2)
+            else:
+                # [누락보완 4] QR은 있는데 근처에 과자가 없는 경우 (빨간색 EMPTY)
+                cv2.putText(frame, "[EMPTY] PRODUCT MISSING", (lx1, ly1-15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         self.publish_frame(frame)
 

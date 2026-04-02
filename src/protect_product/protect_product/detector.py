@@ -13,6 +13,7 @@ from pyzbar.pyzbar import decode
 class DetectorNode(Node):
     def __init__(self):
         super().__init__('detector_node')
+        self.frame_count=0 #과부하 방지, 프레임 제약
 
         # 1. 모델 로드 (경로 확인 필수)
         model_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt"
@@ -32,11 +33,12 @@ class DetectorNode(Node):
             self.callback,
             10)
 
-        self.get_logger().info('🚀 Detector 노드 가동: YOLO(물체) + pyzbar(QR) 강력 모드')
+        self.get_logger().info('detector : YOLO(물체) + pyzbar(QR)')
 
     def callback(self, msg):
         # 이미지를 OpenCV 포맷으로 변환
         frame = self.bridge.compressed_imgmsg_to_cv2(msg)
+        self.frame_count+=1
         det_msg = DetectionArray()
 
         # --- [작업 1] YOLO 추론 (물체 감지) ---
@@ -50,35 +52,39 @@ class DetectorNode(Node):
             self.add_to_msg(det_msg, x1, y1, x2, y2, cls_id, self.model.names[cls_id])
 
         # --- [작업 2] pyzbar 강력 QR 검출 (라벨 감지 보완) ---
-        # pyzbar는 그레이스케일 이미지에서 더 잘 작동할 수 있으므로 변환합니다.
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if self.frame_count%5==0:
+            # pyzbar는 그레이스케일 이미지에서 더 잘 작동할 수 있으므로 변환합니다.
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # [핵심] pyzbar로 QR 코드 디코딩 시도
+            decoded_objs = decode(gray)
 
-        # [핵심] pyzbar로 QR 코드 디코딩 시도
-        decoded_objs = decode(gray)
+            for obj in decoded_objs:
+                # QR 코드 데이터를 UTF-8로 디코딩
+                qr_data = obj.data.decode('utf-8')
 
-        for obj in decoded_objs:
-            # QR 코드 데이터를 UTF-8로 디코딩
-            qr_data = obj.data.decode('utf-8')
+                # pyzbar는 rect(left, top, width, height) 형식으로 좌표를 줍니다.
+                left, top, width, height = obj.rect
 
-            # pyzbar는 rect(left, top, width, height) 형식으로 좌표를 줍니다.
-            left, top, width, height = obj.rect
+                # Verifier가 인식할 수 있도록 좌표 변환 (x1, y1, x2, y2)
+                x1 = int(left)
+                y1 = int(top)
+                x2 = int(left + width)
+                y2 = int(top + height)
 
-            # Verifier가 인식할 수 있도록 좌표 변환 (x1, y1, x2, y2)
-            x1 = int(left)
-            y1 = int(top)
-            x2 = int(left + width)
-            y2 = int(top + height)
+                # 안전제한 (Clipping) - 이미지 밖으로 나가지 않게 함
+                h, w = gray.shape
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(w, x2), min(h, y2)
 
-            # 안전제한 (Clipping) - 이미지 밖으로 나가지 않게 함
-            h, w = gray.shape
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(w, x2), min(h, y2)
+                # Verifier가 인식할 수 있도록 가상의 'label'이라는 이름과 특정 ID(예: 999) 부여
+                # 데이터 규격화 : 가상 클래스 (999-Yolo 코드번호, label-QR 코드 데이터)를 할당해 통역해주는 용도
+                self.add_to_msg(det_msg, x1, y1, x2, y2, 999, 'label')
 
-            # Verifier가 인식할 수 있도록 'label'이라는 이름과 특정 ID(예: 999) 부여
-            self.add_to_msg(det_msg, x1, y1, x2, y2, 999, 'label')
+                # [디버깅 로그] 이 로그가 뜨면 QR 인식이 성공한 것입니다!
+                self.get_logger().error(f"🎯 pyzbar QR 발견: {qr_data}")
 
-            # [디버깅 로그] 이 로그가 뜨면 QR 인식이 성공한 것입니다!
-            self.get_logger().error(f"🎯 pyzbar QR 발견: {qr_data}")
+            if self.frame_count>100:
+                self.frame_count=0
 
         self.publisher.publish(det_msg)
 
