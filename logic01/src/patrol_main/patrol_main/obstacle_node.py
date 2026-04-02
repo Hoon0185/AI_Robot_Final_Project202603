@@ -49,6 +49,7 @@ class ObstacleNode(Node):
     self.clear_count = 0 # 장애물이 확실히 사라졌는지 체크
     self.wait_counter = 0 # 대기시간 측정
     self.safe_distance = 0.40 # 40cm로 살짝 상향 (확실한 정지 보장)
+    self.min_front_dist = 9.9 # 실시간 전방 최소 거리 초기값
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간
 
     # ---- 현재 로봇 좌표 저장 ----
@@ -67,6 +68,7 @@ class ObstacleNode(Node):
 
     if valid_ranges:
       min_distance = min(valid_ranges)
+      self.min_front_dist = min_distance # 실시간 거리 정보 업데이트
 
       if self.wait_counter < 0:
         # 우회 및 탈출 중에는 장애물 감지 완전히 처리하지 않음 (회전 2초 + 직진 1.5초)
@@ -114,10 +116,16 @@ class ObstacleNode(Node):
       msg = Twist()
 
       # 탈출 및 우회 시퀀스 분기 (총 4.5초 중)
-      # 1. 0.0 ~ 2.0초: 제자리 회전
+      # 1. 0.0 ~ 2.0초: 제자리 회전 (장애물이 사라질 때까지만 수행)
       if self.wait_counter < -int(2.5 * self.timer_second):
+        # 전방 60도 이내에 장애물이 일정이상(0.6m) 멀어지면 즉시 다음 단계(직진)로 전환
+        if self.min_front_dist > self.safe_distance + 0.2:
+          self.get_logger().info(f'전방 시야 확보됨({self.min_front_dist:.2f}m). 회전을 멈추고 직진 탈출을 시작합니다.')
+          self.wait_counter = -int(2.5 * self.timer_second) # 직진 탈출 단계로 강제 이동
+          return
+
         msg.linear.x = 0.0
-        msg.angular.z = 1.0
+        msg.angular.z = 0.8 # 회전 속도 소폭 하향하여 정밀도 향상
       # 2. 2.0 ~ 3.5초: 전진 탈출
       elif self.wait_counter < -int(1.0 * self.timer_second):
         msg.linear.x = 0.15 
