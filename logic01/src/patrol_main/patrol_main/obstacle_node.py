@@ -10,6 +10,11 @@ from std_msgs.msg import Bool
 import math # inf 및 nan 처리
 import copy # 라이다 메시지 복사용
 
+# ---- 라이프사이클 서비스 규격 추가 ----
+from lifecycle_msgs.srv import ChangeState
+from lifecycle_msgs.msg import Transition
+
+
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
@@ -38,6 +43,10 @@ class ObstacleNode(Node):
       ClearEntireCostmap,
       '/local_costmap/clear_entirely_local_costmap'
     )
+    self.change_state_client = self.create_client( # Nav2 컨트롤러 서버 라이프사이클 클라이언트 추가
+      ChangeState,
+      '/controller_server/change_state'
+    )
 
     # ---- 타이머 설정 ----
     timer_pub = 0.02 # 50Hz로 상향 (정지 명령 빈도 강화)
@@ -52,6 +61,7 @@ class ObstacleNode(Node):
     self.is_new_path_generated = False # 경로 생성 확인 플래그
     self.started_moving = False # 실제 우회 주행 시작 확인 플래그
     self.is_teleop_active = False # 수동 조작 활성화 여부
+    self.is_nav_paused = False # Nav2 주행 일시정지 여부
     # UI/수동 조작 방향 감시 변수
     self.teleop_linear_x = 0.0
     self.teleop_angular_z = 0.0
@@ -117,12 +127,7 @@ class ObstacleNode(Node):
 
   def scan_callback(self, msg):
     self.latest_scan_msg = msg
-
-    # 라이다가 너무 가까워 거리를 못 재고 inf를 뱉으면 0.05m로 강제 치환
-    processed_ranges = [
-        0.05 if math.isinf(r) or math.isnan(r) else r
-        for r in msg.ranges
-    ]
+    processed_ranges = msg.ranges # inf 및 nan 처리
 
     # ---- [조건부] 후방 60도 감지 ----
     if self.is_moving_backward:
@@ -142,6 +147,16 @@ class ObstacleNode(Node):
 
           self.is_blocked = True
           return
+
+        if self.is_blocked: # 후방 장애물이 사라졌다면 즉시 해제
+          self.get_logger().info('후방 장애물이 사라졌습니다. 주행을 재개합니다.')
+          self.is_blocked = False
+          self.wait_counter = 0 # 다음 장애물을 위해 카운트 0으로 리셋
+
+          status_msg = Bool()
+          status_msg.data = False
+          self.obstacle_status_pub.publish(status_msg)
+          return
       self.is_blocked = False
       return # 후진 중에는 전방 장애물 인식 X
 
@@ -155,7 +170,7 @@ class ObstacleNode(Node):
 
     status_msg = Bool()
 
-    if valid_ranges:
+    if len(valid_ranges) > 0:
       min_distance = min(valid_ranges)
       check_dist = self.safe_distance # 기본 장애물 기준 거리
 
@@ -168,14 +183,27 @@ class ObstacleNode(Node):
 
           status_msg.data = True # 장애물 감지 상태 True
           self.obstacle_status_pub.publish(status_msg)
+          self.pause_navigation() # Nav2 주행을 일시 정지
 
         self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
       else:
         ## ---- 장애물이 사라졌을 때 ----
         if self.is_blocked:
           status_msg.data = False
+          self.wait_counter = 0 # 다음 장애물 감지를 위해 카운터 초기화
           self.obstacle_status_pub.publish(status_msg)
           self.is_blocked = False
+
+          self.resume_navigation() # Nav2 주행 재개
+    else:
+      if self.is_blocked:
+        self.get_logger().info('전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
+        status_msg.data = False
+        self.wait_counter = 0
+        self.obstacle_status_pub.publish(status_msg)
+        self.is_blocked = False
+
+        self.resume_navigation() # Nav2 주행 재개
 
   def timer_callback(self):
     if self.is_moving_backward: # 후진 중일 때는 10초 대기 및 우회 타이머 작동 X
@@ -197,6 +225,8 @@ class ObstacleNode(Node):
         self.is_blocked = False
         self.wait_counter = 0
         self.is_detouring = True
+
+        self.resume_navigation() # Nav2 주행 재개
 
         # 장애물 감지 상태 False로 발행 (행동트리가 우회 행동으로 넘어갈 수 있도록)
         status_msg = Bool()
@@ -236,6 +266,34 @@ class ObstacleNode(Node):
 
     request = ClearEntireCostmap.Request()
     future = self.clear_costmap_client.call_async(request)
+
+
+  def pause_navigation(self):
+    """# Nav2 컨트롤러 서버 정지 함수"""
+    if not self.is_nav_paused:
+      if not self.change_state_client.wait_for_service(timeout_sec=1.0):
+        self.get_logger().error('Nav2 상태 제어 서비스를 찾을 수 없습니다.')
+        return
+
+      request = ChangeState.Request()
+      request.transition.id = Transition.TRANSITION_DEACTIVATE # 노드 정지 신호
+      self.change_state_client.call_async(request)
+      self.get_logger().info('Nav2 주행을 일시정지(Pause) 하였습니다.')
+      self.is_nav_paused = True
+
+
+  def resume_navigation(self):
+    """Nav2 컨트롤러 서버 주행 재개 함수"""
+    if self.is_nav_paused:
+      if not self.change_state_client.wait_for_service(timeout_sec=1.0):
+        self.get_logger().error('Nav2 상태 제어 서비스를 찾을 수 없습니다.')
+        return
+
+      request = ChangeState.Request()
+      request.transition.id = Transition.TRANSITION_ACTIVATE # 노드 재시작 신호
+      self.change_state_client.call_async(request)
+      self.get_logger().info('Nav2 주행을 다시 시작(Resume) 하였습니다.')
+      self.is_nav_paused = False
 
 
   def stop_robot(self):
