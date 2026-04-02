@@ -37,9 +37,9 @@ class VerifierNode(Node):
         # [1단계] 객체 분류 및 노이즈 제거
         for i in range(len(det_msg.class_ids)):
             cls_id = det_msg.class_ids[i]
-
+            cls_name = det_msg.class_names[i].lower()
             # [누락보완 1] 빛 반사로 인한 Backside(89번)는 아예 무시 (인식 리스트에서 제외)
-            if cls_id == 89:
+            if cls_id == 89 or 'backside' in cls_name:
                 continue
 
             x1, y1, x2, y2 = max(0, det_msg.x1[i]), max(0, det_msg.y1[i]), min(w, det_msg.x2[i]), min(h, det_msg.y2[i])

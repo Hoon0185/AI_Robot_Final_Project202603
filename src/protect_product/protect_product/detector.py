@@ -44,13 +44,14 @@ class DetectorNode(Node):
 
         # --- [작업 1] YOLO 추론 (물체 감지) ---
         # conf=0.45, iou=0.3 (겹치는 박스를 더 강력하게 제거)
-        results = self.model(frame, conf=0.45, iou=0.3)
+        results = self.model(frame, conf=0.5, iou=0.2)
         for box in results[0].boxes:
             cls_id = int(box.cls[0])
-            if cls_id == 89: continue # Backside 제외
+            cls_name = self.model.names[cls_id].lower()
+            if cls_id == 89 or 'backside' in cls_name: continue # Backside 제외
 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
-            self.add_to_msg(det_msg, x1, y1, x2, y2, cls_id, self.model.names[cls_id])
+            self.add_to_msg(det_msg, x1, y1, x2, y2, cls_id, cls_name)
 
         # --- [작업 2] pyzbar 강력 QR 검출 (라벨 감지 보완) ---
         if self.frame_count%5==0:
