@@ -69,8 +69,8 @@ class ObstacleNode(Node):
       min_distance = min(valid_ranges)
 
       if self.wait_counter < 0:
-        # check_dist = 0.20 # 우회 중 장애물 기준 거리 (20cm)
-        return # 우회 중에는 장애물 감지 무시(수정예정)
+        # 우회 및 탈출 중에는 장애물 감지 완전히 처리하지 않음 (회전 2초 + 직진 1.5초)
+        return
       else:
         check_dist = self.safe_distance # 기본 장애물 기준 거리
 
@@ -103,21 +103,30 @@ class ObstacleNode(Node):
         self.get_logger().info(f'대기중... {seconds}s / {self.wait_time_s}s')
 
       if self.wait_counter >= max_count:
-        self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 회전을 시작합니다.')
+        self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 및 탈출 동작을 시작합니다.')
         self.is_blocked = False
-        self.wait_counter = -int(2 * self.timer_second) # 우회 로직 진입 (2초)
+        # 총 3.5초 탈출 시간 (회전 2초 + 직진 1.5초)
+        self.wait_counter = -int(3.5 * self.timer_second)
 
     ## ---- 우회 로직(수정 예정) ----
     elif self.wait_counter < 0:
       self.wait_counter += 1
-
       msg = Twist()
-      msg.linear.x = 0.0
-      msg.angular.z = 1.0
+
+      # 탈출 및 우회 시퀀스 분기 (총 3.5초 중)
+      # 1. 처음 2초간 제자리 회전 (시계 반대 방향)
+      if self.wait_counter < -int(1.5 * self.timer_second):
+        msg.linear.x = 0.0
+        msg.angular.z = 1.0
+      # 2. 다음 1.5초간 전진하여 장애물 영역 탈출
+      else:
+        msg.linear.x = 0.15 # 약 15cm/s 속도로 전진
+        msg.angular.z = 0.0
+
       self.cmd_vel_pub.publish(msg)
 
       if self.wait_counter == 0:
-        self.get_logger().info('우회 회전 완료. 순찰을 재개합니다.')
+        self.get_logger().info('우회 및 탈출 완료. 순찰을 재개합니다.')
 
   def stop_robot(self):
     msg = Twist()
