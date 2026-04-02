@@ -57,6 +57,7 @@ class ObstacleNode(Node):
     self.current_y = 0.0
     self.obstacle_x = 0.0
     self.obstacle_y = 0.0
+    self.recovery_counter = 0 # 우회 완료 후 안정화 유예 시간
 
   def odom_callback(self, msg): # 현재 좌표 실시간 업데이트
     self.current_x = msg.pose.pose.position.x
@@ -67,11 +68,15 @@ class ObstacleNode(Node):
     valid_ranges = [r for r in front_ranges if 0.1 < r < 3.0] # 유효반경 ~ 3m
 
     if valid_ranges:
-      min_distance = min(valid_ranges)
-      self.min_front_dist = min_distance # 실시간 거리 정보 업데이트
+      self.min_front_dist = min(valid_ranges) # 실시간 거리 정보 업데이트
+    else:
+      self.min_front_dist = 9.9 # 전방 장애물 없음
 
-      if self.wait_counter < 0:
-        # 우회 및 탈출 중에는 장애물 감지 완전히 처리하지 않음 (회전 2초 + 직진 1.5초)
+    if valid_ranges:
+      min_distance = min(valid_ranges)
+
+      # 우회 및 탈출 시퀀스 중이거나, 종료 후 유예 기간(1초) 중에는 장애물 감지 무시
+      if self.wait_counter < 0 or self.recovery_counter > 0:
         return
       else:
         check_dist = self.safe_distance # 기본 장애물 기준 거리
@@ -96,6 +101,9 @@ class ObstacleNode(Node):
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간 실시간 업데이트
     max_count = int(self.wait_time_s * self.timer_second) # 1초
 
+    if self.recovery_counter > 0:
+      self.recovery_counter -= 1
+
     if self.is_blocked:
       self.stop_robot()
       self.wait_counter += 1
@@ -118,14 +126,14 @@ class ObstacleNode(Node):
       # 탈출 및 우회 시퀀스 분기 (총 4.5초 중)
       # 1. 0.0 ~ 2.0초: 제자리 회전 (장애물이 사라질 때까지만 수행)
       if self.wait_counter < -int(2.5 * self.timer_second):
-        # 전방 60도 이내에 장애물이 일정이상(0.6m) 멀어지면 즉시 다음 단계(직진)로 전환
-        if self.min_front_dist > self.safe_distance + 0.2:
+        # 전방 60도 이내에 장애물이 일정이상(0.7m) 멀어지면 즉시 다음 단계(직진)로 전환
+        if self.min_front_dist > 0.7:
           self.get_logger().info(f'전방 시야 확보됨({self.min_front_dist:.2f}m). 회전을 멈추고 직진 탈출을 시작합니다.')
           self.wait_counter = -int(2.5 * self.timer_second) # 직진 탈출 단계로 강제 이동
           return
 
         msg.linear.x = 0.0
-        msg.angular.z = 0.8 # 회전 속도 소폭 하향하여 정밀도 향상
+        msg.angular.z = 0.5 # 정밀도를 위해 0.5 rad/s로 더 느리게 회전
       # 2. 2.0 ~ 3.5초: 전진 탈출
       elif self.wait_counter < -int(1.0 * self.timer_second):
         msg.linear.x = 0.15 
@@ -142,7 +150,9 @@ class ObstacleNode(Node):
       self.cmd_vel_pub.publish(msg)
 
       if self.wait_counter == 0:
-        self.get_logger().info('우회 및 안정화 완료. 순찰을 재개합니다.')
+        self.stop_robot() # 최종적으로 한 번 더 정지 명령 발행
+        self.recovery_counter = self.timer_second # 완료 후 1초간 유예 시간 가동
+        self.get_logger().info('우회 및 안정화 완료. 1초 후 순찰을 재개합니다.')
 
   def call_clear_costmap(self):
     """Nav2 로컬 코스트맵을 초기화하는 서비스 호출"""
