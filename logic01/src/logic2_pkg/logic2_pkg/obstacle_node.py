@@ -17,13 +17,12 @@ class ObstacleNode(Node):
         response = requests.get("http://16.184.56.119/api/patrol/config", timeout=2.0)
         if response.status_code == 200:
             config = response.json()
-            # DB에 값이 있으면 덮어쓰기 (기본값은 10)
             default_wait_time = int(config.get('avoidance_wait_time', 10))
-            self.get_logger().info(f'[DB] 초기 장애물 대기 시간 설정 성공: {default_wait_time}초')
+            self.get_logger().info(f'[DB] 초기 설정 수신 성공: {default_wait_time}s')
         else:
-            self.get_logger().warn(f'[DB] 서버 응답 에러 ({response.status_code}), 기본값 {default_wait_time}초를 사용합니다.')
+            self.get_logger().warn(f'[DB] 초기 설정 수신 실패 (HTTP {response.status_code})')
     except Exception as e:
-        self.get_logger().error(f'[DB] 서버 연결 실패: {e}, 기본값 {default_wait_time}초를 사용합니다.')
+        self.get_logger().error(f'[DB] 초기 설정 서버 연결 실패: {e}')
 
     self.declare_parameter('obstacle_wait_time', default_wait_time)
 
@@ -172,23 +171,33 @@ class ObstacleNode(Node):
         self.get_logger().info('우회 시퀀스 완료. 순찰을 재개합니다.')
 
   def sync_config_from_db(self):
-    """주기적으로 웹 서버에서 최신 설정값을 가져와 동기화"""
+    """주기적으로 웹 서버에서 최신 설정값을 가져와 동기화 (디버깅 강화 버전)"""
     try:
         response = requests.get("http://16.184.56.119/api/patrol/config", timeout=1.5)
+        
         if response.status_code == 200:
             config = response.json()
             new_wait_time = int(config.get('avoidance_wait_time', 10))
+            
             if new_wait_time != self.wait_time_s:
-                from rcl_interfaces.msg import ParameterValue, ParameterType
-                from rcl_interfaces.srv import SetParameters
-                from rcl_interfaces.msg import Parameter
-                
-                # 파라미터 업데이트 요청
-                param = Parameter(name='obstacle_wait_time', value=ParameterValue(type=4, integer_value=new_wait_time))
-                self.set_parameters([param])
-                self.get_logger().info(f'[DB] 회피 대기시간 설정 동기화 성공: {new_wait_time}초')
+                # rclpy 방식을 사용하여 파라미터 업데이트 (Type 2: INTEGER)
+                import rclpy.parameter
+                new_param = rclpy.parameter.Parameter(
+                    'obstacle_wait_time',
+                    rclpy.parameter.Parameter.Type.INTEGER,
+                    new_wait_time
+                )
+                self.set_parameters([new_param])
+                self.get_logger().info(f'[DB] 회피 대기시간 동기화 완료: {self.wait_time_s}s -> {new_wait_time}s')
+        else:
+            self.get_logger().warn(f'[DB] 주기적 동기화 실패: HTTP {response.status_code}')
+
+    except requests.exceptions.Timeout:
+        self.get_logger().error('[DB] 서버 연결 타임아웃 (1.5s)')
+    except requests.exceptions.ConnectionError:
+        self.get_logger().error('[DB] 서버 연결 불가 (네트워크 확인 필요)')
     except Exception as e:
-        self.get_logger().warn(f'[DB] 주기적 동기화 실패: {e}')
+        self.get_logger().error(f'[DB] 동기화 중 에러 발생: {e}')
 
   def call_clear_costmap(self):
     """Nav2 로컬 코스트맵 초기화"""
