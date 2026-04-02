@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    shelves:
+      shelf_1: {x: 0.6213, y: 1.6028, yaw: 0.0, tag_barcode: "TAG-A1-001"}
+      shelf_2: {x: -1.0341, y: 1.5040, yaw: 0.0, tag_barcode: "TAG-A2-002"}
+      shelf_3: {x: -1.0189, y: -0.2340, yaw: 0.0, tag_barcode: "TAG-B1-003"}
+      shelf_4: {x: 0.8633, y: -0.0053, yaw: 0.0, tag_barcode: "TAG-B2-004"}
