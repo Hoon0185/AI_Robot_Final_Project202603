@@ -147,6 +147,9 @@ class ObstacleNode(Node):
     self.latest_scan_msg = msg
     processed_ranges = msg.ranges # inf 및 nan 처리
 
+    if self.is_detouring: # 가짜 벽 생성시 장애물 인식 무한루프 방지
+      return
+
     # ---- [조건부] 후방 60도 감지 ----
     if self.is_moving_backward:
       rear_ranges = msg.ranges[150:210]
@@ -227,6 +230,8 @@ class ObstacleNode(Node):
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간 실시간 업데이트
 
     if self.is_blocked:
+      self.stop_robot()
+
       elapsed_duration = self.get_clock().now() - self.blocked_start_time
       elapsed_seconds = elapsed_duration.nanoseconds / 1e9 # 나노초를 초 단위로 변환
       current_int_second = int(elapsed_seconds)
@@ -289,33 +294,19 @@ class ObstacleNode(Node):
 
   def pause_navigation(self):
     """
-    Nav2 컨트롤러 서버 정지 함수
+    라이프사이클을 끄지 않고 속도 락을 거는 방식으로 변경
     """
     if not self.is_nav_paused:
-      if not self.change_state_client.wait_for_service(timeout_sec=1.0):
-        self.get_logger().error('Nav2 상태 제어 서비스를 찾을 수 없습니다.')
-        return
-
-      request = ChangeState.Request()
-      request.transition.id = Transition.TRANSITION_DEACTIVATE # 노드 정지 신호
-      self.change_state_client.call_async(request)
-      self.get_logger().info('Nav2 주행을 일시정지(Pause) 하였습니다.')
+      self.get_logger().info('장애물 정지: Nav2의 주행 명령을 락(Lock) 합니다.')
       self.is_nav_paused = True
 
 
   def resume_navigation(self):
     """
-    Nav2 컨트롤러 서버 주행 재개 함수
+    속도 락 해제
     """
     if self.is_nav_paused:
-      if not self.change_state_client.wait_for_service(timeout_sec=1.0):
-        self.get_logger().error('Nav2 상태 제어 서비스를 찾을 수 없습니다.')
-        return
-
-      request = ChangeState.Request()
-      request.transition.id = Transition.TRANSITION_ACTIVATE # 노드 재시작 신호
-      self.change_state_client.call_async(request)
-      self.get_logger().info('Nav2 주행을 다시 시작(Resume) 하였습니다.')
+      self.get_logger().info('장애물 해제: Nav2 주행을 다시 진행합니다.')
       self.is_nav_paused = False
 
 
