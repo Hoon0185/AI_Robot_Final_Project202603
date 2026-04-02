@@ -9,7 +9,7 @@ from nav_msgs.msg import Path # 경로 수신용 메시지
 from std_msgs.msg import Bool
 import math # inf 및 nan 처리
 import copy # 라이다 메시지 복사용
-
+from .obstacle_interface import ObstacleInterface
 # ---- 라이프사이클 서비스 규격 추가 ----
 from lifecycle_msgs.srv import ChangeState
 from lifecycle_msgs.msg import Transition
@@ -18,7 +18,11 @@ from lifecycle_msgs.msg import Transition
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
-    self.declare_parameter('obstacle_wait_time',10) # UI용 장애물 대기 시간 파라미터
+
+    db_wait_time = self.interface.current_wait_time # DB에서 초기값 동기화
+
+    self.declare_parameter('obstacle_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
+    self.add_on_set_parameters_callback(self.parameter_callback)
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -67,8 +71,8 @@ class ObstacleNode(Node):
     self.teleop_angular_z = 0.0
     # 시간 및 카운터 변수
     self.wait_counter = 0 # 대기시간 측정
-    self.safe_distance = 0.40 # 40cm로 살짝 상향 (확실한 정지 보장)
-    self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간
+    self.safe_distance = 0.70 # 70cm로 상향 (확실한 정지 보장)
+    self.wait_time_s = db_wait_time # 대기시간
     self.latest_scan_msg = None # 가짜 벽 생성 시 원본 규격을 복사하기 위한 라이다 데이터 임시 저장소
     # 현재 로봇 속도 저장
     self.current_linear_velocity = 0.0 # 현재 x축 선속도
@@ -100,9 +104,23 @@ class ObstacleNode(Node):
       # 후진이나 회전으로 빠져나가려 하면 통과
       else:
         self.cmd_vel_pub.publish(msg)
+      return
+    else :
+      # 수동 조작 중 장애물이 감지된 상태라면 -> 전진 속도만 0.0으로 정지 유지
+      if self.teleop_linear_x > 0.01 and self.latest_scan_msg is not None:
+        processed_ranges = self.latest_scan_msg.ranges
+        front_ranges = processed_ranges[0:30] + processed_ranges[330:360]
+        valid_ranges = [r for r in front_ranges if 0.1 < r < 3.0]
 
-    # 평소에 장애물이 없을 때 UI 조작 그대로 통과
-    else:
+        if valid_ranges:
+          min_distance = min(valid_ranges)
+          if min_distance < self.safe_distance:
+            self.get_logger().warn(f'[위험] 수동 조작 돌진 중 벽 발견! 거리: {min_distance:.2f}m')
+            safe_msg.linear.x = 0.0
+            safe_msg.angular.z = self.teleop_angular_z
+            self.cmd_vel_pub.publish(safe_msg)
+            return # 충돌을 막았으니 함수 종료
+
       self.cmd_vel_pub.publish(msg)
 
 
@@ -269,7 +287,9 @@ class ObstacleNode(Node):
 
 
   def pause_navigation(self):
-    """# Nav2 컨트롤러 서버 정지 함수"""
+    """
+    Nav2 컨트롤러 서버 정지 함수
+    """
     if not self.is_nav_paused:
       if not self.change_state_client.wait_for_service(timeout_sec=1.0):
         self.get_logger().error('Nav2 상태 제어 서비스를 찾을 수 없습니다.')
@@ -283,7 +303,9 @@ class ObstacleNode(Node):
 
 
   def resume_navigation(self):
-    """Nav2 컨트롤러 서버 주행 재개 함수"""
+    """
+    Nav2 컨트롤러 서버 주행 재개 함수
+    """
     if self.is_nav_paused:
       if not self.change_state_client.wait_for_service(timeout_sec=1.0):
         self.get_logger().error('Nav2 상태 제어 서비스를 찾을 수 없습니다.')

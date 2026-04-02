@@ -47,11 +47,14 @@ class ObstacleInterface:
         self.current_wait_time = int(db_value)
         self.set_wait_time(self.current_wait_time) # 로봇 노드에 적용
         self.node.get_logger().info(f"[API] 초기값 동기화 성공: {self.current_wait_time}초")
+        return self.current_wait_time
       else:
         self.node.get_logger().warn("서버 응답 에러: 기본 대기시간 5초를 사용합니다.")
+        return 5 # 서버 응답 실패 시 기본값 반환
 
     except Exception as e:
       self.node.get_logger().error(f"[API] 서버 연결 실패: {e}")
+      return 5 # DB 연결 실패 시 기본값 반환
 
 
   def update_db_and_sync(self, seconds:int):
