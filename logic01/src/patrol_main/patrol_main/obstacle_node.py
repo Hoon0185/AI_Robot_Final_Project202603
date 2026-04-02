@@ -70,7 +70,7 @@ class ObstacleNode(Node):
     self.teleop_linear_x = 0.0
     self.teleop_angular_z = 0.0
     # 시간 및 카운터 변수
-    self.wait_counter = 0 # 대기시간 측정
+    self.blocked_start_time = None # 장애물 감지 시작 시각 기록용
     self.safe_distance = 0.70 # 70cm로 상향 (확실한 정지 보장)
     self.wait_time_s = db_wait_time # 대기시간
     self.latest_scan_msg = None # 가짜 벽 생성 시 원본 규격을 복사하기 위한 라이다 데이터 임시 저장소
@@ -169,7 +169,6 @@ class ObstacleNode(Node):
         if self.is_blocked: # 후방 장애물이 사라졌다면 즉시 해제
           self.get_logger().info('후방 장애물이 사라졌습니다. 주행을 재개합니다.')
           self.is_blocked = False
-          self.wait_counter = 0 # 다음 장애물을 위해 카운트 0으로 리셋
 
           status_msg = Bool()
           status_msg.data = False
@@ -197,7 +196,7 @@ class ObstacleNode(Node):
           self.get_logger().warn(f'장애물이 감지되었습니다! 거리: {min_distance:.2f}m')
 
           self.is_blocked = True
-          self.wait_counter = 0
+          self.blocked_start_time = self.get_clock().now()
 
           status_msg.data = True # 장애물 감지 상태 True
           self.obstacle_status_pub.publish(status_msg)
@@ -208,7 +207,6 @@ class ObstacleNode(Node):
         ## ---- 장애물이 사라졌을 때 ----
         if self.is_blocked:
           status_msg.data = False
-          self.wait_counter = 0 # 다음 장애물 감지를 위해 카운터 초기화
           self.obstacle_status_pub.publish(status_msg)
           self.is_blocked = False
 
@@ -217,7 +215,6 @@ class ObstacleNode(Node):
       if self.is_blocked:
         self.get_logger().info('전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
         status_msg.data = False
-        self.wait_counter = 0
         self.obstacle_status_pub.publish(status_msg)
         self.is_blocked = False
 
@@ -228,21 +225,25 @@ class ObstacleNode(Node):
       return
 
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간 실시간 업데이트
-    max_count = int(self.wait_time_s * self.timer_second) # 1초
 
     if self.is_blocked:
-      self.wait_counter += 1
+      elapsed_duration = self.get_clock().now() - self.blocked_start_time
+      elapsed_seconds = elapsed_duration.nanoseconds / 1e9 # 나노초를 초 단위로 변환
+      current_int_second = int(elapsed_seconds)
 
-      if self.wait_counter % self.timer_second == 0: # 1초 주기 로그
-        seconds = self.wait_counter // self.timer_second
-        self.get_logger().info(f'대기중... {seconds}s / {self.wait_time_s}s')
+      if not hasattr(self, 'last_logged_second') or self.last_logged_second != current_int_second: # 1초 주기 로그
+        self.get_logger().info(f'대기중... {current_int_second}s / {self.wait_time_s}s')
+        self.last_logged_second = current_int_second
 
-      if self.wait_counter >= max_count:
+      if elapsed_seconds >= self.wait_time_s:
         self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 판단을 요청합니다.')
 
         self.is_blocked = False
-        self.wait_counter = 0
         self.is_detouring = True
+        self.blocked_start_time = None
+
+        if hasattr(self, 'last_logged_second'):
+          del self.last_logged_second
 
         self.resume_navigation() # Nav2 주행 재개
 
