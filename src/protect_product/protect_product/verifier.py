@@ -52,12 +52,10 @@ class VerifierNode(Node):
             best_label = max(labels, key=lambda x: (x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))
             lx1, ly1, lx2, ly2 = best_label['bbox']
 
-            # --- [핵심] QR 먼저 스캔 ---
             qr_content = None
             roi = frame[ly1:ly2, lx1:lx2]
 
             if roi.size > 0:
-                # 1차 시도: 그레이스케일 + 1.5배 확대
                 gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
                 roi_resized = cv2.resize(gray_roi, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_LINEAR)
                 decoded = decode(roi_resized)
@@ -65,18 +63,18 @@ class VerifierNode(Node):
                 if decoded:
                     qr_content = decoded[0].data.decode('utf-8')
                 else:
-                    # 2차 시도: 원본 ROI로 재시도 (가까울 땐 원본이 더 잘됨)
                     decoded_retry = decode(gray_roi)
                     if decoded_retry:
                         qr_content = decoded_retry[0].data.decode('utf-8')
 
-            if labels:
-            # (기존 스캔 로직 수행...)
-            # qr_content에 실제 같은 값이 들어있는 상태
-                # [핵심] det_msg 내의 'label'이라는 이름을 실제 스캔 내용으로 교체
-                for i in range(len(det_msg.class_names)):
-                    if det_msg.class_names[i] == 'label':
-                        det_msg.class_names[i] = qr_content
+            # qr_content가 None이든 아니든 안전한 문자열로 변환
+            display_text = str(qr_content).strip() if qr_content is not None else "미인식상태 입니다."
+
+            for i in range(len(det_msg.class_names)):
+                if det_msg.class_names[i] == 'label':
+                    # 절대로 None이 들어가지 않도록 display_text(문자열)를 대입
+                    det_msg.class_names[i] = display_text
+            # 인식된 결과 발행
             self.result_pub.publish(det_msg)
 
             # 과자 매칭
