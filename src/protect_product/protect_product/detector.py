@@ -16,7 +16,8 @@ class DetectorNode(Node):
         self.frame_count=0 #과부하 방지, 프레임 제약
 
         # 1. 모델 로드 (경로 확인 필수)
-        model_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt"
+        model_path="/home/bird99/Desktop/database/heavy/products.pt"
+        #model_path = "/home/bird99/AI_Robot_Final_Project202603/src/protect_product/models/products.pt"
         self.model = YOLO(model_path)
         self.bridge = CvBridge()
 
