@@ -57,8 +57,8 @@ class ObstacleNode(Node):
       'local_costmap/clear_entirely_local_costmap'
     )
 
-    # ---- 타이머 설정 (제어 주기 10Hz) ----
-    timer_pub = 0.1 # 10Hz
+    # ---- 타이머 설정 (제어 주기 20Hz) ----
+    timer_pub = 0.05 # 20Hz (기존 10Hz에서 상향)
     self.timer_second = int(1/timer_pub)
     self.timer = self.create_timer(timer_pub, self.timer_callback)
     
@@ -173,28 +173,29 @@ class ObstacleNode(Node):
         self.get_logger().info('전체 우회 시퀀스 완료. 순찰을 재개합니다.')
 
   def sync_config_from_db(self):
-    """주기적으로 웹 서버에서 파라미터를 가져오는 동기화 로직 (LOGIC_01 정합성 Fix)"""
+    """주기적으로 웹 서버에서 파라미터를 가져오는 동기화 로직 (타임아웃 및 로그 최적화)"""
     try:
-        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=1.5)
+        # 로봇 네트워크 환경을 고려하여 타임아웃을 3.0초로 상향
+        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=3.0)
         if response.status_code == 200:
             config = response.json()
             raw_val = config.get('avoidance_wait_time')
             if raw_val is not None:
                 new_wait_time = int(raw_val)
-                # 현재 값과 다른 경우에만 업데이트 수행
                 if new_wait_time != self.wait_time_s:
                     import rclpy.parameter
                     new_param = rclpy.parameter.Parameter(
                         'obstacle_wait_time',
-                        rclpy.parameter.Parameter.Type.INTEGER, # INTEGER 타입 명시
+                        rclpy.parameter.Parameter.Type.INTEGER,
                         new_wait_time
                     )
                     self.set_parameters([new_param])
                     self.get_logger().info(f'[DB] 실시간 설정 업데이트: {self.wait_time_s}s -> {new_wait_time}s')
         else:
-            self.get_logger().warn(f'[DB] 동기화 실패 (HTTP {response.status_code})')
+            self.get_logger().debug(f'[DB] 동기화 실패 (HTTP {response.status_code})')
     except Exception as e:
-        self.get_logger().error(f'[DB] 동기화 중 서버 통신 에러: {e}')
+        # 터미널 도배 방지를 위해 에러 대신 경고(warn)로 출력하며 상세 내용은 생략
+        self.get_logger().warn(f'[DB] 서버 통신 지연 또는 연결 불가 (확인 중...)', once=True)
 
   def call_clear_costmap(self):
     """Nav2 로컬 코스트맵 강제 초기화 서비스 호출"""

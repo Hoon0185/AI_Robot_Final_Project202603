@@ -84,7 +84,7 @@ def generate_launch_description():
                 name='twist_mux',
                 output='screen',
                 parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-                remappings=[('/cmd_vel_out', '/cmd_vel')]
+                remappings=[('cmd_vel_out', 'cmd_vel')]
             ),
 
             # (5) 순찰 시각화 (RVIZ Marker 관리)

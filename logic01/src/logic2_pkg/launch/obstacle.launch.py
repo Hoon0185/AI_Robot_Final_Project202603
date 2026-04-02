@@ -24,10 +24,10 @@ def generate_launch_description():
         package='twist_mux',
         executable='twist_mux',
         name='twist_mux',
-        parameters=[{
-            'use_sim_time': True,
-            'config_topics': twist_mux_config # twist_mux v3+ 에서는 config_topics 로 전달 권장
-        }],
+        parameters=[
+            twist_mux_config,
+            {'use_sim_time': True}
+        ],
         remappings=[('cmd_vel_out', 'cmd_vel')],
         output='screen'
     )
