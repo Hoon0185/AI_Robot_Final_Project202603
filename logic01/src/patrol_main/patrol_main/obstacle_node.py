@@ -103,30 +103,48 @@ class ObstacleNode(Node):
         self.get_logger().info(f'대기중... {seconds}s / {self.wait_time_s}s')
 
       if self.wait_counter >= max_count:
-        self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 및 탈출 동작을 시작합니다.')
+        self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 및 탈출 시퀀스를 진행합니다.')
         self.is_blocked = False
-        # 총 3.5초 탈출 시간 (회전 2초 + 직진 1.5초)
-        self.wait_counter = -int(3.5 * self.timer_second)
+        # 총 4.5초 탈출 시간 (회전 2s + 직진 1.5s + 정지 1.0s)
+        self.wait_counter = -int(4.5 * self.timer_second)
 
     ## ---- 우회 로직(수정 예정) ----
     elif self.wait_counter < 0:
       self.wait_counter += 1
       msg = Twist()
 
-      # 탈출 및 우회 시퀀스 분기 (총 3.5초 중)
-      # 1. 처음 2초간 제자리 회전 (시계 반대 방향)
-      if self.wait_counter < -int(1.5 * self.timer_second):
+      # 탈출 및 우회 시퀀스 분기 (총 4.5초 중)
+      # 1. 0.0 ~ 2.0초: 제자리 회전
+      if self.wait_counter < -int(2.5 * self.timer_second):
         msg.linear.x = 0.0
         msg.angular.z = 1.0
-      # 2. 다음 1.5초간 전진하여 장애물 영역 탈출
+      # 2. 2.0 ~ 3.5초: 전진 탈출
+      elif self.wait_counter < -int(1.0 * self.timer_second):
+        msg.linear.x = 0.15 
+        msg.angular.z = 0.0
+      # 3. 3.5 ~ 4.5초: 정지 및 안정화 (장애물 센서 무시 지속)
       else:
-        msg.linear.x = 0.15 # 약 15cm/s 속도로 전진
+        if self.wait_counter == -int(1.0 * self.timer_second) + 1:
+          self.get_logger().info('직진 완료. 정지 후 시스템을 안정화합니다...')
+          self.call_clear_costmap() # 정지 시작 시 코스트맵 클리어
+
+        msg.linear.x = 0.0
         msg.angular.z = 0.0
 
       self.cmd_vel_pub.publish(msg)
 
       if self.wait_counter == 0:
-        self.get_logger().info('우회 및 탈출 완료. 순찰을 재개합니다.')
+        self.get_logger().info('우회 및 안정화 완료. 순찰을 재개합니다.')
+
+  def call_clear_costmap(self):
+    """Nav2 로컬 코스트맵을 초기화하는 서비스 호출"""
+    if not self.clear_costmap_client.service_is_ready():
+      self.get_logger().warn('Clear Costmap 서비스를 이용할 수 없습니다.')
+      return
+
+    req = ClearEntireCostmap.Request()
+    self.clear_costmap_client.call_async(req)
+    self.get_logger().info('Local costmap 클리어 요청을 보냈습니다.')
 
   def stop_robot(self):
     msg = Twist()
