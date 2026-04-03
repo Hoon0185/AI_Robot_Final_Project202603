@@ -15,7 +15,7 @@ class MainApp:
         # 2. 로그인 창 닫기
         self.login_view.close()
 
-        # 3. 메인 UI 생성 (팀장님의 도화지)
+        # 3. 메인 UI 생성
         self.main_view = RobotControlPanel()
 
         # 4. 로직 핸들러 생성 및 UI 연결

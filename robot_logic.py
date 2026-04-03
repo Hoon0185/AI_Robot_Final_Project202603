@@ -237,3 +237,30 @@ class RobotLogicHandler:
             self.ros_interface.trigger_manual_patrol()
         elif self.is_debug:
             print("[DEBUG] Manual patrol sequence started in simulation")
+
+    # --- 맵 패널 업데이트 로직 추가 ---
+    def update_minimap_pose(self):
+        """ROS 실시간 좌표를 가져와 MinimapWidget(minimap.py)에 반영합니다."""
+        # UI 인스턴스에 minimap 위젯이 실제로 존재하는지 먼저 확인
+        if not hasattr(self.ui, 'minimap') or self.ui.minimap is None:
+            # print("[DEBUG] UI에 minimap 객체가 없습니다.") # 확인용 (필요시 주석 해제)
+            return
+        if self.is_debug:
+            # 디버그 모드일 때 미니맵에 가상 로봇 위치(0,0) 전송
+            # print("[DEBUG] 미니맵 디버그 좌표 전송 시도")
+            self.ui.minimap.set_robot_pose(0.0, 0.0)
+            return
+        if not self.ros_interface:
+            return
+        # 인터페이스로부터 최신 상태 데이터 획득
+        status = self.ros_interface.get_recent_patrol_time()
+        # 데이터가 있고, 내부에 좌표 정보(예: robot_x, robot_y)가 포함되어 있다면 미니맵 갱신
+        if status and 'robot_x' in status and 'robot_y' in status:
+            curr_x = status.get('robot_x', 0.0)
+            curr_y = status.get('robot_y', 0.0)
+            self.ui.minimap.set_robot_pose(curr_x, curr_y)
+        else:
+            # 좌표 데이터가 없을 때도 맵 자체는 보여야 하므로 강제 업데이트 호출
+            # 이 코드가 없으면 로봇 위치가 올 때까지 맵이 안 뜰 수 있습니다.
+            self.ui.minimap.update_map_display()
+
