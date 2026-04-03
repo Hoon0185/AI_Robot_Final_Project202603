@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import List, Optional
@@ -160,6 +161,89 @@ def cleanup_logs(days=7):
         print(f"❌ [CLEANUP_ERROR] {e}")
     finally:
         conn.close()
+
+@app.get("/activity-log", response_class=HTMLResponse)
+async def get_activity_log_html():
+    """활동 로그를 HTML 형태로 브라우저에서 직접 조회"""
+    conn = get_db_connection()
+    if not conn:
+        return "<html><body><h1>Database connection failed</h1></body></html>"
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # 최신 100건 조회
+        cursor.execute("SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT 100")
+        logs = cursor.fetchall()
+        
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Gilbot Activity Log</title>
+            <style>
+                body { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; line-height: 1.4; }
+                h1 { color: #569cd6; border-bottom: 1px solid #333; padding-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9em; }
+                th, td { border: 1px solid #333; padding: 10px; text-align: left; vertical-align: top; }
+                th { background: #2d2d2d; color: #9cdcfe; position: sticky; top: 0; }
+                tr:nth-child(even) { background: #252526; }
+                tr:hover { background: #2a2d2e; }
+                .status-info { color: #4ec9b0; }
+                .status-warning { color: #dcdcaa; font-weight: bold; }
+                .status-error { color: #f44747; font-weight: bold; }
+                .timestamp { color: #808080; white-space: nowrap; }
+                .source { color: #ce9178; }
+                .target { color: #ce9178; }
+                .action { color: #b5cea8; }
+            </style>
+            <script>
+                // 30초마다 자동 갱신
+                setTimeout(() => { location.reload(); }, 30000);
+            </script>
+        </head>
+        <body>
+            <h1>🤖 Gilbot 시스템 활동 로그 (최근 100건)</h1>
+            <p>※ 30초마다 자동 새로고침됩니다. (<a href="/api/activity-log" style="color: #569cd6;">새로고침</a>)</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Source</th>
+                        <th>Target</th>
+                        <th>Type</th>
+                        <th>Action</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        for log in logs:
+            status = log.get('status', 'info') or 'info'
+            status_class = f"status-{status.lower()}"
+            html_content += f"""
+                <tr>
+                    <td class="timestamp">{log['timestamp']}</td>
+                    <td class="source">{log['source']}</td>
+                    <td class="target">{log['target']}</td>
+                    <td>{log['activity_type']}</td>
+                    <td class="action">{log['action']}</td>
+                    <td>{log['message']}</td>
+                    <td class="{status_class}">{status}</td>
+                </tr>
+            """
+        html_content += """
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+        return html_content
+    except Exception as e:
+        return f"<html><body><h1>로그 조회 오류: {str(e)}</h1></body></html>"
+    finally:
+        conn.close()
+
 
 @app.on_event("startup")
 async def startup_event():
