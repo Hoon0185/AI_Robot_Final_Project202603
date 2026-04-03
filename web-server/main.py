@@ -882,6 +882,10 @@ async def get_patrol_plan():
             ORDER BY p.plan_order, p.plan_id
         """
         cursor.execute(query)
+        
+        # 로봇 부팅 시 순찰 계획 로딩 로그 기록
+        log_activity('robot', 'web_server', 'BOOT', 'GET_PLAN', None, 'Robot requested patrol plan.')
+        
         return cursor.fetchall()
     finally:
         conn.close()

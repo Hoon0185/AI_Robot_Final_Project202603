@@ -4,8 +4,20 @@ import time
 import threading
 import sys
 import random
+import logging
 from datetime import datetime
 from typing import List, Optional
+
+# --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("robot.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("Gilbot")
 
 # --- Configuration ---
 LOCAL_URL = "http://localhost:8000/api"
@@ -61,7 +73,7 @@ class VirtualRobot:
         
     def safe_print(self, msg):
         with self.print_lock:
-            print(msg)
+            logger.info(msg)
 
     def _heartbeat_loop(self):
         """유휴 상태에서도 2초마다 서버에 위치(하트비트) 보고"""
@@ -100,32 +112,55 @@ class VirtualRobot:
         return True
 
     def load_memory(self):
-        """서버에서 설정 정보 및 웨이포인트 경로를 읽어 메모리에 저장"""
-        self.safe_print("\n[상태] 설정 정보 및 웨이포인트 경로 메모리 탑재 중...")
-        try:
-            # 1. 회피 대기 시간 로드
-            conf_res = requests.get(CONFIG_URL)
-            if conf_res.status_code == 200:
-                self.avoidance_time = conf_res.json().get("avoidance_wait_time", 5)
-                self.safe_print(f"   - 회피 대기 시간: {self.avoidance_time}초")
-            
-            # 2. 이동 경로 (웨이포인트 순서) 로드
-            plan_res = requests.get(PLAN_URL)
-            if plan_res.status_code == 200:
-                self.patrol_path = plan_res.json()
-                self.safe_print(f"   - 등록된 웨이포인트/상품 수: {len(self.patrol_path)}개")
-                for i, p in enumerate(self.patrol_path):
-                    self.safe_print(f"     [{i+1}] {p['waypoint_name']} (태그: {p['barcode_tag']} | 상품: {p['product_name']})")
-            
-            # 3. 전체 상품 정보 로드 (임의의 디텍션 시나리오용)
-            prod_res = requests.get(LIST_PRODUCTS_URL)
-            if prod_res.status_code == 200:
-                self.products = prod_res.json()
-                self.safe_print(f"   - 인식 가능한 상품 수: {len(self.products)}개")
+        """서버에서 설정 정보 및 웨이포인트 경로를 읽어 메모리에 저장 (재시도 로직 포함)"""
+        max_retries = 3
+        retry_delay = 3
+        
+        logger.info("======= 데이터 로딩 시퀀스 시작 =======")
+
+        def fetch_with_retry(url, name):
+            for i in range(max_retries):
+                try:
+                    logger.info(f"📡 {name} 요청 중... (시도 {i+1}/{max_retries})")
+                    res = requests.get(url, timeout=5)
+                    if res.status_code == 200:
+                        return res.json()
+                    else:
+                        logger.warning(f"⚠️ {name} 응답 에러 (HTTP {res.status_code})")
+                except requests.exceptions.ConnectionError:
+                    logger.error(f"❌ {name} 연결 실패: 서버를 찾을 수 없습니다 (ConnectionError)")
+                except requests.exceptions.Timeout:
+                    logger.error(f"❌ {name} 시간 초과: 응답이 너무 늦습니다 (Timeout)")
+                except Exception as e:
+                    logger.error(f"❌ {name} 알 수 없는 오류: {e}")
                 
+                if i < max_retries - 1:
+                    time.sleep(retry_delay)
+            return None
+
+        # 1. 회피 대기 시간 로드
+        conf_data = fetch_with_retry(CONFIG_URL, "설정 정보")
+        if conf_data:
+            self.avoidance_time = conf_data.get("avoidance_wait_time", 5)
+            logger.info(f"   - 회피 대기 시간: {self.avoidance_time}초")
+        
+        # 2. 이동 경로 로드
+        plan_data = fetch_with_retry(PLAN_URL, "웨이포인트 경로")
+        if plan_data:
+            self.patrol_path = plan_data
+            logger.info(f"   - 경로 데이터 로드 완료 ({len(self.patrol_path)}개)")
+        
+        # 3. 전체 상품 정보 로드
+        prod_data = fetch_with_retry(LIST_PRODUCTS_URL, "상품 마스터")
+        if prod_data:
+            self.products = prod_data
+            logger.info(f"   - 상품 데이터 로드 완료 ({len(self.products)}개)")
+
+        if conf_data and plan_data and prod_data:
+            logger.info("✅ 모든 메모리 데이터 로딩 성공")
             return True
-        except Exception as e:
-            self.safe_print(f"❌ 데이터 로딩 실패: {e}")
+        else:
+            logger.error("🚫 데이터 로딩 실패: 일부 데이터를 가져오지 못했습니다.")
             return False
 
     def send_detection(self, tag_barcode, detected_barcode=None, yolo_class_id=None, confidence=0.98, odom_x=0.0, odom_y=0.0):
