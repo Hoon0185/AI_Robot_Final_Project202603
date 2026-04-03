@@ -294,18 +294,24 @@ class PatrolInterface:
         # 1. DB에서 가장 최근에 있었던 순찰의 시간 정보를 기본으로 가져옴
         if history and len(history) > 0:
             latest = history[0]
+            db_start_time = latest.get('start_time') or 'No Data'
             res = {
                 "status": latest.get('status', 'Completed'),
-                "start_time": latest.get('start_time', 'No Data'),
+                "start_time": db_start_time,
                 "end_time": latest.get('end_time', '-'),
                 "error_found": latest.get('error_found', 0)
             }
         
-        # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 덮어씀
+        # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
         if self.latest_status:
+            # 상태값은 실시간 토픽이 최우선
             res["status"] = self.latest_status.get("status", res.get("status", "idle"))
-            if "start_time" in self.latest_status:
-                res["start_time"] = self.latest_status["start_time"]  # 진행 중이면 갱신
+            
+            # 토픽에 시간 정보가 있다면 DB 정보보다 우선 (No Data 깜빡임 방지)
+            topic_start_time = self.latest_status.get("start_time")
+            if topic_start_time and topic_start_time != 'No Data':
+                res["start_time"] = topic_start_time
+            
             if res["status"] == "patrolling" and "current_shelf" in self.latest_status:
                 res["current_shelf"] = self.latest_status["current_shelf"]
                 res["progress"] = self.latest_status.get("progress", "")
