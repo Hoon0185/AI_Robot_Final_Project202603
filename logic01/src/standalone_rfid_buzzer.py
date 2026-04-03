@@ -19,29 +19,29 @@ import time
 class RFIDRobotNode(Node):
     def __init__(self):
         super().__init__('rfid_robot_node')
-        
+
         # GPIO 경고 비활성화
         GPIO.setwarnings(False)
-        
+
         # RFID 리더기 초기화
         self.reader = SimpleMFRC522()
-        
+
         # 태그 ID -> 좌표 매핑 (Hard-coded for standalone use)
         self.landmark_map = {
             428801199154: {'x': 0.0, 'y': 0.0, 'yaw': 0.0},        # Home Base (Standard Origin)
             291971004317: {'x': -1.0189, 'y': -0.2340, 'yaw': 0.0}  # Shelf 3
         }
-        
+
         self.last_detection_time = {}
         self.cooldown_sec = 3.0
-        
+
         # /initialpose 토픽 발행자
         self.initial_pose_pub = self.create_publisher(
-            PoseWithCovarianceStamped, 
-            '/initialpose', 
+            PoseWithCovarianceStamped,
+            '/initialpose',
             10
         )
-        
+
         # --- 추가: 부저 제어 통합 ---
         # PC(UI)에서 보내는 부저 신호를 구독
         self.buzzer_sub = self.create_subscription(
@@ -59,7 +59,7 @@ class RFIDRobotNode(Node):
             self.get_logger().info('Buzzer linked via /sound Topic.')
         else:
             self.get_logger().error('turtlebot3_msgs Sound not found. Buzzer will not work.')
-        
+
         # --- 추가: PC UI 상태 전송 (Heartbeat 제외 - patrol_node에서 수행) ---
         self.heartbeat_pub = self.create_publisher(Bool, '/robot_heartbeat', 10)
         # self.status_timer = self.create_timer(1.0, self.publish_heartbeat)
@@ -83,18 +83,18 @@ class RFIDRobotNode(Node):
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
-        
+
         msg.pose.pose.position.x = c['x']
         msg.pose.pose.position.y = c['y']
         msg.pose.pose.orientation.z = math.sin(c['yaw'] / 2.0)
         msg.pose.pose.orientation.w = math.cos(c['yaw'] / 2.0)
-        
+
         # 높은 신뢰도 설정 (낮은 공분산)
         msg.pose.covariance = [0.0] * 36
         msg.pose.covariance[0] = 0.05   # x
         msg.pose.covariance[7] = 0.05   # y
         msg.pose.covariance[35] = 0.05  # yaw
-        
+
         self.initial_pose_pub.publish(msg)
         self.get_logger().warn(f'Landmark Corrected! Tag ID: {tag_id} -> Coords: ({c["x"]}, {c["y"]})')
 
@@ -102,9 +102,9 @@ class RFIDRobotNode(Node):
         """PC의 UI 신호를 기본 터틀봇3 사운드 서비스 또는 토픽으로 연결합니다."""
         if not msg.data:
             return  # OFF 신호(False)는 무시
-            
-        index = 3  # 3(ERROR) 또는 4(BUTTON)가 비프음으로 적절
-        
+
+        index = 4  # 4(BUTTON1-삐 소리), 1(Startup), 3(ERROR)가 비프음으로 적절
+
         # 1. 서비스 방식 시도 (가장 확실함)
         if hasattr(self, 'sound_client') and self.sound_client.wait_for_service(timeout_sec=0.1):
             req = SoundSrv.Request()
