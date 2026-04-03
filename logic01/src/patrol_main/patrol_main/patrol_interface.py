@@ -33,6 +33,7 @@ class PatrolInterface:
         self.latest_status = None
         self.status_sub = self.node.create_subscription(
             String, '/patrol_status', self._status_cb, 10)
+        self.last_status_received_time = 0.0
             
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
@@ -42,6 +43,15 @@ class PatrolInterface:
         
         # Remote Command Polling
         self.last_cmd_id = None
+        try:
+            # 시작 시점의 최신 명령 ID를 가져와서 저장 (이전 명령 재실행 방지)
+            init_data = self.db.get_latest_command()
+            if init_data:
+                self.last_cmd_id = init_data.get('command_id')
+                self.node.get_logger().info(f"Initialized with last remote command ID: {self.last_cmd_id}")
+        except Exception as e:
+            self.node.get_logger().error(f"Failed to fetch initial command ID: {e}")
+
         self.last_cmd_name = None
         self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
         self.poll_thread.start()
@@ -57,12 +67,19 @@ class PatrolInterface:
                     cmd_id = data.get('command_id')
                     
                     # 새로운 ID의 명령일 경우에만 실행
-                    if cmd_id and cmd_id != self.last_cmd_id:
+                    if cmd_id is not None and cmd_id != self.last_cmd_id:
                         self.node.get_logger().info(f"[REMOTE] New command (ID:{cmd_id}): {cmd_name}")
                         self._execute_remote_command(cmd_name)
+                        
+                        # 실행 직후 즉시 로컬 ID 업데이트하여 중복 실행 방지
                         self.last_cmd_id = cmd_id
-                        # 명령 실행 후 서버에 즉각 완료 보고
-                        self.db.complete_command(cmd_id)
+                        
+                        # 서버에 완료 보고
+                        success = self.db.complete_command(cmd_id)
+                        if success:
+                            self.node.get_logger().info(f"[REMOTE] Command {cmd_id} marked as COMPLETED on server.")
+                        else:
+                            self.node.get_logger().warn(f"[REMOTE] Failed to mark command {cmd_id} as COMPLETED.")
             except Exception as e:
                 self.node.get_logger().error(f"[REMOTE] Polling error: {e}")
             time.sleep(2.0)
@@ -85,6 +102,8 @@ class PatrolInterface:
     def _status_cb(self, msg):
         try:
             self.latest_status = json.loads(msg.data)
+            import time
+            self.last_status_received_time = time.time()
         except Exception as e:
             self.node.get_logger().error(f"Failed to parse status JSON: {e}")
             self.latest_status = {"data": msg.data}
@@ -196,21 +215,37 @@ class PatrolInterface:
         return True, "Manual patrol trigger sent via topic"
 
     def get_recent_patrol_time(self):
-        """최근 순찰 상태 및 시간 정보를 가져옵니다. (ROS 토픽 우선, 없으면 DB 로그)"""
-        if self.latest_status:
-            return self.latest_status
-        
-        # ROS 토픽에 데이터가 없으면 DB에서 최신 로그를 가져옴
+        """최근 순찰 상태 및 시간 정보를 가져옵니다. (DB 로그 시간 기준 + ROS 실시간 상태 덮어쓰기)"""
+        res = {}
         history = self.db.get_patrol_history()
+        
+        # 1. DB에서 가장 최근에 있었던 순찰의 시간 정보를 기본으로 가져옴
         if history and len(history) > 0:
             latest = history[0]
-            return {
+            res = {
                 "status": latest.get('status', 'Completed'),
                 "start_time": latest.get('start_time', 'No Data'),
                 "end_time": latest.get('end_time', '-'),
                 "error_found": latest.get('error_found', 0)
             }
-        return None
+        
+        # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 덮어씀
+        if self.latest_status:
+            res["status"] = self.latest_status.get("status", res.get("status", "idle"))
+            if "start_time" in self.latest_status:
+                res["start_time"] = self.latest_status["start_time"]  # 진행 중이면 갱신
+            if res["status"] == "patrolling" and "current_shelf" in self.latest_status:
+                res["current_shelf"] = self.latest_status["current_shelf"]
+                res["progress"] = self.latest_status.get("progress", "")
+                
+        return res if res else None
+
+    def is_robot_online(self):
+        """최근 5초 이내에 상태 메시지를 수신했는지 확인하여 온라인 상태를 판별합니다."""
+        import time
+        if self.last_status_received_time == 0.0:
+            return False
+        return (time.time() - self.last_status_received_time) < 5.0
 
     def get_patrol_history_data(self):
         """DB에서 전체 순찰 이력을 가져옵니다."""

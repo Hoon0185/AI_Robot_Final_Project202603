@@ -1,6 +1,8 @@
 import json
 import os
 import requests
+import mysql.connector
+from mysql.connector import Error
 from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 
@@ -60,11 +62,14 @@ class InventoryDB:
         except Exception:
             return default
 
-    def report_detection(self, tag_barcode, detected_barcode, confidence=0.99):
-        """서버로 바코드 인식 결과 전송 (DetectionInput 형식)"""
+    def report_detection(self, tag_barcode, patrol_id, waypoint_id, detected_barcode=None, confidence=0.99, yolo_class_id=None):
+        """서버로 인식 결과 전송 (DetectionInput 형식)"""
         payload = {
+            "patrol_id": int(patrol_id),
+            "waypoint_id": int(waypoint_id),
             "tag_barcode": tag_barcode,
             "detected_barcode": detected_barcode if detected_barcode else None,
+            "yolo_class_id": yolo_class_id,
             "confidence": float(confidence),
             "odom_x": 0.0,
             "odom_y": 0.0,
@@ -187,6 +192,7 @@ class InventoryDB:
                     # 순찰 시퀀스 내의 유니크한 이름을 키로 사용
                     name = item.get('waypoint_name') or f"plan_{item['plan_id']}"
                     active_plan[name] = {
+                        'waypoint_id': wp_id,
                         'x': float(wp_info.get('loc_x', 0.0)),
                         'y': float(wp_info.get('loc_y', 0.0)),
                         'yaw': float(wp_info.get('loc_yaw', 0.0)),
@@ -196,3 +202,52 @@ class InventoryDB:
         except Exception as e:
             print(f"[DB] Error fetching patrol plan: {e}")
         return None
+    def report_robot_pose(self, x, y, status="IDLE"):
+        """서버로 로봇의 현재 실시간 좌표 및 상태 전송 (odom_x, odom_y, status)"""
+        # 1. API 방식 시도 (서버에 엔드포인트가 있을 경우)
+        payload = {
+            "odom_x": float(x),
+            "odom_y": float(y),
+            "status": str(status) 
+        }
+        try:
+            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=0.5)
+            if res.status_code == 200:
+                return True
+        except Exception:
+            pass
+
+        # 2. DB 직접 업데이트 방식 (사용자 요청: 서버 코드 고정 대응)
+        return self.report_robot_pose_direct(x, y)
+
+    def report_robot_pose_direct(self, x, y):
+        """DB에 직접 접속하여 실시간 좌표 업데이트 (patrol_log)"""
+        db_config = {
+            "host": "16.184.56.119",
+            "port": 3306,
+            "user": "gilbot",
+            "password": "robot123", # 기본 비밀번호 시도
+            "database": "gilbot"
+        }
+        conn = None
+        try:
+            conn = mysql.connector.connect(**db_config)
+            if conn.is_connected():
+                cursor = conn.cursor()
+                # '진행중'이거나 가장 최근인 순찰 로그의 좌표 업데이트
+                query = """
+                    UPDATE patrol_log 
+                    SET last_odom_x = %s, last_odom_y = %s 
+                    WHERE status = '진행중' OR status = '중단'
+                    ORDER BY patrol_id DESC LIMIT 1
+                """
+                cursor.execute(query, (float(x), float(y)))
+                conn.commit()
+                return True
+        except Exception as e:
+            # print(f"[DB Error] {e}")
+            pass
+        finally:
+            if conn and conn.is_connected():
+                conn.close()
+        return False

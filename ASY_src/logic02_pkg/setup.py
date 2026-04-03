@@ -2,7 +2,7 @@ import os
 from glob import glob
 from setuptools import find_packages, setup
 
-package_name = 'logic2_pkg'
+package_name = 'logic02_pkg'
 
 setup(
     name=package_name,
@@ -27,7 +27,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-          'obstacle_node = logic2_pkg.obstacle_node:main',
+          'obstacle_node = logic02_pkg.obstacle_node:main',
         ],
     },
 )
