@@ -52,7 +52,7 @@ class RFIDRobotNode(Node):
         )
         # 터틀봇3 실제 사운드 인터페이스 (서비스 방식 지원 추가)
         if SoundSrv:
-            self.sound_client = self.node.create_client(SoundSrv, '/sound')
+            self.sound_client = self.create_client(SoundSrv, '/sound')
             self.get_logger().info('Buzzer linked via /sound Service.')
         elif Sound:
             self.sound_pub = self.create_publisher(Sound, '/sound', 10)
