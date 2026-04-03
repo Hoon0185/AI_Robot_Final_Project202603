@@ -316,15 +316,19 @@ class PatrolInterface:
 
         # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
         if self.latest_status:
-            # 상태값은 실시간 토픽이 최우선
-            res["status"] = self.latest_status.get("status", res.get("status", "idle"))
-
-            # 토픽에 시간 정보가 있다면 DB 정보보다 우선 (No Data 깜빡임 방지)
-            topic_start_time = self.latest_status.get("start_time")
-            if topic_start_time and topic_start_time != 'No Data':
-                res["start_time"] = topic_start_time
-
-            if res["status"] == "patrolling" and "current_shelf" in self.latest_status:
+            topic_status = self.latest_status.get("status")
+            
+            # 토픽 상태가 유의미할 때만(순찰 중이거나 에러 등) DB 정보를 덮어씀
+            # 'idle'인 경우엔 DB에 기록된 마지막 'Completed' 등의 기록을 보여주는 것이 더 정확함
+            if topic_status and topic_status not in ["idle", "IDLE"]:
+                res["status"] = topic_status
+                
+                # 토픽에 시간 정보가 있다면 DB 정보보다 우선 (진행 중인 세션 표시용)
+                topic_start_time = self.latest_status.get("start_time")
+                if topic_start_time and topic_start_time != 'No Data':
+                    res["start_time"] = topic_start_time
+            
+            if res.get("status") == "patrolling" and "current_shelf" in self.latest_status:
                 res["current_shelf"] = self.latest_status["current_shelf"]
                 res["progress"] = self.latest_status.get("progress", "")
 
