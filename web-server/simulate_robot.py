@@ -210,7 +210,7 @@ class VirtualRobot:
             # 수동으로 3번(재개)을 누른 경우 서버에도 알림
             if not remote:
                 try:
-                    res = requests.post(f"{BASE_URL}/patrol/resume", timeout=5)
+                    res = requests.post(f"{self.base_url}/patrol/resume", timeout=5)
                     if res.status_code == 200:
                         self.safe_print("✅ 서버에 비상 해제 및 재개 신호를 보냈습니다.")
                     else:
@@ -384,7 +384,7 @@ class VirtualRobot:
         # 복귀 완료 신호 전송
         if not remote:
             try:
-                res = requests.post(FINISH_PATROL_URL)
+                res = requests.post(self.FINISH_PATROL_URL)
                 if res.status_code == 200:
                     self.safe_print("✅ 서버에 기지 복귀 완료 신호를 전송했습니다.")
             except:
@@ -402,7 +402,7 @@ class VirtualRobot:
         
         if not remote:
             try:
-                requests.post(STOP_PATROL_URL)
+                requests.post(self.STOP_PATROL_URL)
                 self.safe_print("✅ 서버에 비상 정지 신호를 전송했습니다.")
             except:
                 pass
@@ -415,7 +415,7 @@ class VirtualRobot:
         """서버로부터 원격 명령을 주기적으로 확인 (Light 서버 신호 수신 역할)"""
         while not self.stop_event.is_set():
             try:
-                res = requests.get(COMMAND_URL)
+                res = requests.get(self.COMMAND_URL)
                 if res.status_code == 200:
                     cmd_data = res.json()
                     cmd_type = cmd_data.get("command_type")
@@ -436,7 +436,7 @@ class VirtualRobot:
                         # 명령 완료 처리 알림
                         if cmd_id:
                             try:
-                                requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                                requests.post(f"{self.base_url}/robot/command/{cmd_id}/complete")
                             except:
                                 pass
                     
@@ -451,7 +451,7 @@ class VirtualRobot:
     def run(self):
         # 1. 시작 전 이전 세션의 잔류 명령 초기화 (먹통 및 자동 실행 방지)
         try:
-            requests.post(CLEAR_COMMAND_URL, timeout=5)
+            requests.post(self.CLEAR_COMMAND_URL, timeout=5)
             self.safe_print("🧹 [초기화] 이전 세션의 대기 중인 명령을 모두 정리했습니다.")
         except Exception:
             pass
@@ -459,7 +459,7 @@ class VirtualRobot:
         # 2. 서버에서 설정 정보 및 동기화된 상태 읽어오기
         self.load_memory()
         try:
-            status_res = requests.get(f"{BASE_URL}/status", timeout=5)
+            status_res = requests.get(f"{self.base_url}/status", timeout=5)
             if status_res.status_code == 200:
                 server_status = status_res.json().get("robot_status")
                 if server_status == "비상정지":
@@ -474,7 +474,7 @@ class VirtualRobot:
         
         self.safe_print("="*50)
         self.safe_print("🤖 Gilbot 확장 가상 로봇 시뮬레이터 v2.1")
-        self.safe_print("   - 서버 주소: " + BASE_URL)
+        self.safe_print("   - 서버 주소: " + self.base_url)
         self.safe_print("   - 상태: " + self.status)
         self.safe_print("   - 원격 신호 대기 중 (Polling)")
         self.safe_print("="*50)
@@ -534,7 +534,7 @@ def kill_other_simulators():
                 if pid != current_pid:
                     try:
                         os.kill(pid, signal.SIGKILL)
-                        killed_count += 0
+                        killed_count += 1
                     except ProcessLookupError:
                         pass
                     except PermissionError:
