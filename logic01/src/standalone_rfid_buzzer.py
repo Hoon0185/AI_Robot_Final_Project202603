@@ -94,17 +94,16 @@ class RFIDRobotNode(Node):
 
     def buzzer_callback(self, msg):
         """PC의 UI 신호를 기본 터틀봇3 사운드 토픽(/sound)으로 발행합니다."""
-        if not Sound:
+        if not Sound or not msg.data:
+            # OFF 신호(False)는 내장 멜로디 재생을 방해하므로 무시합니다.
             return
             
         sound_msg = Sound()
-        # msg.data (Bool)가 True면 비프음(3 - ERROR 또는 1 - ON), False면 끄기(0)
-        # 터틀봇3 기본 부저의 경우 3번(ERROR) 또는 4번(BUTTON)이 비프음으로 잘 들립니다.
-        sound_msg.value = 3 if msg.data else 0
+        # 3(ERROR) 또는 4(BUTTON) 인덱스가 비프음으로 적절합니다.
+        sound_msg.value = 3
         self.sound_pub.publish(sound_msg)
         
-        mode = "ON" if msg.data else "OFF"
-        self.get_logger().info(f'Default TB3 Buzzer {mode} (Index: {sound_msg.value}) published to /sound')
+        self.get_logger().info(f'Default TB3 Buzzer triggered (Index: {sound_msg.value})')
 
     def publish_heartbeat(self):
         """PC UI가 로봇이 살아있음을 알 수 있도록 주기적으로 하트비트 토픽 발행 (웹 보고는 제외)"""
