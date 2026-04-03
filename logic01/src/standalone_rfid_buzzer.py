@@ -7,8 +7,10 @@ import datetime
 import urllib.request
 try:
     from turtlebot3_msgs.msg import Sound
+    from turtlebot3_msgs.srv import Sound as SoundSrv
 except ImportError:
     Sound = None
+    SoundSrv = None
 import RPi.GPIO as GPIO
 from mfrc522 import SimpleMFRC522
 import math
@@ -48,11 +50,15 @@ class RFIDRobotNode(Node):
             self.buzzer_callback,
             10
         )
-        # 터틀봇3 실제 사운드 토픽 발행
-        if Sound:
+        # 터틀봇3 실제 사운드 인터페이스 (서비스 방식 지원 추가)
+        if SoundSrv:
+            self.sound_client = self.node.create_client(SoundSrv, '/sound')
+            self.get_logger().info('Buzzer linked via /sound Service.')
+        elif Sound:
             self.sound_pub = self.create_publisher(Sound, '/sound', 10)
+            self.get_logger().info('Buzzer linked via /sound Topic.')
         else:
-            self.get_logger().error('turtlebot3_msgs.Sound not found. Buzzer will not work.')
+            self.get_logger().error('turtlebot3_msgs Sound not found. Buzzer will not work.')
         
         # --- 추가: PC UI 상태 전송 (Heartbeat 제외 - patrol_node에서 수행) ---
         self.heartbeat_pub = self.create_publisher(Bool, '/robot_heartbeat', 10)
@@ -93,17 +99,26 @@ class RFIDRobotNode(Node):
         self.get_logger().warn(f'Landmark Corrected! Tag ID: {tag_id} -> Coords: ({c["x"]}, {c["y"]})')
 
     def buzzer_callback(self, msg):
-        """PC의 UI 신호를 기본 터틀봇3 사운드 토픽(/sound)으로 발행합니다."""
-        if not Sound or not msg.data:
-            # OFF 신호(False)는 내장 멜로디 재생을 방해하므로 무시합니다.
-            return
+        """PC의 UI 신호를 기본 터틀봇3 사운드 서비스 또는 토픽으로 연결합니다."""
+        if not msg.data:
+            return  # OFF 신호(False)는 무시
             
-        sound_msg = Sound()
-        # 3(ERROR) 또는 4(BUTTON) 인덱스가 비프음으로 적절합니다.
-        sound_msg.value = 3
-        self.sound_pub.publish(sound_msg)
+        index = 3  # 3(ERROR) 또는 4(BUTTON)가 비프음으로 적절
         
-        self.get_logger().info(f'Default TB3 Buzzer triggered (Index: {sound_msg.value})')
+        # 1. 서비스 방식 시도 (가장 확실함)
+        if hasattr(self, 'sound_client') and self.sound_client.wait_for_service(timeout_sec=0.1):
+            req = SoundSrv.Request()
+            req.value = index
+            self.sound_client.call_async(req)
+            self.get_logger().info(f'Buzzer Service Call sent (Index: {index})')
+        # 2. 토픽 방식 폴백
+        elif hasattr(self, 'sound_pub'):
+            sound_msg = Sound()
+            sound_msg.value = index
+            self.sound_pub.publish(sound_msg)
+            self.get_logger().info(f'Buzzer Topic published (Index: {index})')
+        else:
+            self.get_logger().warn('No sound interface available.')
 
     def publish_heartbeat(self):
         """PC UI가 로봇이 살아있음을 알 수 있도록 주기적으로 하트비트 토픽 발행 (웹 보고는 제외)"""
