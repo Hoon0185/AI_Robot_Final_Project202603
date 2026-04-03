@@ -19,35 +19,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Gilbot")
 
-# --- Configuration ---
+# --- Configuration Defaults ---
 LOCAL_URL = "http://localhost:8000/api"
 SERVER_URL = "http://16.184.56.119/api"
-
-if len(sys.argv) > 1:
-    arg = sys.argv[1].lower()
-    if arg == "local":
-        BASE_URL = LOCAL_URL
-    elif arg == "server":
-        BASE_URL = SERVER_URL
-    elif arg.startswith("http"):
-        BASE_URL = arg
-    else:
-        # If it's not a keyword or URL, assume it's an IP or hostname
-        BASE_URL = f"http://{arg}:8000/api"
-else:
-    BASE_URL = LOCAL_URL
-
-DETECT_URL = f"{BASE_URL}/detections/add"
-CONFIG_URL = f"{BASE_URL}/patrol/config"
-PLAN_URL = f"{BASE_URL}/patrol/plan"
-COMMAND_URL = f"{BASE_URL}/robot/command/latest"
-COMMAND_FINISH_URL = f"{BASE_URL}/robot/command"  # /{id}/complete
-START_PATROL_URL = f"{BASE_URL}/patrol/start"
-FINISH_PATROL_URL = f"{BASE_URL}/patrol/finish"
-STOP_PATROL_URL = f"{BASE_URL}/patrol/stop"
-LIST_PRODUCTS_URL = f"{BASE_URL}/products"
-CLEAR_COMMAND_URL = f"{BASE_URL}/robot/command/clear_pending"
-POSE_URL = f"{BASE_URL}/robot/pose"
 
 # Robot Status
 STATUS_IDLE = "IDLE"
@@ -56,8 +30,31 @@ STATUS_RETURNING = "RETURNING"
 STATUS_EMERGENCY_STOP = "EMERGENCY_STOP"
 
 class VirtualRobot:
-    def __init__(self):
+    def __init__(self, mode="local"):
         self.status = STATUS_IDLE
+        
+        # --- URL Configuration based on mode ---
+        if mode == "server":
+            self.base_url = SERVER_URL
+        elif mode.startswith("http"):
+            self.base_url = mode
+        elif mode == "local":
+            self.base_url = LOCAL_URL
+        else:
+            # Assume it's an IP or hostname
+            self.base_url = f"http://{mode}:8000/api"
+
+        self.DETECT_URL = f"{self.base_url}/detections/add"
+        self.CONFIG_URL = f"{self.base_url}/patrol/config"
+        self.PLAN_URL = f"{self.base_url}/patrol/plan"
+        self.COMMAND_URL = f"{self.base_url}/robot/command/latest"
+        self.COMMAND_FINISH_URL = f"{self.base_url}/robot/command"  # /{id}/complete
+        self.START_PATROL_URL = f"{self.base_url}/patrol/start"
+        self.FINISH_PATROL_URL = f"{self.base_url}/patrol/finish"
+        self.STOP_PATROL_URL = f"{self.base_url}/patrol/stop"
+        self.LIST_PRODUCTS_URL = f"{self.base_url}/products"
+        self.CLEAR_COMMAND_URL = f"{self.base_url}/robot/command/clear_pending"
+        self.POSE_URL = f"{self.base_url}/robot/pose"
         self.avoidance_time = 5  # default
         self.patrol_path = []
         self.products = []
@@ -139,19 +136,19 @@ class VirtualRobot:
             return None
 
         # 1. 회피 대기 시간 로드
-        conf_data = fetch_with_retry(CONFIG_URL, "설정 정보")
+        conf_data = fetch_with_retry(self.CONFIG_URL, "설정 정보")
         if conf_data:
             self.avoidance_time = conf_data.get("avoidance_wait_time", 5)
             logger.info(f"   - 회피 대기 시간: {self.avoidance_time}초")
         
         # 2. 이동 경로 로드
-        plan_data = fetch_with_retry(PLAN_URL, "웨이포인트 경로")
+        plan_data = fetch_with_retry(self.PLAN_URL, "웨이포인트 경로")
         if plan_data:
             self.patrol_path = plan_data
             logger.info(f"   - 경로 데이터 로드 완료 ({len(self.patrol_path)}개)")
         
         # 3. 전체 상품 정보 로드
-        prod_data = fetch_with_retry(LIST_PRODUCTS_URL, "상품 마스터")
+        prod_data = fetch_with_retry(self.LIST_PRODUCTS_URL, "상품 마스터")
         if prod_data:
             self.products = prod_data
             logger.info(f"   - 상품 데이터 로드 완료 ({len(self.products)}개)")
@@ -174,7 +171,7 @@ class VirtualRobot:
             "timestamp": datetime.now().isoformat()
         }
         try:
-            res = requests.post(DETECT_URL, json=payload)
+            res = requests.post(self.DETECT_URL, json=payload)
             if res.status_code == 200:
                 data = res.json()
                 self.current_patrol_id = data.get("patrol_id")
@@ -520,6 +517,45 @@ class VirtualRobot:
             else:
                 self.safe_print("❌ 잘못된 선택입니다.")
 
+def kill_other_simulators():
+    """기존에 실행 중인 다른 시뮬레이터 프로세스를 찾아 종료합니다."""
+    import os, subprocess, signal
+    current_pid = os.getpid()
+    try:
+        # ps aux에서 simulate_robot.py를 포함하고 현재 PID가 아닌 프로세스 찾기
+        cmd = ["ps", "aux"]
+        ps_output = subprocess.check_output(cmd).decode()
+        
+        killed_count = 0
+        for line in ps_output.splitlines():
+            if "simulate_robot.py" in line and "grep" not in line:
+                parts = line.split()
+                pid = int(parts[1])
+                if pid != current_pid:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                        killed_count += 0
+                    except ProcessLookupError:
+                        pass
+                    except PermissionError:
+                        print(f"⚠️  PID {pid}를 종료할 권한이 없습니다.")
+                    killed_count += 1
+        
+        if killed_count > 0:
+            print(f"🧹 기존 시뮬레이터 프로세스 {killed_count}개를 정리했습니다.")
+    except Exception as e:
+        print(f"⚠️  프로세스 정리 중 오류 발생: {e}")
+
 if __name__ == "__main__":
-    robot = VirtualRobot()
+    import argparse
+    parser = argparse.ArgumentParser(description="Gilbot Virtual Robot Simulator")
+    parser.add_argument("mode", nargs="?", default="local", help="Mode: local or server (default: local)")
+    parser.add_argument("-k", "--kill", action="store_true", help="Kill existing simulator instances before starting")
+    
+    args = parser.parse_args()
+    
+    if args.kill:
+        kill_other_simulators()
+        
+    robot = VirtualRobot(mode=args.mode)
     robot.run()
