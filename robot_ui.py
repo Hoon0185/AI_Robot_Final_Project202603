@@ -2,9 +2,15 @@ import cv2
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSlider, QFrame, QStackedWidget,
-                             QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView)
+                             QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QTextCursor
+
+# --- [추가: MinimapWidget 임포트] ---
+try:
+    from minimap import MinimapWidget
+except ImportError:
+    MinimapWidget = QFrame  # 파일이 없을 경우를 대비한 방어 코드
 
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 
@@ -35,7 +41,6 @@ class RobotControlPanel(QWidget):
             QSlider::sub-page:horizontal { background: #28A745; height: 8px; border-radius: 4px; }
             QSlider::handle:horizontal { background: #E86464; width: 18px; height: 18px; margin: -5px 0; border-radius: 9px; }
         """
-        # 공통 버튼 스타일 (팝업용)
         self.btn_confirm_qss = "QPushButton { background-color: #28A745; color: white; border-radius: 12px; font-size: 18px; font-weight: bold; } QPushButton:hover { background-color: #218838; }"
         self.btn_cancel_qss = "QPushButton { background-color: #E86464; color: white; border-radius: 12px; font-size: 18px; font-weight: bold; } QPushButton:hover { background-color: #C0392B; }"
 
@@ -137,9 +142,21 @@ class RobotControlPanel(QWidget):
             layout.addSpacing(12)
 
         layout.addSpacing(13)
-        self.logo_area = QFrame(); self.logo_area.setStyleSheet("QFrame { background-color: white; border: 2px dashed #D1D9E6; border-radius: 15px; }")
-        logo_label = QLabel("LOGO HERE"); logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter); QVBoxLayout(self.logo_area).addWidget(logo_label)
-        layout.addWidget(self.logo_area, stretch=2)
+        self.log_console = QTextEdit()
+        self.log_console.setReadOnly(True)
+        self.log_console.setStyleSheet("""
+            QTextEdit {
+                background-color: #2C2C2C;
+                color: #82E0AA;
+                font-family: 'Consolas', 'Malgun Gothic';
+                font-size: 12px;
+                border-radius: 15px;
+                border: 2px solid #D1D9E6;
+                padding: 10px;
+            }
+        """)
+        layout.addWidget(self.log_console, stretch=2)
+        self.append_log("System Ready. Waiting for commands...")
 
         self._setup_remote_page()
         self.right_stack.addWidget(self.page_main); self.right_stack.addWidget(self.page_remote)
@@ -175,7 +192,6 @@ class RobotControlPanel(QWidget):
         inner.addWidget(self.btn_back); layout.addWidget(remote_frame)
 
     def _setup_popups(self):
-        # 전체 공통 팝업 스타일
         popup_frame_style = "background-color: white; border-radius: 20px; border: 1px solid #DDE4ED;"
         popup_title_style = "font-size: 22px; font-weight: bold; color: #333; border: none; background: transparent;"
 
@@ -199,13 +215,20 @@ class RobotControlPanel(QWidget):
         self.btn_patrol_no = QPushButton("취소"); self.btn_patrol_no.setFixedHeight(55); self.btn_patrol_no.setStyleSheet(self.btn_cancel_qss)
         pat_btn_row.addWidget(self.btn_patrol_yes); pat_btn_row.addWidget(self.btn_patrol_no); pat_layout.addWidget(pat_title); pat_layout.addStretch(); pat_layout.addLayout(pat_btn_row)
 
-        # --- 나머지 오버레이 (미니맵, DB, 알림) ---
+        # --- 미니맵 오버레이 [수정됨] ---
         self.map_overlay = QFrame(); self.map_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 150);"); self.map_overlay.hide()
         self.map_popup_box = QFrame(self.map_overlay); self.map_popup_box.setFixedSize(850, 700); self.map_popup_box.setStyleSheet("background-color: white; border-radius: 30px;")
         m_layout = QVBoxLayout(self.map_popup_box); m_layout.setContentsMargins(30, 30, 30, 30)
-        self.map_area = QFrame(); self.map_area.setStyleSheet("background-color: #F8F9FA; border: 1px solid #DDE4ED; border-radius: 15px;")
+
+        # --- [수정: 단순 QFrame을 MinimapWidget으로 교체] ---
+        self.minimap = MinimapWidget()
+        self.minimap.setStyleSheet("background-color: #F8F9FA; border: 1px solid #DDE4ED; border-radius: 15px;")
+        # -----------------------------------------------
+
         self.btn_map_close = QPushButton("닫기"); self.btn_map_close.setFixedHeight(65); self.btn_map_close.setStyleSheet("QPushButton { background-color: #28A745; color: white; border-radius: 18px; font-size: 22px; font-weight: bold; } QPushButton:hover { background-color: #218838; }")
-        m_layout.addWidget(QLabel("로봇 실시간 위치", alignment=Qt.AlignmentFlag.AlignCenter, styleSheet="font-size: 26px; font-weight: 900; border:none;")); m_layout.addWidget(self.map_area, stretch=1); m_layout.addSpacing(20); m_layout.addWidget(self.btn_map_close)
+        m_layout.addWidget(QLabel("로봇 실시간 위치", alignment=Qt.AlignmentFlag.AlignCenter, styleSheet="font-size: 26px; font-weight: 900; border:none;"))
+        m_layout.addWidget(self.minimap, stretch=1) # self.minimap을 레이아웃에 추가
+        m_layout.addSpacing(20); m_layout.addWidget(self.btn_map_close)
 
         self.db_overlay = QFrame(); self.db_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 150);"); self.db_overlay.hide()
         self.db_popup_box = QFrame(self.db_overlay); self.db_popup_box.setFixedSize(1000, 750); self.db_popup_box.setStyleSheet("background-color: white; border-radius: 30px;")
@@ -308,7 +331,13 @@ class RobotControlPanel(QWidget):
                 qt_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
                 self.cam_label.setPixmap(QPixmap.fromImage(qt_img).scaled(self.cam_label.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
 
-    def open_map(self): self.map_overlay.show(); self.center_popup(self.map_popup_box)
+    def open_map(self):
+        self.map_overlay.show()
+        self.center_popup(self.map_popup_box)
+        # --- [추가: 맵이 열릴 때 강제로 다시 그리게 함] ---
+        if hasattr(self, 'minimap'):
+            self.minimap.update_map_display()
+
     def close_map(self): self.map_overlay.hide()
 
     def center_popup(self, box):
@@ -318,3 +347,10 @@ class RobotControlPanel(QWidget):
         for popup in [self.popup_box, self.patrol_popup_box, self.map_popup_box, self.db_popup_box, self.alarm_popup_box]:
             if popup.parentWidget().isVisible(): self.center_popup(popup)
         super().resizeEvent(event)
+
+    def append_log(self, message):
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        self.log_console.append(log_entry)
+        self.log_console.moveCursor(QTextCursor.MoveOperation.End)
