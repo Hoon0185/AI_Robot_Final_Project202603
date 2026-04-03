@@ -1,7 +1,9 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
+import json
+import datetime
 try:
     from turtlebot3_msgs.msg import Sound
 except ImportError:
@@ -51,11 +53,12 @@ class RFIDRobotNode(Node):
         else:
             self.get_logger().error('turtlebot3_msgs.Sound not found. Buzzer will not work.')
         
-        # RFID 리딩 타이머 (0.2초 간격)
-        self.timer = self.create_timer(0.2, self.read_rfid_callback)
-        
-        self.get_logger().info('--- Standalone RFID Node for TB3 Started ---')
-        self.get_logger().info('No build required. Running directly on hardware.')
+        # --- 추가: PC UI 상태 전송 (Heartbeat) ---
+        self.heartbeat_pub = self.create_publisher(Bool, '/robot_heartbeat', 10)
+        self.status_timer = self.create_timer(1.0, self.publish_heartbeat)
+
+        self.get_logger().info('--- Standalone RFID & Buzzer Node (v1.0.2) Started ---')
+        self.get_logger().info('Robot Heartbeat active on /robot_heartbeat.')
 
     def read_rfid_callback(self):
         try:
@@ -99,6 +102,12 @@ class RFIDRobotNode(Node):
         self.sound_pub.publish(sound_msg)
         mode = "ON" if msg.data else "OFF"
         self.get_logger().info(f'Buzzer {mode} signal published to /sound')
+
+    def publish_heartbeat(self):
+        """PC UI가 로봇이 살아있음을 알 수 있도록 주기적으로 하트비트 토픽 발행"""
+        msg = Bool()
+        msg.data = True
+        self.heartbeat_pub.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

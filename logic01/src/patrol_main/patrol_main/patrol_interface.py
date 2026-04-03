@@ -34,7 +34,11 @@ class PatrolInterface:
         self.latest_status = None
         self.status_sub = self.node.create_subscription(
             String, '/patrol_status', self._status_cb, 10)
+        self.heartbeat_sub = self.node.create_subscription(
+            Bool, '/robot_heartbeat', self._heartbeat_cb, 10)
+        
         self.last_status_received_time = 0.0
+        self.last_robot_heartbeat_time = 0.0
             
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
@@ -138,6 +142,11 @@ class PatrolInterface:
         except Exception as e:
             self.node.get_logger().error(f"Failed to parse status JSON: {e}")
             self.latest_status = {"data": msg.data}
+            
+    def _heartbeat_cb(self, msg):
+        """로봇 하드웨어로부터 직접 오는 하트비트 수신"""
+        if msg.data:
+            self.last_robot_heartbeat_time = time.time()
 
     def _set_param(self, name, value, param_type):
         """Internal helper to set parameters on the patrol_scheduler node."""
@@ -296,11 +305,12 @@ class PatrolInterface:
         return res if res else None
 
     def is_robot_online(self):
-        """최근 5초 이내에 상태 메시지를 수신했는지 확인하여 온라인 상태를 판별합니다."""
-        import time
-        if self.last_status_received_time == 0.0:
-            return False
-        return (time.time() - self.last_status_received_time) < 5.0
+        """최근 5초 이내에 상태 메시지 혹은 하트비트를 수신했는지 확인합니다."""
+        now = time.time()
+        status_online = (now - self.last_status_received_time) < 5.0 if self.last_status_received_time > 0 else False
+        heartbeat_online = (now - self.last_robot_heartbeat_time) < 5.0 if self.last_robot_heartbeat_time > 0 else False
+        
+        return status_online or heartbeat_online
 
     def get_patrol_history_data(self):
         """DB에서 전체 순찰 이력을 가져옵니다."""
