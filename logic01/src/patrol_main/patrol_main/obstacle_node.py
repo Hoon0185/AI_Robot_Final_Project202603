@@ -35,6 +35,8 @@ class ObstacleNode(Node):
     self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
     self.plan_sub = self.create_subscription(Path, '/plan', self.plan_callback, 10) # 경로 수신
     self.teleop_sub = self.create_subscription(Twist, '/cmd_vel_teleop', self.teleop_callback, 10) # 수동
+    # Nav2 주행 명령 구독, 딜레이 최소화 위해 큐 사이즈 1로 설정
+    self.nav_sub = self.create_subscription(Twist, '/cmd_vel_nav', self.nav_callback, 1)
 
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
@@ -64,7 +66,6 @@ class ObstacleNode(Node):
     self.is_new_path_generated = False # 경로 생성 확인 플래그
     self.started_moving = False # 실제 우회 주행 시작 확인 플래그
     self.is_teleop_active = False # 수동 조작 활성화 여부
-    self.is_nav_paused = False # Nav2 주행 일시정지 여부
     self.is_retry_sent = False # 재출발 요청 발행 여부 체크 변수
     # UI/수동 조작 방향 감시 변수
     self.teleop_linear_x = 0.0
@@ -77,6 +78,17 @@ class ObstacleNode(Node):
     # 현재 로봇 속도 저장
     self.current_linear_velocity = 0.0 # 현재 x축 선속도
     self.current_angular_velocity = 0.0 # 현재 z축 각속도
+
+
+  def nav_callback(self, msg):
+    """
+    Nav2 자율주행 명령을 가로채서 장애물 상황일 때 차단하는 함수
+    """
+    if self.is_blocked or self.is_detouring:
+      self.stop_robot()
+    else:
+        # 뚫려있는 안전한 상태일 때만 Nav2의 주행 그대로 통과
+      self.cmd_vel_pub.publish(msg)
 
 
   def teleop_callback(self, msg):
@@ -207,7 +219,6 @@ class ObstacleNode(Node):
 
           status_msg.data = True # 장애물 감지 상태 True
           self.obstacle_status_pub.publish(status_msg)
-          self.pause_navigation() # Nav2 주행을 일시 정지
 
         self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
       else:
@@ -217,7 +228,6 @@ class ObstacleNode(Node):
           self.obstacle_status_pub.publish(status_msg)
           self.is_blocked = False
 
-          self.resume_navigation() # Nav2 주행 재개
     else:
       if self.is_blocked:
         self.get_logger().info('전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
@@ -225,7 +235,6 @@ class ObstacleNode(Node):
         self.obstacle_status_pub.publish(status_msg)
         self.is_blocked = False
 
-        self.resume_navigation() # Nav2 주행 재개
 
   def timer_callback(self):
     if self.is_moving_backward: # 후진 중일 때는 10초 대기 및 우회 타이머 작동 X
@@ -254,7 +263,6 @@ class ObstacleNode(Node):
         if hasattr(self, 'last_logged_second'):
           del self.last_logged_second
 
-        self.resume_navigation() # Nav2 주행 재개
 
         # 장애물 감지 상태 False로 발행 (행동트리가 우회 행동으로 넘어갈 수 있도록)
         status_msg = Bool()
@@ -310,22 +318,6 @@ class ObstacleNode(Node):
 
     request = ClearEntireCostmap.Request()
     future = self.clear_costmap_client.call_async(request)
-
-
-  def pause_navigation(self):
-    """
-    주행 일시정지 플래그를 활성화하여 Nav2의 이동 명령을 차단
-    """
-    if not self.is_nav_paused:
-      self.is_nav_paused = True # 장애물 감지 시 Nav2 주행 일시정지 플래그 활성화
-
-
-  def resume_navigation(self):
-    """
-    주행 일시정지 플래그를 해제하여 로봇이 다시 주행
-    """
-    if self.is_nav_paused:
-      self.is_nav_paused = False # Nav2 주행 일시정지 플래그 해제
 
 
   def stop_robot(self):
