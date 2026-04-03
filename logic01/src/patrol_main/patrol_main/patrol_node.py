@@ -43,6 +43,7 @@ class PatrolNode(Node):
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
         self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
         self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
+        self.retry_sub = self.create_subscription(Bool, '/retry_patrol_goal', self.retry_callback, 10) # 장애물 노드로부터 재출발 요청 수신
 
         # 5. 순찰 상태 발행 (UI용)
         self.patrol_status_pub = self.create_publisher(String, '/patrol_status', 10)
@@ -92,6 +93,13 @@ class PatrolNode(Node):
             else:
                 self.shelves = config.get('shelves', {})
         self.shelf_list = list(self.shelves.keys())
+
+    def retry_callback(self, msg):
+        """장애물 노드에서 가짜 벽이 쳐졌다는 신호를 받으면 실행되는 함수"""
+        if msg.data and self.is_patrolling:
+            self.get_logger().info('우회하기 위해 현재 목적지 좌표를 Nav2에 재전송합니다.')
+
+            self.send_next_goal() # 현재 목적지 좌표를 Nav2에 재전송하여 우회 경로를 생성하도록 유도
 
     def emergency_callback(self, msg):
         if msg.data:

@@ -7,10 +7,10 @@ from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
     pkg_dir = get_package_share_directory('patrol_main')
-    
+
     # Configuration file paths
     twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
-    
+
     # Launch arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     map_frame = LaunchConfiguration('map_frame', default='map')

@@ -23,6 +23,7 @@ def generate_launch_description():
     patrol_group = GroupAction(
         actions=[
             PushRosNamespace(namespace_config),
+            # 1. 순찰 스케줄러 노드
             Node(
                 package='patrol_main',
                 executable='patrol_scheduler',
@@ -30,6 +31,7 @@ def generate_launch_description():
                 parameters=[config_file],
                 output='screen'
             ),
+            # 2. 순찰 메인 노드 (주행 명령 및 DB 로드)
             Node(
                 package='patrol_main',
                 executable='patrol_node',
@@ -37,13 +39,14 @@ def generate_launch_description():
                 parameters=[config_file],
                 output='screen'
             ),
+            # 3. 순찰 비주얼라이저 노드
             Node(
                 package='patrol_main',
                 executable='patrol_visualizer',
                 name='patrol_visualizer',
                 parameters=[config_file],
                 output='screen'
-            )
+            ),
         ]
     )
 
