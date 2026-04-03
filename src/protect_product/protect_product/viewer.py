@@ -21,9 +21,18 @@ class ViewerNode(Node):
         print("="*50)
         print(f" [최근 인식된 QR]: {self.qr_val}") # 상시 노출
         print("-" * 50)
+        print(f" {'TYPE':<10} | {'NAME':<15} | {'ID':<5} | {'CONF':<7}")
+        print("="*50)
+
         for i in range(len(msg.class_ids)):
             if msg.class_ids[i] != 999:
-                print(f"[PRODUCT] 이름: {msg.class_names[i]:<15} (ID: {msg.class_ids[i]+1})")
+                name = msg.class_names[i]
+                prod_id = msg.class_ids[i] + 1
+                # 신뢰도(Score) 가져오기
+                score_str = "N/A"
+                if hasattr(msg, 'scores') and len(msg.scores) > i:
+                    score_str = f"{msg.scores[i]*100:.1f}%"
+                print(f" [PRODUCT] | {name:<15} | {prod_id:<5} | {score_str:<7}")
         print("="*50)
 
 def main(args=None):

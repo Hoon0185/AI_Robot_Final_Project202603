@@ -4,69 +4,138 @@ from sensor_msgs.msg import CompressedImage
 from protect_product_msgs.msg import DetectionArray
 from cv_bridge import CvBridge
 import cv2, sqlite3, message_filters
-from pyzbar.pyzbar import decode
 
 class VerifierNode(Node):
     def __init__(self):
         super().__init__('verifier_node')
         self.bridge = CvBridge()
-        self.scan_count = 0
-        self.conn = sqlite3.connect("/home/bird99/Desktop/database/dmdata/product.db", check_same_thread=False)
+
+        # 1. 데이터베이스 연결
+        db_path = "/home/bird99/Desktop/database/dmdata/product.db"
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
 
-        # 동기화 설정
-        self.img_sub = message_filters.Subscriber(self, CompressedImage, '/image_raw/compressed')
-        self.det_sub = message_filters.Subscriber(self, DetectionArray, '/det_objs')
-        self.ts = message_filters.ApproximateTimeSynchronizer([self.img_sub, self.det_sub], queue_size=2, slop=0.2,allow_headerless=True)
-        self.ts.registerCallback(self.sync_callback)
+        # [필수] 최종 검증 결과를 Viewer로 보낼 Publisher
         self.result_pub = self.create_publisher(DetectionArray, '/verified_objs', 10)
 
-    def sync_callback(self, img_msg, det_msg):
+        # 2. 3중 동기화 설정 (이미지, YOLO 결과, QR 결과)
+        self.img_sub = message_filters.Subscriber(self, CompressedImage, '/image_raw/compressed')
+        self.det_sub = message_filters.Subscriber(self, DetectionArray, '/det_objs')
+        self.qr_sub = message_filters.Subscriber(self, DetectionArray, '/qr_objs')
+
+        self.ts = message_filters.ApproximateTimeSynchronizer(
+            [self.img_sub, self.det_sub, self.qr_sub],
+            queue_size=30,   # 큐 사이즈 증설로 데이터 유실 방지
+            slop=1.0,        # 동기화 허용 오차를 1초로 완화 (YOLO 연산 지연 고려)
+            allow_headerless=True
+        )
+        self.ts.registerCallback(self.sync_callback)
+
+        self.get_logger().info('✅ [Verifier] 검증 모드 가동: YOLO ID vs QR Text 대조 시작')
+
+    def sync_callback(self, img_msg, det_msg, qr_msg):
+        # 이미지 복원 (YOLO와 동일하게 bgr8 권장)
         frame = self.bridge.compressed_imgmsg_to_cv2(img_msg, 'bgr8')
-        h, w, _ = frame.shape
-        products, labels = [], []
 
-        for i in range(len(det_msg.class_ids)):
-            cls_id = det_msg.class_ids[i]
-            x1, y1, x2, y2 = det_msg.x1[i], det_msg.y1[i], det_msg.x2[i], det_msg.y2[i]
-            obj = {'bbox': (x1, y1, x2, y2), 'name': det_msg.class_names[i], 'id': cls_id}
-            if cls_id == 999 or "label" in obj['name'].lower(): labels.append(obj)
-            else: products.append(obj)
+        matched_qr_content = None
+        best_qr_bbox = None
 
-        qr_content, matched_prod = None, None
-        if labels:
-            self.scan_count += 1
-            if self.scan_count % 3 == 0: # 3프레임당 1회 스캔
-                best_label = max(labels, key=lambda x: (x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))
-                lx1, ly1, lx2, ly2 = best_label['bbox']
-                roi = frame[ly1:ly2, lx1:lx2]
-                if roi.size > 0:
-                    decoded = decode(cv2.resize(roi, None, fx=1.5, fy=1.5))
-                    if decoded: qr_content = decoded[0].data.decode('utf-8').strip()
+        # 발행용 메시지 객체 생성
+        verified_msg = DetectionArray()
 
-            # 메시지 업데이트
-            for i in range(len(det_msg.class_names)):
-                if det_msg.class_names[i] == 'label':
-                    det_msg.class_names[i] = str(qr_content) if qr_content else "Scanning..."
+        # [단계 1] 화면에서 가장 큰(가까운) QR 코드 찾기
+        if len(qr_msg.class_ids) > 0:
+            max_area = 0
+            for i in range(len(qr_msg.class_ids)):
+                area = (qr_msg.x2[i] - qr_msg.x1[i]) * (qr_msg.y2[i] - qr_msg.y1[i])
+                if area > max_area:
+                    max_area = area
+                    best_qr_bbox = (qr_msg.x1[i], qr_msg.y1[i], qr_msg.x2[i], qr_msg.y2[i])
+                    matched_qr_content = qr_msg.class_names[i]
 
-            if products:
-                lx1, ly1, lx2, ly2 = max(labels, key=lambda x: (x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))['bbox']
-                candidate = min(products, key=lambda p: abs((p['bbox'][0]+p['bbox'][2])/2 - (lx1+lx2)/2))
-                if abs((candidate['bbox'][0]+candidate['bbox'][2])/2 - (lx1+lx2)/2) < 150:
-                    matched_prod = candidate
+            if best_qr_bbox:
+                qx1, qy1, qx2, qy2 = best_qr_bbox
+                cv2.rectangle(frame, (qx1, qy1), (qx2, qy2), (0, 255, 255), 3) # 노란색 QR 박스
+                cv2.putText(frame, f"QR: {matched_qr_content}", (qx1, qy1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-        self.result_pub.publish(det_msg)
+        # [단계 2] QR과 가장 인접한 YOLO 물품 매칭 및 DB 검증
+        if best_qr_bbox and len(det_msg.class_ids) > 0:
+            q_cx = (best_qr_bbox[0] + best_qr_bbox[2]) / 2
+            min_dist = 9999
+            matched_idx = -1
 
-        # 시각화 (PC 화면)
-        if labels and matched_prod:
-            P_id = matched_prod['id'] + 1
-            self.cursor.execute("SELECT product_name, product_id FROM products WHERE product_id=?", (P_id,))
-            row = self.cursor.fetchone()
-            if row:
-                color = (0, 255, 0) if qr_content and str(row[1]) in qr_content else (0, 0, 255)
-                cv2.putText(frame, f"{row[0]}", (labels[0]['bbox'][0], labels[0]['bbox'][1]-10), 1, 1.5, color, 2)
+            for i in range(len(det_msg.class_ids)):
+                p_cx = (det_msg.x1[i] + det_msg.x2[i]) / 2
+                dist = abs(p_cx - q_cx)
+                if dist < min_dist:
+                    min_dist = dist
+                    matched_idx = i
 
-        cv2.imshow("dkdh", frame); cv2.waitKey(1)
+            # 매칭 허용 거리 (200px) 이내인 경우만 진행
+            if matched_idx != -1 and min_dist < 200:
+                mx1, my1, mx2, my2 = det_msg.x1[matched_idx], det_msg.y1[matched_idx], \
+                                     det_msg.x2[matched_idx], det_msg.y2[matched_idx]
+
+                # ROI 시각화용 (85% 크기)
+                cx, cy = (mx1 + mx2) / 2, (my1 + my2) / 2
+                nw, nh = (mx2 - mx1) * 0.85, (my2 - my1) * 0.85
+                dx1, dy1, dx2, dy2 = int(cx - nw/2), int(cy - nh/2), int(cx + nw/2), int(cy + nh/2)
+
+                # --- 핵심 DB 검증 로직 ---
+                yolo_cls_id = det_msg.class_ids[matched_idx]
+                yolo_product_id = yolo_cls_id + 1  # 모델 ID(0) -> DB ID(1) 보정
+
+                self.cursor.execute("SELECT product_name, product_id FROM products WHERE product_id=?", (yolo_product_id,))
+                row = self.cursor.fetchone()
+
+                final_name = det_msg.class_names[matched_idx]
+                is_correct = False
+
+                if row:
+                    db_name, db_id_val = row[0], str(row[1])
+                    final_name = db_name
+
+                    # 설계 내용: QR 텍스트 안에 DB에서 불러온 ID 숫자가 포함되어 있는가?
+                    if matched_qr_content and (db_id_val in matched_qr_content):
+                        is_correct = True
+
+                # 검증 결과에 따른 색상 결정 (일치: 녹색, 불일치: 적색)
+                color = (0, 255, 0) if is_correct else (0, 0, 255)
+
+                cv2.rectangle(frame, (dx1, dy1), (dx2, dy2), color, 2)
+                cv2.putText(frame, f"MATCH: {final_name}", (mx1, my1 - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+                # --- Viewer로 전송할 메시지 데이터 구축 ---
+                verified_msg.x1.append(int(mx1)); verified_msg.y1.append(int(my1))
+                verified_msg.x2.append(int(mx2)); verified_msg.y2.append(int(my2))
+                verified_msg.class_ids.append(yolo_cls_id)
+                verified_msg.class_names.append(final_name)
+
+                if hasattr(det_msg, 'scores') and len(det_msg.scores) > matched_idx:
+                    verified_msg.scores.append(det_msg.scores[matched_idx])
+                else:
+                    verified_msg.scores.append(0.0)
+
+        elif best_qr_bbox and len(det_msg.class_ids) == 0:
+            cv2.putText(frame, "STATUS: EMPTY (No Product)", (30, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 165, 255), 2)
+
+        # Viewer UI를 위해 인식된 QR 정보도 전송 (ID 999 고정)
+        if matched_qr_content:
+            verified_msg.class_ids.append(999)
+            verified_msg.class_names.append(matched_qr_content)
+            verified_msg.x1.append(0); verified_msg.y1.append(0)
+            verified_msg.x2.append(0); verified_msg.y2.append(0)
+            verified_msg.scores.append(1.0)
+
+        # 결과 메시지 최종 발행
+        self.result_pub.publish(verified_msg)
+
+        # 결과 화면 출력
+        cv2.imshow("Inventory Verification System", frame)
+        cv2.waitKey(1)
 
 def main(args=None):
     rclpy.init(args=args)
@@ -74,9 +143,8 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('사용자에 의해 중단됨')
+        pass
     finally:
-        # DB 연결 종료 및 창 닫기 등 자원 정리
         node.cursor.close()
         node.conn.close()
         cv2.destroyAllWindows()

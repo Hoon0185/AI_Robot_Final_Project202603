@@ -20,7 +20,7 @@ class DetectorNode(Node):
         # 2. 발행/구독 설정
         self.publisher = self.create_publisher(DetectionArray, '/det_objs', 10)
         self.subscription = self.create_subscription(
-            CompressedImage, '/image_raw/compressed', self.callback, 10)
+            CompressedImage, '/image_raw/compressed', self.callback, 1)
 
         self.get_logger().info('YOLO(물체) + pyzbar(전체 스캔) 모드')
 
@@ -30,7 +30,7 @@ class DetectorNode(Node):
         det_msg = DetectionArray()
 
         # [작업 1] YOLO 추론 (과자만 찾기)
-        results = self.model(frame, conf=0.5, iou=0.2, verbose=False)
+        results = self.model(frame, conf=0.6, iou=0.3, verbose=False)
         for box in results[0].boxes:
             cls_id = int(box.cls[0])
             cls_name = self.model.names[cls_id].lower()
@@ -39,9 +39,9 @@ class DetectorNode(Node):
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             self.add_to_msg(det_msg, x1, y1, x2, y2, cls_id, cls_name)
 
-        # [작업 2] pyzbar 스캔 (모델 학습 안 되어 있어도 찾음)
+        # [작업 2] pyzbar 스캔 (모델 학습 안 되어 있어도 찾는 용도)
         # 렉을 줄이기 위해 3프레임마다 한 번만 수행
-        if self.frame_count % 3 == 0:
+        if self.frame_count % 4 == 0:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             decoded_objs = decode(gray)
             for obj in decoded_objs:
