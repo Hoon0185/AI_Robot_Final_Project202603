@@ -75,11 +75,10 @@ class PatrolInterface:
                 data = self.db.get_latest_command()
                 if data:
                     cmd_name = data.get('command_type') or data.get('command')
-                    cmd_id = data.get('command_id')
+                    cmd_id = str(data.get('command_id')) # 강제 문자열 변환으로 타입 불일치 방지
                     
                     # 1. ID가 비어있거나 이미 로컬에서 처리한 ID 또는 마지막 ID와 같으면 패스
-                    if cmd_id is None or cmd_id == self.last_cmd_id or cmd_id in self.processed_ids:
-                        time.sleep(2.0)
+                    if not cmd_id or cmd_id == str(self.last_cmd_id) or cmd_id in self.processed_ids:
                         continue
 
                     self.node.get_logger().info(f"[REMOTE] New command received (ID: {cmd_id}, Name: {cmd_name})")
