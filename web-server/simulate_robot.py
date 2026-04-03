@@ -214,12 +214,16 @@ class VirtualRobot:
             
             # 만약 진행 중이었던 순찰 정보(last_index)가 유효한지 확인
             # (last_index가 patrol_path 길이보다 작으면 갈 곳이 남은 것)
-            if self.last_index < len(self.patrol_path):
+            
+            # [추가] 기지에 있다면 재개하지 않음 (유령 순찰 방지)
+            dist_to_base = (self.current_pos[0]**2 + self.current_pos[1]**2)**0.5
+            
+            if self.last_index < len(self.patrol_path) and dist_to_base > 0.1:
                 self.safe_print("\n" + "="*40)
                 self.safe_print(f"⏯️ [순찰 재개] {self.last_index + 1}번 웨이포인트부터 재개합니다.")
                 self.safe_print("="*40)
             else:
-                self.safe_print("\n🔓 [비상 해제] 기지 정지 상태에서 비상을 해제합니다.")
+                self.safe_print("\n🔓 [비상 해제] 현재 위치(기지 근처 또는 완료)에서 비상을 해제합니다.")
                 self.status = STATUS_IDLE
                 if remote: self.print_menu()
                 return
@@ -365,6 +369,7 @@ class VirtualRobot:
         self.safe_print("🏁 [복귀 완료] 로봇이 기지에 도착했습니다.")
         self.status = STATUS_IDLE
         self.current_pos = (0.0, 0.0) # 최종 위치 보정
+        self.last_index = len(self.patrol_path) # 유령 순찰 방지를 위해 인덱스 완료 처리
         
         # 복귀 완료 신호 전송
         if not remote:

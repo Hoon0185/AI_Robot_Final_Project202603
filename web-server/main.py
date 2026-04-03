@@ -342,26 +342,23 @@ async def get_status():
             last_patrol = cursor.fetchone()
             p_status = str(last_patrol['status']).strip() if last_patrol else "완료"
 
-            # 3. 비상 여부 판론 (최우선: 명령이 EMERGENCY거나 로그가 중단인 경우)
+            # 3. 비상 여부 판별 (최우선: 명령이 EMERGENCY거나 로그가 중단인 경우)
             if "EMERGENCY" in mode_cmd or p_status == "중단":
                 res_status = "비상정지"
-                # 비상정지 시에도 진행 중이었다면 마지막 좌표를 유지, 아니면 (기지 복귀 완료 시 등) 0,0
-                if p_status != "완료" and last_patrol:
-                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
-                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+                # 비상정지 시에도 진행 중이었다면 마지막 좌표를 유지 (hb_row에서 가져온 값), 아니면 (기지 복귀 완료 시 등) 0,0
+                if p_status == "완료":
+                    res_x, res_y = 0.0, 0.0
             elif "진행" in p_status or "START" in mode_cmd:
                 res_status = "순찰중"
-                if last_patrol:
-                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
-                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+                # 순찰 중일 때는 실시간 하트비트 좌표(res_x, res_y)를 그대로 사용 (덮어쓰지 않음)
             elif "RETURN" in mode_cmd and p_status != "완료":
-                res_status = "순찰중" # 복귀 중도 순찰중으로 표시 (또는 '복귀중' 추가 가능)
-                if last_patrol:
-                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
-                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+                res_status = "순찰중"
+                # 복귀 중일 때도 실시간 하트비트 좌표 사용
             else:
                 res_status = "휴식중"
-                # 휴식 중에도 로봇이 전송한 최신 좌표를 유지 (위에서 hb_row로 이미 설정됨)
+                # 휴식 중일 때는 로봇이 기지에 있다고 가정 (또는 하트비트 좌표 유지)
+                if abs(res_x) < 0.1 and abs(res_y) < 0.1:
+                    res_x, res_y = 0.0, 0.0
 
             # 최종 응답용 최신 명령 (UI 표시용)
             cursor.execute("SELECT command_type FROM robot_command ORDER BY command_id DESC LIMIT 1")
@@ -562,23 +559,40 @@ async def resume_patrol():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        # 마지막 중단된 순찰 회차 조회
-        cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '중단' ORDER BY patrol_id DESC LIMIT 1")
+        # 마지막 중단된 순찰 회차 조회 (최근 1시간 이내 것만 유효한 것으로 간주)
+        cursor.execute("""
+            SELECT patrol_id FROM patrol_log 
+            WHERE status = '중단' 
+            AND timestamp > NOW() - INTERVAL 1 HOUR
+            ORDER BY patrol_id DESC LIMIT 1
+        """)
         patrol = cursor.fetchone()
-        
-        if patrol:
+
+        # 현재 로봇의 위치가 기지(0,0) 근처라면 재개하지 않고 비상만 해제
+        cursor.execute("SELECT last_x, last_y FROM robot_status WHERE id = 1")
+        robot_pos = cursor.fetchone()
+        at_base = False
+        if robot_pos:
+            dist_to_base = (robot_pos['last_x']**2 + robot_pos['last_y']**2)**0.5
+            if dist_to_base < 0.2:
+                at_base = True
+
+        if patrol and not at_base:
             patrol_id = patrol['patrol_id']
             # 상태를 다시 '진행중'으로 복구
             cursor.execute(
                 "UPDATE patrol_log SET status = '진행중', end_time = NULL WHERE patrol_id = %s",
                 (patrol_id,)
             )
+            log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', {"patrol_id": patrol_id}, f"Resuming patrol {patrol_id}")
+        else:
+            log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', None, "Emergency released at base (no patrol resume)")
         
         # 기지에 정지상태이든 순찰중이었든 상관없이 비상정지 신호 해제를 위해 명령 전송
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME_PATROL', 'PENDING')")
         
         conn.commit()
-        return {"message": "Patrol resume/Emergency release command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
+        return {"message": "Emergency release command sent", "resumed_patrol": patrol['patrol_id'] if (patrol and not at_base) else None}
     finally:
         conn.close()
 
