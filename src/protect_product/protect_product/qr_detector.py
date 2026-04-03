@@ -12,11 +12,18 @@ class QrDetectorNode(Node):
         super().__init__('qr_detector_node')
         self.bridge = CvBridge()
         self.frame_count = 0
+        self.declare_parameter('ros_mode', True) # 기본값은 로봇 모드
+        ros_mode = self.get_parameter('ros_mode').value
 
+        # 카메라 모드에 따라 토픽 설정
+        if ros_mode:
+            self.topic_name = '/image_raw/compressed' # 로봇 토픽
+        else:
+            self.topic_name = '/rtsp_image'           # RTSP 브릿지 토픽
         # 발행: /qr_objs (좌표뿐만 아니라 '텍스트'도 담김)
         self.publisher = self.create_publisher(DetectionArray, '/qr_objs', 10)
         self.subscription = self.create_subscription(
-            CompressedImage, '/image_raw/compressed', self.callback, 1)
+            CompressedImage, self.topic_name, self.callback, 1)
 
         self.get_logger().info('QR 전처리 및 해석 노드 가동')
 

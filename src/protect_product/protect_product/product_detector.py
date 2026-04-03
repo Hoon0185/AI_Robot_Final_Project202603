@@ -13,11 +13,19 @@ class ProductDetectorNode(Node):
         self.model = YOLO(model_path)
         self.bridge = CvBridge()
 
+        self.declare_parameter('ros_mode', True) # 기본값은 로봇 모드
+        ros_mode = self.get_parameter('ros_mode').value
+
+        # 카메라 모드에 따라 토픽 설정
+        if ros_mode:
+            self.topic_name = '/image_raw/compressed' # 로봇 토픽
+        else:
+            self.topic_name = '/rtsp_image'           # RTSP 브릿지 토픽
         # 발행: /det_objs (과자 좌표 전달)
         self.publisher = self.create_publisher(DetectionArray, '/det_objs', 10)
         # 구독: (핑 지연 방지 큐 사이즈 1)
         self.subscription = self.create_subscription(
-            CompressedImage, '/image_raw/compressed', self.callback, 1)
+            CompressedImage, self.topic_name, self.callback, 1)
 
         self.get_logger().info('YOLO 물품 인식 노드 가동')
 

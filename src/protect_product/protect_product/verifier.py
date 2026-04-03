@@ -10,6 +10,15 @@ class VerifierNode(Node):
         super().__init__('verifier_node')
         self.bridge = CvBridge()
 
+        self.declare_parameter('ros_mode', True) # 기본값은 로봇 모드
+        ros_mode = self.get_parameter('ros_mode').value
+
+        # 카메라 모드에 따라 토픽 설정
+        if ros_mode:
+            self.topic_name = '/image_raw/compressed' # 로봇 토픽
+        else:
+            self.topic_name = '/rtsp_image'           # RTSP 브릿지 토픽
+
         # 1. 데이터베이스 연결
         db_path = "/home/bird99/Desktop/database/dmdata/product.db"
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -19,7 +28,7 @@ class VerifierNode(Node):
         self.result_pub = self.create_publisher(DetectionArray, '/verified_objs', 10)
 
         # 2. 3중 동기화 설정 (이미지, YOLO 결과, QR 결과)
-        self.img_sub = message_filters.Subscriber(self, CompressedImage, '/image_raw/compressed')
+        self.img_sub = message_filters.Subscriber(self, CompressedImage, self.topic_name)
         self.det_sub = message_filters.Subscriber(self, DetectionArray, '/det_objs')
         self.qr_sub = message_filters.Subscriber(self, DetectionArray, '/qr_objs')
 
