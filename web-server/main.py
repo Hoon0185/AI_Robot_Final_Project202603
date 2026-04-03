@@ -578,16 +578,24 @@ async def resume_patrol():
             if dist_to_base < 0.3:
                 at_base = True
 
-        if patrol and not at_base:
+        if patrol:
             patrol_id = patrol['patrol_id']
-            # 상태를 다시 '진행중'으로 복구
-            cursor.execute(
-                "UPDATE patrol_log SET status = '진행중', end_time = NULL WHERE patrol_id = %s",
-                (patrol_id,)
-            )
-            log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', {"patrol_id": patrol_id}, f"Resuming patrol {patrol_id}")
+            if not at_base:
+                # 기지 밖이므로 상태를 다시 '진행중'으로 복구
+                cursor.execute(
+                    "UPDATE patrol_log SET status = '진행중', end_time = NULL WHERE patrol_id = %s",
+                    (patrol_id,)
+                )
+                log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', {"patrol_id": patrol_id}, f"Resuming patrol {patrol_id}")
+            else:
+                # 기지 근처이므로 '완료'로 처리하여 UI에서 비상정지 상태 해제
+                cursor.execute(
+                    "UPDATE patrol_log SET status = '완료' WHERE patrol_id = %s",
+                    (patrol_id,)
+                )
+                log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', {"patrol_id": patrol_id}, f"Emergency release at base for patrol {patrol_id} (closeout)")
         else:
-            log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', None, "Emergency released at base (no patrol resume)")
+            log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', None, "Emergency released (no active patrol to resume)")
         
         # 기지에 정지상태이든 순찰중이었든 상관없이 비상정지 신호 해제를 위해 명령 전송
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME_PATROL', 'PENDING')")
