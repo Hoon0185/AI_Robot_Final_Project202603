@@ -198,11 +198,11 @@ class RobotLogicHandler:
 
     # 수동 조작 패널 - 부저
     def on_buzzer(self):
-        print("[LOGIC] 부저 작동")
+        print("[LOGIC] 부저 작동 (3회 비프)")
         if self.ros_interface:
-            self.ros_interface.trigger_buzzer(True)
+            self.ros_interface.beep_buzzer(3)
         elif self.is_debug:
-            print("[DEBUG] Buzzer sound activated")
+            print("[DEBUG] Buzzer sound activated (3 times)")
 
     # 수동 조작 패널 - 복귀 명령
     def on_return_patrol(self):

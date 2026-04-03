@@ -7,6 +7,7 @@ from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import json
 import threading
+import time
 from .inventory_db import InventoryDB
 
 class PatrolInterface:
@@ -56,6 +57,11 @@ class PatrolInterface:
         self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
         self.poll_thread.start()
 
+        # Remote Config Sync Loop (Interval, Start/End, etc.)
+        self.remote_interval_min = None
+        self.config_sync_thread = threading.Thread(target=self._sync_remote_config, daemon=True)
+        self.config_sync_thread.start()
+
     def _poll_remote_commands(self):
         """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""
         import time
@@ -98,6 +104,31 @@ class PatrolInterface:
             self.trigger_buzzer(True)
         elif cmd == "BUZZER_OFF":
             self.trigger_buzzer(False)
+
+    def _sync_remote_config(self):
+        """서버 대시보드로부터 순찰 설정을 주기적으로 확인하여 노드에 반영합니다."""
+        import time
+        while rclpy.ok():
+            try:
+                config = self.db.get_patrol_config()
+                if config:
+                    # 1. 순찰 간격 동기화
+                    h = config.get('interval_hour', 0)
+                    m = config.get('interval_minute', 0)
+                    new_interval = float(h * 60 + m)
+
+                    if new_interval > 0 and new_interval != self.remote_interval_min:
+                        self.node.get_logger().info(f"[SYNC] New patrol interval from DB: {new_interval} min")
+                        success, res = self.set_patrol_interval(new_interval)
+                        if success:
+                            self.remote_interval_min = new_interval
+                            self.node.get_logger().info(f"[SYNC] Successfully updated /patrol_scheduler parameter.")
+
+            except Exception as e:
+                self.node.get_logger().error(f"[SYNC] Config sync error: {e}")
+            
+            # 10초마다 확인
+            time.sleep(10.0)
 
     def _status_cb(self, msg):
         try:
@@ -155,11 +186,35 @@ class PatrolInterface:
             return False, str(e)
 
     def trigger_buzzer(self, state: bool = True):
-        """부저를 켜거나 끕니다."""
+        """부저를 단순히 켜거나 끕니다."""
         msg = Bool()
         msg.data = state
         self.buzzer_pub.publish(msg)
         return True, f"Buzzer {'ON' if state else 'OFF'} sent"
+
+    def beep_buzzer(self, count: int = 3, duration: float = 0.2):
+        """부저를 삐, 삐, 삐 형태로 지정된 횟수만큼 울립니다. (비동기 처리)"""
+        def run_beep():
+            for i in range(count):
+                # 부저 켜기
+                msg_on = Bool()
+                msg_on.data = True
+                self.buzzer_pub.publish(msg_on)
+                time.sleep(duration)
+                
+                # 부저 끄기
+                msg_off = Bool()
+                msg_off.data = False
+                self.buzzer_pub.publish(msg_off)
+                
+                # 비프음 사이 간격 (마지막 회차 제외)
+                if i < count - 1:
+                    time.sleep(0.1)
+        
+        # UI 스레드를 방해하지 않도록 별도 스레드에서 실행
+        beep_thread = threading.Thread(target=run_beep, daemon=True)
+        beep_thread.start()
+        return True, f"Buzzer beep sequence started ({count} times)"
 
     def trigger_emergency_stop(self):
         """비상 정지 신호를 발행합니다."""

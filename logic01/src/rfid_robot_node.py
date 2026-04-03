@@ -1,6 +1,11 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from std_msgs.msg import Bool
+try:
+    from turtlebot3_msgs.msg import Sound
+except ImportError:
+    Sound = None
 import RPi.GPIO as GPIO
 from mfrc522 import SimpleMFRC522
 import math
@@ -31,6 +36,20 @@ class RFIDRobotNode(Node):
             '/initialpose', 
             10
         )
+        
+        # --- 추가: 부저 제어 통합 ---
+        # PC(UI)에서 보내는 부저 신호를 구독
+        self.buzzer_sub = self.create_subscription(
+            Bool,
+            '/robot_buzzer',
+            self.buzzer_callback,
+            10
+        )
+        # 터틀봇3 실제 사운드 토픽 발행
+        if Sound:
+            self.sound_pub = self.create_publisher(Sound, '/sound', 10)
+        else:
+            self.get_logger().error('turtlebot3_msgs.Sound not found. Buzzer will not work.')
         
         # RFID 리딩 타이머 (0.2초 간격)
         self.timer = self.create_timer(0.2, self.read_rfid_callback)
@@ -68,6 +87,18 @@ class RFIDRobotNode(Node):
         
         self.initial_pose_pub.publish(msg)
         self.get_logger().warn(f'Landmark Corrected! Tag ID: {tag_id} -> Coords: ({c["x"]}, {c["y"]})')
+
+    def buzzer_callback(self, msg):
+        """PC의 UI 신호를 터틀봇3 사운드로 변환하여 발행합니다."""
+        if not Sound:
+            return
+            
+        sound_msg = Sound()
+        # msg.data (Bool)가 True면 소리 켜기(1), False면 소리 끄기(0)
+        sound_msg.value = 1 if msg.data else 0
+        self.sound_pub.publish(sound_msg)
+        mode = "ON" if msg.data else "OFF"
+        self.get_logger().info(f'Buzzer {mode} signal published to /sound')
 
 def main(args=None):
     rclpy.init(args=args)
