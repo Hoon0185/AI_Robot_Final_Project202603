@@ -218,7 +218,7 @@ class VirtualRobot:
             # [추가] 기지에 있다면 재개하지 않음 (유령 순찰 방지)
             dist_to_base = (self.current_pos[0]**2 + self.current_pos[1]**2)**0.5
             
-            if self.last_index < len(self.patrol_path) and dist_to_base > 0.1:
+            if self.last_index < len(self.patrol_path) and dist_to_base > 0.3:
                 self.safe_print("\n" + "="*40)
                 self.safe_print(f"⏯️ [순찰 재개] {self.last_index + 1}번 웨이포인트부터 재개합니다.")
                 self.safe_print("="*40)

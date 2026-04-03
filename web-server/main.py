@@ -563,7 +563,7 @@ async def resume_patrol():
         cursor.execute("""
             SELECT patrol_id FROM patrol_log 
             WHERE status = '중단' 
-            AND timestamp > NOW() - INTERVAL 1 HOUR
+            AND start_time > NOW() - INTERVAL 1 HOUR
             ORDER BY patrol_id DESC LIMIT 1
         """)
         patrol = cursor.fetchone()
@@ -574,7 +574,8 @@ async def resume_patrol():
         at_base = False
         if robot_pos:
             dist_to_base = (robot_pos['last_x']**2 + robot_pos['last_y']**2)**0.5
-            if dist_to_base < 0.2:
+            # 기지 근처 판정 완화: 0.2m -> 0.3m
+            if dist_to_base < 0.3:
                 at_base = True
 
         if patrol and not at_base:
