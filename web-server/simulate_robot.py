@@ -209,8 +209,21 @@ class VirtualRobot:
             self.last_index = 0 # 처음부터 시작
         else:
             # 비상 해제/재개 시나리오
-            if self.status != STATUS_EMERGENCY_STOP:
-                return # 이미 작동 중이거나 비상 정지 상태 아님
+            
+            # 수동으로 3번(재개)을 누른 경우 서버에도 알림
+            if not remote:
+                try:
+                    res = requests.post(f"{BASE_URL}/patrol/resume", timeout=5)
+                    if res.status_code == 200:
+                        self.safe_print("✅ 서버에 비상 해제 및 재개 신호를 보냈습니다.")
+                    else:
+                        self.safe_print(f"⚠️ 서버 신호 전송 실패 (상태 코드: {res.status_code})")
+                except Exception as e:
+                    self.safe_print(f"⚠️ 서버 연결 실패 (오류: {e})")
+
+            # 이미 작동 중이라면 중복 실행 방지
+            if self.status == STATUS_PATROLLING:
+                return
             
             # 만약 진행 중이었던 순찰 정보(last_index)가 유효한지 확인
             # (last_index가 patrol_path 길이보다 작으면 갈 곳이 남은 것)
@@ -225,7 +238,7 @@ class VirtualRobot:
             else:
                 self.safe_print("\n🔓 [비상 해제] 현재 위치(기지 근처 또는 완료)에서 비상을 해제합니다.")
                 self.status = STATUS_IDLE
-                if remote: self.print_menu()
+                if not remote: self.print_menu()
                 return
 
 
