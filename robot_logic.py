@@ -9,14 +9,17 @@ if patrol_main_path not in sys.path:
 
 try:
     from patrol_main.patrol_interface import PatrolInterface
+    from patrol_main.obstacle_interface import ObstacleInterface
 except ImportError:
     # 패키지 구조에 따라 직접 참조가 필요한 경우 하드코딩된 경로 추가
     sys.path.append(os.path.join(patrol_main_path, 'patrol_main'))
     try:
         from patrol_interface import PatrolInterface
+        from obstacle_interface import ObstacleInterface
     except ImportError:
         # 디버그 모드를 위해 임포트 실패 시 pass 처리 (is_debug에서 걸러짐)
         PatrolInterface = None
+        ObstacleInterface = None
 
 class RobotLogicHandler:
     def __init__(self, ui_instance, debug_mode=False):
@@ -25,12 +28,17 @@ class RobotLogicHandler:
 
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
+        self.obstacle_manager = None
         if not self.is_debug:
             try:
                 if PatrolInterface:
                     self.ros_interface = PatrolInterface()
                 else:
                     raise ImportError("PatrolInterface module not found.")
+                if ObstacleInterface:
+                    self.obstacle_manager = ObstacleInterface()
+                else:
+                    raise ImportError("ObstacleInterface module not found.")
             except Exception as e:
                 print(f"[ERROR] ROS 2 Interface failed to start: {e}")
                 print("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
@@ -77,15 +85,17 @@ class RobotLogicHandler:
         self.update_alarm_list()
 
         # 서버에서 초기 설정값 가져와서 ROS 및 UI 동기화
+        if self.obstacle_manager:
+            # 1. 장애물 대기 시간 (UI 값 설정)
+            self.current_obstacle_sec = self.obstacle_manager.current_wait_time
+            self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
+            print(f"[LOGIC] 인터페이스에서 가져온 장애물 대기시간 {self.current_obstacle_sec}초 세팅")
+
         if self.ros_interface:
             config = self.ros_interface.get_db_config()
             if config:
                 print(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
                 try:
-                    # 1. 장애물 대기 시간 (UI 값 설정)
-                    self.current_obstacle_sec = config.get('avoidance_wait_time', 10)
-                    self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
-
                     # 2. 순찰 간격 (UI 값 설정 및 ROS 파라미터 적용)
                     h = config.get('interval_hour', 0)
                     m = config.get('interval_minute', 0)
@@ -153,16 +163,11 @@ class RobotLogicHandler:
     def on_obstacle_set(self, val):
         """장애물 대기 시간 설정 (상태 유지하며 DB 동기화)"""
         self.current_obstacle_sec = int(val)
-        h, m = divmod(self.current_patrol_min, 60)
-        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (순찰 간격 {h}:{m} 유지)")
+        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 요청)")
 
-        if self.ros_interface:
-            # DB 서버 업데이트 (현재 순찰 간격 유지)
-            self.ros_interface.sync_config_to_db(
-                avoidance_wait=self.current_obstacle_sec,
-                hour=h,
-                minute=m
-            )
+        if self.obstacle_manager:
+            success, msg = self.obstacle_manager.update_db_and_sync(val)
+            print(f"[LOGIC] {msg}")
         elif self.is_debug:
             print(f"[DEBUG] DB 연결 없이 장애물 대기 시간 업데이트: {val}s")
 

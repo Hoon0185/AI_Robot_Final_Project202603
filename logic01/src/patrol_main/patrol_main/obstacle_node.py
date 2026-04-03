@@ -8,7 +8,7 @@ from nav2_msgs.srv import ClearEntireCostmap # 유령 장애물 방지
 from nav_msgs.msg import Path # 경로 수신용 메시지
 from std_msgs.msg import Bool
 import copy # 라이다 메시지 복사용
-from .obstacle_interface import ObstacleInterface
+from .inventory_db import InventoryDB
 from rclpy.parameter import Parameter
 
 
@@ -16,8 +16,15 @@ class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
 
-    self.interface = ObstacleInterface()
-    db_wait_time = self.interface.current_wait_time # DB에서 초기값 동기화
+    self.db = InventoryDB(base_url="http://16.184.56.119/api")
+    db_wait_time = 5
+    try:
+      config = self.db.get_patrol_config()
+      if config:
+        db_wait_time = int(config.get('avoidance_wait_time', 5))
+        self.get_logger().info(f"[DB] 초기 대기시간 로드 성공: {db_wait_time}초")
+    except Exception as e:
+      self.get_logger().error(f"[DB] 초기 데이터 로드 실패: {e}")
 
     self.declare_parameter('obstacle_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
 

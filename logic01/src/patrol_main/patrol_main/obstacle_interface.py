@@ -21,6 +21,7 @@ class ObstacleInterface:
 
     # ---- 기본값 및 상태 관리 변수 ----
     self.current_wait_time = 5 #  기본 대기 시간(초)
+    self.is_db_connected = True
     self.pending_data = None # DB 저장에 실패한 임시데이터 저장 변수
 
     # ---- DB 저장 실패 재시도 타이머 설정 (10초) ----
@@ -45,16 +46,15 @@ class ObstacleInterface:
         db_value = config.get('avoidance_wait_time', self.current_wait_time) # DB에서 대기시간 추출, 없으면 기본값 5초 사용
 
         self.current_wait_time = int(db_value)
-        self.set_wait_time(self.current_wait_time) # 로봇 노드에 적용
         self.node.get_logger().info(f"[API] 초기값 동기화 성공: {self.current_wait_time}초")
         return self.current_wait_time
       else:
-        self.node.get_logger().warn("서버 응답 에러: 기본 대기시간 5초를 사용합니다.")
-        return 5 # 서버 응답 실패 시 기본값 반환
+        self.node.get_logger().warn(f"서버 응답 에러: 기본 대기시간 {self.current_wait_time}초를 사용합니다.")
+        return self.current_wait_time # 서버 응답 실패 시 기본값 반환
 
     except Exception as e:
       self.node.get_logger().error(f"[API] 서버 연결 실패: {e}")
-      return 5 # DB 연결 실패 시 기본값 반환
+      return self.current_wait_time # DB 연결 실패 시 기본값 반환
 
 
   def update_db_and_sync(self, seconds:int):
