@@ -26,5 +26,17 @@ class ViewerNode(Node):
                 print(f"[PRODUCT] 이름: {msg.class_names[i]:<15} (ID: {msg.class_ids[i]+1})")
         print("="*50)
 
-def main():
-    rclpy.init(); node = ViewerNode(); rclpy.spin(node)
+def main(args=None):
+    rclpy.init(args=args)
+    node = ViewerNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
