@@ -1,12 +1,13 @@
 import os
-from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import List, Optional
 from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
+import json
 
 # 환경 변수 로드 (.env 파일이 있으면 읽어옴)
 load_dotenv()
@@ -122,6 +123,49 @@ def get_db_connection():
     except Error as e:
         print(f"Error connecting to MySQL ({db_mode}): {e}")
         return None
+
+# --- 활동 로그(Activity Log) 시스템 ---
+
+def log_activity(source, target, activity_type, action=None, payload=None, message=None, status='SUCCESS'):
+    """데이터베이스에 활동 로그를 기록합니다."""
+    conn = get_db_connection()
+    if not conn:
+        print(f"⚠️ [LOG_FAILED] {message}")
+        return
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO activity_log (source, target, activity_type, action, payload, message, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        payload_json = json.dumps(payload, ensure_ascii=False) if payload else None
+        cursor.execute(query, (source, target, activity_type, action, payload_json, message, status))
+        conn.commit()
+    except Exception as e:
+        print(f"❌ [LOG_ERROR] {e}")
+    finally:
+        conn.close()
+
+def cleanup_logs(days=7):
+    """지정된 기간(7일)보다 오래된 로그를 삭제합니다."""
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cursor = conn.cursor()
+        limit_date = datetime.now() - timedelta(days=days)
+        cursor.execute("DELETE FROM activity_log WHERE timestamp < %s", (limit_date,))
+        conn.commit()
+        print(f"🧹 [CLEANUP] Deleted logs older than {limit_date}")
+    except Exception as e:
+        print(f"❌ [CLEANUP_ERROR] {e}")
+    finally:
+        conn.close()
+
+@app.on_event("startup")
+async def startup_event():
+    # 서버 기동 시 오래된 로그 정리
+    cleanup_logs(7)
+    log_activity('web_server', 'all', 'STATUS_CHANGE', 'SERVER_START', None, 'Gilbot API Server started.')
 
 @app.get("/")
 async def root():
@@ -357,6 +401,8 @@ async def start_patrol():
         # 2. 로봇 명령 큐에 추가
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('START_PATROL', 'PENDING')")
         
+        log_activity('user', 'robot', 'COMMAND', 'START_PATROL', None, 'User initiated patrol start.')
+        
         conn.commit()
         return {"message": "Patrol started successfully", "patrol_id": patrol_id}
     except Error as e:
@@ -407,6 +453,8 @@ async def stop_patrol():
         # 1. 일단 로봇 명령 큐에 비상정지 추가 (최우선)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMERGENCY_STOP', 'PENDING')")
         
+        log_activity('user', 'robot', 'COMMAND', 'EMERGENCY_STOP', None, 'User initiated emergency stop!')
+
         # 2. 진행중인 순찰이 있다면 '중단'으로 변경
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
@@ -513,6 +561,10 @@ async def list_products():
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM product_master ORDER BY product_id DESC")
+        
+        # 로봇 부팅 시 상품 리스트 로딩 로그 기록
+        log_activity('robot', 'web_server', 'BOOT', 'GET_PRODUCTS', None, 'Robot requested product master list.')
+        
         return cursor.fetchall()
     finally:
         conn.close()
@@ -773,6 +825,10 @@ async def get_patrol_config():
             ORDER BY config_id DESC LIMIT 1
         """)
         config = cursor.fetchone()
+        
+        # 로봇 부팅 시 설정 로딩 로그 기록
+        log_activity('robot', 'web_server', 'BOOT', 'GET_CONFIG', None, 'Robot requested patrol configuration.')
+
         if not config:
             return {
                 "avoidance_wait_time": 10,
