@@ -32,10 +32,9 @@ class RobotLogicHandler:
                 else:
                     raise ImportError("PatrolInterface module not found.")
             except Exception as e:
-                print(f"[ERROR] ROS 2 Interface failed to start: {e}")
-                print("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
+                self._log("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
         else:
-            print("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
+            self._log("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
 
         self._setup_connections()
         self.current_patrol_min = 60
@@ -46,9 +45,13 @@ class RobotLogicHandler:
         from PyQt6.QtCore import QTimer
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.sync_ros_status)
-        # 맵 실시간 위치 동기화 함수 추가 연결
-        self.status_timer.timeout.connect(self.update_minimap_pose)
         self.status_timer.start(1000) # 1초마다 동기화
+
+    def _log(self, message):
+        """터미널 출력(print)과 UI 콘솔(append_log)에 동시에 메시지를 남깁니다."""
+        print(message)
+        if hasattr(self.ui, 'append_log'):
+            self.ui.append_log(message)
 
     def _setup_connections(self):
         """
@@ -82,7 +85,7 @@ class RobotLogicHandler:
         if self.ros_interface:
             config = self.ros_interface.get_db_config()
             if config:
-                print(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
+                self._log(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
                 try:
                     # 1. 장애물 대기 시간 (UI 값 설정)
                     self.current_obstacle_sec = config.get('avoidance_wait_time', 10)
@@ -97,10 +100,10 @@ class RobotLogicHandler:
                         self.ros_interface.set_patrol_interval(float(self.current_patrol_min))
 
                 except Exception as e:
-                    print(f"[ERROR] 초기 설정 반영 중 오류: {e}")
+                    self._log(f"[ERROR] 초기 설정 반영 중 오류: {e}")
         elif self.is_debug:
             # 디버그 모드 시 기본 UI 초기값 설정
-            print("[DEBUG] 초기 UI 데이터를 가상으로 세팅합니다.")
+            self._log("[DEBUG] 초기 UI 데이터를 가상으로 세팅합니다.")
             self.ui.obstacle_row['slider'].setValue(10)
             self.ui.patrol_row['slider'].setValue(60)
 
@@ -126,6 +129,10 @@ class RobotLogicHandler:
             else:
                 display_text = f"{time_info} ({s_type})"
 
+            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
+            if not self.ros_interface.is_robot_online():
+                display_text += " [OFFLINE]"
+
             self.ui.set_last_patrol_time(display_text)
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
@@ -134,7 +141,7 @@ class RobotLogicHandler:
         """순찰 간격 설정 (상태 유지하며 DB 동기화)"""
         self.current_patrol_min = int(val)
         h, m = divmod(self.current_patrol_min, 60)
-        print(f"[LOGIC] 순찰 간격 {val}분 설정 ({h}시간 {m}분)")
+        self._log(f"[LOGIC] 순찰 간격 {val}분 설정 ({h}시간 {m}분)")
 
         if self.ros_interface:
             # 1. ROS 파라미터 업데이트
@@ -146,13 +153,13 @@ class RobotLogicHandler:
                 minute=m
             )
         elif self.is_debug:
-            print(f"[DEBUG] DB 연결 없이 설정값 로컬 업데이트: {h}h {m}m")
+            self._log(f"[DEBUG] DB 연결 없이 설정값 로컬 업데이트: {h}h {m}m")
 
     def on_obstacle_set(self, val):
         """장애물 대기 시간 설정 (상태 유지하며 DB 동기화)"""
         self.current_obstacle_sec = int(val)
         h, m = divmod(self.current_patrol_min, 60)
-        print(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (순찰 간격 {h}:{m} 유지)")
+        self._log(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (순찰 간격 {h}:{m} 유지)")
 
         if self.ros_interface:
             # DB 서버 업데이트 (현재 순찰 간격 유지)
@@ -162,7 +169,7 @@ class RobotLogicHandler:
                 minute=m
             )
         elif self.is_debug:
-            print(f"[DEBUG] DB 연결 없이 장애물 대기 시간 업데이트: {val}s")
+            self._log(f"[DEBUG] DB 연결 없이 장애물 대기 시간 업데이트: {val}s")
 
     # 재고 알림
     def update_alarm_list(self):
@@ -188,76 +195,70 @@ class RobotLogicHandler:
 
     # 수동 조작 패널 - 수동 조작
     def on_move_command(self, direction):
-        print(f"[LOGIC] 수동 이동: {direction}")
         if self.ros_interface:
+            self._log(f"[LOGIC] 수동 이동: {direction}")
             self.ros_interface.move_robot(direction)
         elif self.is_debug:
-            print(f"[DEBUG] Robot moving to {direction}")
+            self._log(f"[DEBUG] 수동 이동: {direction}")
 
     # 수동 조작 패널 - 부저
     def on_buzzer(self):
-        print("[LOGIC] 부저 작동")
         if self.ros_interface:
             self.ros_interface.trigger_buzzer(True)
+            self._log("[LOGIC] 부저 작동")
         elif self.is_debug:
-            print("[DEBUG] Buzzer sound activated")
+            self._log("[DEBUG] 부저 작동")
 
     # 수동 조작 패널 - 복귀 명령
     def on_return_patrol(self):
-        print("[LOGIC] 복귀 명령 송출")
         if self.ros_interface:
             self.ros_interface.return_to_base()
+            self._log("[LOGIC] 복귀 명령 송출")
         elif self.is_debug:
-            print("[DEBUG] Returning to home station")
+            self._log("[DEBUG] 복귀 명령 송출")
 
     # 수동 조작 패널 - 비상 정지
     def on_emergency(self):
-        print("[LOGIC] 비상 정지!")
+        self._log("[LOGIC] 비상 정지!")
         if self.ros_interface:
             self.ros_interface.trigger_emergency_stop()
+            self._log("[LOGIC] 비상 정지!")
         elif self.is_debug:
-            print("[DEBUG] EMERGENCY STOP TRIGGERED")
+            self._log("[DEBUG] 비상 정지!")
 
     # 초기 위치 명령 패널 - 예 - 복귀
     # 기능은 수동 조작 패널의 복귀 명령과 같음
     def on_reset_confirmed(self):
-        print("[LOGIC] 원점 리셋")
         if self.ros_interface:
             self.ros_interface.reset_position()
+            self._log("[LOGIC] 초기 위치로")
         elif self.is_debug:
-            print("[DEBUG] Resetting to origin")
+            self._log("[DEBUG] 초기 위치로")
 
     # 수동 순찰 명령
     def on_patrol_confirmed(self):
         """수동 순찰 명령 팝업에서 '시작'을 클릭했을 때 호출"""
-        print("[LOGIC] 수동 순찰 명령 확인됨. 순찰 로직 시작 프로세스 수행 가능.")
         if self.ros_interface:
-            # TODO: 담당자 구현 영역 (예: 순찰 노드 활성화 신호 송출 등)
-            pass
+            self.ros_interface.trigger_manual_patrol()
+            self._log("[LOGIC] 수동 순찰 명령. 순찰 시작")
         elif self.is_debug:
-            print("[DEBUG] Manual patrol sequence started in simulation")
+            self._log("[DEBUG] 수동 순찰 명령. 순찰 시작")
 
-# --- 맵 패널 업데이트 로직 추가 ---
+    # --- 맵 패널 업데이트 로직 추가 ---
     def update_minimap_pose(self):
         """ROS 실시간 좌표를 가져와 MinimapWidget(minimap.py)에 반영합니다."""
-
         # UI 인스턴스에 minimap 위젯이 실제로 존재하는지 먼저 확인
         if not hasattr(self.ui, 'minimap') or self.ui.minimap is None:
-            # print("[DEBUG] UI에 minimap 객체가 없습니다.") # 확인용 (필요시 주석 해제)
+            self._log("minimap 객체가 없습니다.")
             return
-
         if self.is_debug:
-            # 디버그 모드일 때 미니맵에 가상 로봇 위치(0,0) 전송
-            # print("[DEBUG] 미니맵 디버그 좌표 전송 시도")
+            #self._log("[DEBUG] 미니맵 디버그 좌표 전송 시도")
             self.ui.minimap.set_robot_pose(0.0, 0.0)
             return
-
         if not self.ros_interface:
             return
-
         # 인터페이스로부터 최신 상태 데이터 획득
         status = self.ros_interface.get_recent_patrol_time()
-
         # 데이터가 있고, 내부에 좌표 정보(예: robot_x, robot_y)가 포함되어 있다면 미니맵 갱신
         if status and 'robot_x' in status and 'robot_y' in status:
             curr_x = status.get('robot_x', 0.0)
