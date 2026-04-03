@@ -98,7 +98,7 @@ class PatrolInterface:
         """수신된 원격 명령을 ROS 토픽으로 변환하여 발행합니다."""
         if cmd == "START_PATROL":
             self.trigger_manual_patrol()
-        elif cmd == "RETURN_HOME":
+        elif cmd == "RETURN_HOME" or cmd == "RETURN_TO_BASE":
             self.return_to_base()
         elif cmd == "EMERGENCY_STOP":
             self.trigger_emergency_stop()

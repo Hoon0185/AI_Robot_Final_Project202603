@@ -49,6 +49,7 @@ class PatrolNode(Node):
         # 6. 실시간 위치 리포팅 (서버 대시보드용)
         self.current_x = 0.0
         self.current_y = 0.0
+        self.pose_received = False # 위치 정보 수신 여부 확인 (0,0 보고 방지)
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
         self.pose_timer = self.create_timer(2.0, self.report_pose_to_server)
@@ -221,7 +222,15 @@ class PatrolNode(Node):
                 }
 
                 if target_barcode not in self.reported_tags:
-                    self.db.report_detection(target_barcode, detected, 1.0)
+                    self.db.report_detection(
+                        tag_barcode=target_barcode,
+                        patrol_id=self.current_patrol_id or 0,
+                        waypoint_id=1, # 시뮬레이션 기본 ID
+                        x=self.current_x,
+                        y=self.current_y,
+                        detected_barcode=detected,
+                        confidence=1.0
+                    )
                     self.reported_tags.add(target_barcode)
 
                 self._delay_timer = self.create_timer(1.0, self.proceed_to_next_shelf)
@@ -289,9 +298,14 @@ class PatrolNode(Node):
         """로봇의 현재 좌표(x, y)를 실시간으로 업데이트"""
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
+        self.pose_received = True
 
     def report_pose_to_server(self):
         """정해진 주기(2초)마다 서버로 현재 위치 및 상태 보고 (Keep-alive Heartbeat)"""
+        # 위치 정보를 한 번도 받지 못했다면 보고하지 않음 (0,0 보고 방지)
+        if not self.pose_received:
+            return
+
         # 상태 결정 로직
         status = "IDLE"
         if self.is_patrolling:
@@ -359,6 +373,8 @@ class PatrolNode(Node):
                     tag_barcode=target_barcode,
                     patrol_id=self.current_patrol_id or 0,
                     waypoint_id=waypoint_id,
+                    x=self.current_x,
+                    y=self.current_y,
                     detected_barcode=self.last_detection["detected_barcode"] if self.last_detection["detected_barcode"] else None,
                     yolo_class_id=detected_yolo_id,
                     confidence=0.99 if found else 0.0

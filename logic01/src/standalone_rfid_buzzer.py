@@ -4,6 +4,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_msgs.msg import Bool, String
 import json
 import datetime
+import urllib.request
 try:
     from turtlebot3_msgs.msg import Sound
 except ImportError:
@@ -53,9 +54,9 @@ class RFIDRobotNode(Node):
         else:
             self.get_logger().error('turtlebot3_msgs.Sound not found. Buzzer will not work.')
         
-        # --- 추가: PC UI 상태 전송 (Heartbeat) ---
+        # --- 추가: PC UI 상태 전송 (Heartbeat 제외 - patrol_node에서 수행) ---
         self.heartbeat_pub = self.create_publisher(Bool, '/robot_heartbeat', 10)
-        self.status_timer = self.create_timer(1.0, self.publish_heartbeat)
+        # self.status_timer = self.create_timer(1.0, self.publish_heartbeat)
 
         self.get_logger().info('--- Standalone RFID & Buzzer Node (v1.0.2) Started ---')
         self.get_logger().info('Robot Heartbeat active on /robot_heartbeat.')
@@ -92,19 +93,21 @@ class RFIDRobotNode(Node):
         self.get_logger().warn(f'Landmark Corrected! Tag ID: {tag_id} -> Coords: ({c["x"]}, {c["y"]})')
 
     def buzzer_callback(self, msg):
-        """PC의 UI 신호를 터틀봇3 사운드로 변환하여 발행합니다."""
+        """PC의 UI 신호를 기본 터틀봇3 사운드 토픽(/sound)으로 발행합니다."""
         if not Sound:
             return
             
         sound_msg = Sound()
-        # msg.data (Bool)가 True면 소리 켜기(1), False면 소리 끄기(0)
-        sound_msg.value = 1 if msg.data else 0
+        # msg.data (Bool)가 True면 비프음(3 - ERROR 또는 1 - ON), False면 끄기(0)
+        # 터틀봇3 기본 부저의 경우 3번(ERROR) 또는 4번(BUTTON)이 비프음으로 잘 들립니다.
+        sound_msg.value = 3 if msg.data else 0
         self.sound_pub.publish(sound_msg)
+        
         mode = "ON" if msg.data else "OFF"
-        self.get_logger().info(f'Buzzer {mode} signal published to /sound')
+        self.get_logger().info(f'Default TB3 Buzzer {mode} (Index: {sound_msg.value}) published to /sound')
 
     def publish_heartbeat(self):
-        """PC UI가 로봇이 살아있음을 알 수 있도록 주기적으로 하트비트 토픽 발행"""
+        """PC UI가 로봇이 살아있음을 알 수 있도록 주기적으로 하트비트 토픽 발행 (웹 보고는 제외)"""
         msg = Bool()
         msg.data = True
         self.heartbeat_pub.publish(msg)
