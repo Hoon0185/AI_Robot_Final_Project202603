@@ -69,6 +69,7 @@ class PatrolInterface:
     def _poll_remote_commands(self):
         """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""
         import time
+        self.processed_ids = set() # 이미 처리한 중복 ID 방어용
         while rclpy.ok():
             try:
                 data = self.db.get_latest_command()
@@ -76,20 +77,27 @@ class PatrolInterface:
                     cmd_name = data.get('command_type') or data.get('command')
                     cmd_id = data.get('command_id')
                     
-                    # 새로운 ID의 명령일 경우에만 실행
-                    if cmd_id is not None and cmd_id != self.last_cmd_id:
-                        self.node.get_logger().info(f"[REMOTE] New command (ID:{cmd_id}): {cmd_name}")
-                        self._execute_remote_command(cmd_name)
-                        
-                        # 실행 직후 즉시 로컬 ID 업데이트하여 중복 실행 방지
-                        self.last_cmd_id = cmd_id
-                        
-                        # 서버에 완료 보고
-                        success = self.db.complete_command(cmd_id)
-                        if success:
-                            self.node.get_logger().info(f"[REMOTE] Command {cmd_id} marked as COMPLETED on server.")
-                        else:
-                            self.node.get_logger().warn(f"[REMOTE] Failed to mark command {cmd_id} as COMPLETED.")
+                    # 1. ID가 비어있거나 이미 로컬에서 처리한 ID 또는 마지막 ID와 같으면 패스
+                    if cmd_id is None or cmd_id == self.last_cmd_id or cmd_id in self.processed_ids:
+                        time.sleep(2.0)
+                        continue
+
+                    self.node.get_logger().info(f"[REMOTE] New command received (ID: {cmd_id}, Name: {cmd_name})")
+                    self.node.get_logger().info(f"[DEBUG] last_id: {self.last_cmd_id}, current_id: {cmd_id}, type: {type(cmd_id)}")
+                    
+                    # 2. 명령 실행
+                    self._execute_remote_command(cmd_name)
+                    
+                    # 3. 로컬 상태 즉시 업데이트
+                    self.last_cmd_id = cmd_id
+                    self.processed_ids.add(cmd_id)
+                    
+                    # 4. 서버에 완료 보고
+                    success = self.db.complete_command(cmd_id)
+                    if success:
+                        self.node.get_logger().info(f"[REMOTE] Command {cmd_id} marked as COMPLETED on server.")
+                    else:
+                        self.node.get_logger().warn(f"[REMOTE] Failed to mark command {cmd_id} as COMPLETED. But local lock applied.")
             except Exception as e:
                 self.node.get_logger().error(f"[REMOTE] Polling error: {e}")
             time.sleep(2.0)
