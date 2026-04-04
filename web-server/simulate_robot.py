@@ -36,6 +36,8 @@ STOP_PATROL_URL = f"{BASE_URL}/patrol/stop"
 LIST_PRODUCTS_URL = f"{BASE_URL}/products"
 CLEAR_COMMAND_URL = f"{BASE_URL}/robot/command/clear_pending"
 POSE_URL = f"{BASE_URL}/robot/pose"
+ALERT_URL = f"{BASE_URL}/robot/alert"
+ALERT_CLEAR_URL = f"{BASE_URL}/robot/alert/clear"
 
 # Robot Status
 STATUS_IDLE = "IDLE"
@@ -154,6 +156,18 @@ class VirtualRobot:
     def send_pose(self, odom_x, odom_y):
         try:
             requests.post(POSE_URL, json={"odom_x": round(odom_x, 2), "odom_y": round(odom_y, 2)})
+        except:
+            pass
+
+    def notify_alert(self, message):
+        try:
+            requests.post(ALERT_URL, json={"message": message})
+        except:
+            pass
+
+    def clear_alert(self):
+        try:
+            requests.post(ALERT_CLEAR_URL)
         except:
             pass
 
@@ -286,9 +300,12 @@ class VirtualRobot:
 
             # 회피 대기 시나리오 (30% 확률)
             if i < len(self.patrol_path) - 1 and random.random() < 0.3:
-                self.safe_print(f"⚠️ [장애물 감지] 이동 경로에 장애물이 있습니다. {self.avoidance_time}초 대기...")
+                msg = f"⚠️ [장애물 감지] 이동 경로에 장애물이 있습니다. {self.avoidance_time}초 대기..."
+                self.safe_print(msg)
+                self.notify_alert("우회로 탐색 중...")
                 if not self.interruptible_sleep(self.avoidance_time):
                     break
+                self.clear_alert()
 
         if self.status != STATUS_PATROLLING:
             self.safe_print("🛑 순찰이 중단되었습니다.")
