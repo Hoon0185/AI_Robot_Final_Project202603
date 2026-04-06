@@ -31,8 +31,7 @@ xset -dpms 2>/dev/null
 xset s noblank 2>/dev/null
 
 # 4. Launch Chromium in Kiosk Mode (Dynamic IP Detection)
-SERVER_IP=$(hostname -I | awk '{print $1}')
-TARGET_URL="http://${SERVER_IP}/hmi/"
+TARGET_URL="http://16.184.56.119:8000/hmi/"
 
 # 보안 경고 무시 및 안전한 오리진 강제 지정
 SECURITY_FLAGS="--ignore-certificate-errors --allow-running-insecure-content --unsafely-treat-insecure-origin-as-secure=$TARGET_URL"
