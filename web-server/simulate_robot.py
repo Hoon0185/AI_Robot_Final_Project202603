@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional
 
 # --- Configuration ---
-LOCAL_URL = "http://localhost:8000/api"
+LOCAL_URL = "http://localhost:8000"
 SERVER_URL = "http://16.184.56.119/api"
 
 # --- Argument Parsing & Environment Selection ---
