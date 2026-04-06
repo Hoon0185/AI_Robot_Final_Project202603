@@ -6,14 +6,23 @@ from cv_bridge import CvBridge
 from ultralytics import YOLO
 import cv2
 from pyzbar.pyzbar import decode
+from ament_index_python.packages import get_package_share_directory
+import os
 
 class DetectorNode(Node):
     def __init__(self):
         super().__init__('detector_node')
         self.frame_count = 0
 
-        # 1. 모델 로드
-        model_path = "/home/bird99/Desktop/database/heavy/products.pt"
+        # 1. 모델 로드 (동적 경로 사용)
+        pkg_dir = get_package_share_directory('protect_product')
+        model_path = os.path.join(pkg_dir, 'models', 'products.pt')
+        
+        # 만약 설치 경로가 아닌 소스 경로에서 실행 중일 경우 대비
+        if not os.path.exists(model_path):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_dir, '..', 'models', 'products.pt')
+            
         self.model = YOLO(model_path)
         self.bridge = CvBridge()
 
@@ -25,8 +34,11 @@ class DetectorNode(Node):
         self.get_logger().info('YOLO(물체) + pyzbar(전체 스캔) 모드')
 
     def callback(self, msg):
-        frame = self.bridge.compressed_imgmsg_to_cv2(msg)
+        # 이미지를 OpenCV 포맷으로 변환
+        frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
         self.frame_count += 1
+
+        # 메시지 생성 및 데이터 담기
         det_msg = DetectionArray()
 
         # [작업 1] YOLO 추론 (과자만 찾기)

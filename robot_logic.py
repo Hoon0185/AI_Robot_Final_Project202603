@@ -203,11 +203,11 @@ class RobotLogicHandler:
 
     # 수동 조작 패널 - 부저
     def on_buzzer(self):
+        self._log("[LOGIC] 부저 작동 (3회 비프)")
         if self.ros_interface:
-            self.ros_interface.trigger_buzzer(True)
-            self._log("[LOGIC] 부저 작동")
+            self.ros_interface.beep_buzzer(3)
         elif self.is_debug:
-            self._log("[DEBUG] 부저 작동")
+            self._log("[DEBUG] 부저 작동 (3회 비프 시뮬레이션)")
 
     # 수동 조작 패널 - 복귀 명령
     def on_return_patrol(self):
@@ -222,7 +222,6 @@ class RobotLogicHandler:
         self._log("[LOGIC] 비상 정지!")
         if self.ros_interface:
             self.ros_interface.trigger_emergency_stop()
-            self._log("[LOGIC] 비상 정지!")
         elif self.is_debug:
             self._log("[DEBUG] 비상 정지!")
 

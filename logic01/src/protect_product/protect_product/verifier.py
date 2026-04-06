@@ -3,7 +3,12 @@ from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from protect_product_msgs.msg import DetectionArray
 from cv_bridge import CvBridge
-import cv2, sqlite3, message_filters
+import cv2
+import sqlite3
+import message_filters
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from ament_index_python.packages import get_package_share_directory
+import os
 
 class VerifierNode(Node):
     def __init__(self):
@@ -19,8 +24,15 @@ class VerifierNode(Node):
         else:
             self.topic_name = '/rtsp_image'           # RTSP 브릿지 토픽
 
-        # 1. 데이터베이스 연결
-        db_path = "/home/bird99/Desktop/database/dmdata/product.db"
+        # 1. DB 연결 (동적 경로 사용)
+        pkg_dir = get_package_share_directory('protect_product')
+        db_path = os.path.join(pkg_dir, 'models', 'product.db')
+        
+        # 소스 경로 대비
+        if not os.path.exists(db_path):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            db_path = os.path.join(current_dir, '..', 'models', 'product.db')
+            
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
 
@@ -126,6 +138,10 @@ class VerifierNode(Node):
                     verified_msg.scores.append(det_msg.scores[matched_idx])
                 else:
                     verified_msg.scores.append(0.0)
+                
+                # barcode 정보 추가 (동기화된 QR 내용)
+                if matched_qr_content:
+                    verified_msg.barcodes.append(matched_qr_content)
 
         elif best_qr_bbox and len(det_msg.class_ids) == 0:
             cv2.putText(frame, "STATUS: EMPTY (No Product)", (30, 60),
@@ -138,15 +154,22 @@ class VerifierNode(Node):
             verified_msg.x1.append(0); verified_msg.y1.append(0)
             verified_msg.x2.append(0); verified_msg.y2.append(0)
             verified_msg.scores.append(1.0)
+            # barcodes 리스트의 길이를 class_ids와 맞추어 데이터 형식 일관성 유지
+            if len(verified_msg.barcodes) < len(verified_msg.class_ids):
+                verified_msg.barcodes.append(matched_qr_content)
 
         # 결과 메시지 최종 발행
         self.result_pub.publish(verified_msg)
 
-        # 결과 화면 출력
         cv2.imshow("Inventory Verification System", frame)
         cv2.waitKey(1)
 
+    def __del__(self):
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
+
 def main(args=None):
+
     rclpy.init(args=args)
     node = VerifierNode()
     try:

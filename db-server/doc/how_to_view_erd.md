@@ -102,27 +102,23 @@ product_master ||--o{ shelf_status : "추적 대상"
 
 ---
 
-## 4. gilbot DB 테이블 한눈에 보기
+## 4. gilbot DB 테이블 한눈에 보기 (v3.3)
 
 ```mermaid
 flowchart LR
-    EXT(["&#x1F4E6; 외부 재고 DB"]) -- 동기화 --> PM["product_master\n(제품정보 캐시)"]
+    EXT(["&#x1F4E6; 외부 재고 DB"]) -- "동기화 (yolo_class_id)" --> PM["product_master\n(제품정보 + YOLO ID)"]
 
     PM --> SP["waypoint_product_plan\n(기대 배치)"]
-    PM --> SL["slot\n(실제 위치 + 바코드)"]
     PM --> SS["shelf_status\n(실시간 진열현황)"]
     PM --> AL["alert\n(알림)"]
 
     WP["waypoint\n(순찰 정지위치)"] --> SP
-    WP --> SL
     WP --> SS
     WP --> DL["detection_log\n(인식 로그)"]
     WP --> AL
 
-    SL --> SLH["slot_history\n(변경 이력)"]
-    SL --> SS
-    SL --> DL
-    SL --> AL
+    DL --> SS
+    DL --> AL
 
     PL["patrol_log\n(순찰 기록)"] --> DL
     PC["patrol_config\n(운영 설정)"] --> PL
@@ -151,17 +147,16 @@ quadrantChart
     로봇시작점: [0.1, 0.1]
 ```
 
-### 매대 내 제품 위치 — 바코드 기반 슬롯 (v2.2)
+### 매대 내 제품 위치 — 바코드 태그 기반 (v3.3)
 
-> ⚠️ 행/열은 사전 정의가 아닌 **바코드 감지 시점에 자동 결정**됩니다.
+> ⚠️ 위치는 물리적인 **바코드 태그(`barcode_tag`)**를 기준으로 식별됩니다.
 
-| | 열1 | 열2 | 열3 | 열4 |
-|---|---|---|---|---|
-| **행1** | 포카칩 🏷️ | 새우깡 🏷️ | 홈런볼 🏷️ | _(빈칸)_ |
-| **행2** | 콜라 🏷️ | 사이다 🏷️ | _(빈칸)_ | 오렌지주스 🏷️ |
-| **행3** | _(빈칸)_ | 맥주 🏷️ | _(빈칸)_ | _(빈칸)_ |
+| | 열1 | 열2 | 열3 |
+|---|---|---|---|
+| **1단 (row_num=1)** | 맛동산 🏷️ | 죠리퐁 🏷️ | 포스틱 🏷️ |
+| **2단 (row_num=2)** | 스프라이트 🏷️ | _(빈칸)_ | 포카리 🏷️ |
 
-> 🏷️ = 바코드 태그 위치 → `slot.odom_x/y` 에 저장
+> 🏷️ = 바코드 태그 위치 → `waypoint_product_plan.barcode_tag` 에 정의
 
 ---
 

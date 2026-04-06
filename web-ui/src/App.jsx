@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
 function App() {
   const [view, setView] = useState('dashboard'); // 'dashboard' or 'admin'
-  const [status, setStatus] = useState({ status: 'offline', database: 'unknown' });
+  const [status, setStatus] = useState({ status: 'offline', robot_status: '휴식중', database: 'unknown' });
   const [patrolList, setPatrolList] = useState([]);
   const [products, setProducts] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -17,12 +17,13 @@ function App() {
   const [showNotification, setShowNotification] = useState(false);
   const [notificationMsg, setNotificationMsg] = useState({ title: '', body: '', type: 'info' });
 
-  // 알림 상태 자동 관리: 미해결 알림이 0개가 되면 알림 팝업 자동 닫기
   useEffect(() => {
     if (alerts.length === 0 && notificationMsg.type === 'anomaly') {
       setShowNotification(false);
     }
   }, [alerts, notificationMsg.type]);
+
+
 
   // 알림 사운드 재생 함수 (내장 오디오 객체 사용)
   const playAlertSound = () => {
@@ -68,12 +69,16 @@ function App() {
   const fetchGilbotData = async () => {
     try {
       setLoading(true);
-      const statusRes = await fetch('/api/status');
+      const statusRes = await fetch('/api/status', { cache: 'no-store' });
       if (statusRes.ok) {
         const statusData = await statusRes.json();
+        // console.log("Fetched Robot Status:", statusData.robot_status);
         setStatus({
           status: statusData.status || 'offline',
-          database: statusData.database || 'unknown'
+          robot_status: statusData.robot_status || '휴식중',
+          database: statusData.database || 'unknown',
+          odom_x: statusData.odom_x,
+          odom_y: statusData.odom_y
         });
       }
 
@@ -215,15 +220,22 @@ function App() {
   };
 
   const handleDeletePatrol = async (id) => {
-    if (!window.confirm("정말 이 기록을 삭제하시겠습니까?")) return;
+    if (!window.confirm("정말 이 기록을 삭제하시겠습니까? 관련 탐지 로그와 알림 내역도 함께 삭제됩니다.")) return;
     try {
+      setLoading(true);
       const res = await fetch(`/api/patrol/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchGilbotData();
-    } catch (err) { alert("삭제 실패"); }
+      if (res.ok) {
+        alert("✅ 순찰 기록이 삭제되었습니다.");
+        fetchGilbotData();
+      } else {
+        const errData = await res.json();
+        alert("❌ 삭제 실패: " + errData.detail);
+      }
+    } catch (err) { alert("연결 오류 발생"); }
+    finally { setLoading(false); }
   };
 
   const handleResolveAlert = async (alertId) => {
-    if (!window.confirm("이 알림을 해결 상태로 변경하시겠습니까?")) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/alerts/${alertId}/resolve`, { method: 'POST' });
@@ -281,12 +293,12 @@ function App() {
   };
 
   const handleDeleteWaypoint = async (id) => {
-    if (!window.confirm("정말 이 웨이포인트를 삭제하시겠습니까?")) return;
+    if (!window.confirm("정말 이 웨이포인트를 삭제하시겠습니까? 관련 진열 계획, 인식 로그, 알림 내역이 모두 함께 삭제됩니다.")) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/waypoints/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert("웨이포인트가 삭제되었습니다.");
+        alert("✅ 웨이포인트와 관련 데이터가 모두 삭제되었습니다.");
         fetchStaticData();
       } else {
         const errorData = await res.json();
@@ -294,6 +306,49 @@ function App() {
       }
     } catch (err) {
       alert("삭제 실패: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateWaypoint = async (wp) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/waypoints/${wp.waypoint_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          waypoint_no: wp.waypoint_no,
+          waypoint_name: wp.waypoint_name,
+          loc_x: wp.loc_x,
+          loc_y: wp.loc_y
+        })
+      });
+      if (res.ok) {
+        alert("✅ 웨이포인트 정보가 업데이트되었습니다.");
+        fetchStaticData();
+      } else {
+        const errData = await res.json();
+        alert("❌ 업데이트 실패: " + errData.detail);
+      }
+    } catch (err) { alert("연결 오류 발생"); }
+    finally { setLoading(false); }
+  };
+
+  const handleClearWaypointPlans = async (id) => {
+    if (!window.confirm("정말 이 웨이포인트의 모든 등록 상품 연결을 해제하시겠습니까?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/waypoints/${id}/clear_plans`, { method: 'DELETE' });
+      if (res.ok) {
+        alert("✅ 웨이포인트의 상품 연결이 모두 해제되었습니다.");
+        fetchStaticData();
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "해제 실패");
+      }
+    } catch (err) {
+      alert("해제 실패: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -315,11 +370,16 @@ function App() {
   };
 
   const handleStartPatrol = async () => {
-    if (!window.confirm("매대 순찰을 시작하시겠습니까?")) return;
+    if (status.robot_status === '비상정지') {
+      alert("⚠️ 비상정지 상태입니다. 비상해제를 먼저 눌러주세요.");
+      return;
+    }
+
     try {
       setLoading(true);
       const res = await fetch('/api/patrol/start', { method: 'POST' });
       if (res.ok) {
+        setDetections([]); // 새 순찰 시작 시 기존 로그 즉시 초기화 (CRT 클리어 효과)
         setNotificationMsg({
           title: '순찰 시작',
           body: '로봇이 순찰을 위해 기지를 출발했습니다.',
@@ -338,27 +398,75 @@ function App() {
   };
 
   const handleFinishPatrol = async () => {
-    if (!window.confirm("순찰을 마치고 복귀하시겠습니까? (5초 후 완료)")) return;
+    // 비상정지 중 복귀 누를 경우의 예외 처리 (사용자 요청: 이미 기지 메시지 및 비상해제)
+    if (status.robot_status === '비상정지') {
+      alert("이미 기지이기 때문에 기지입니다.");
+      try {
+        const res = await fetch('/api/patrol/finish', { method: 'POST' });
+        if (res.ok) {
+          setStatus(prev => ({ ...prev, robot_status: '휴식중' }));
+          fetchGilbotData();
+        } else { alert("비상 해제 및 복귀 처리 실패"); }
+      } catch (err) { alert("연결 오류"); }
+      return;
+    }
+
+    if (status.robot_status === '휴식중' || status.robot_status === '대기중') {
+      alert("이미 기지입니다.");
+      return;
+    }
+    
+    // 현재 위치 정보 확인 (없으면 기본값 0)
+    const curX = status.odom_x || 0;
+    const curY = status.odom_y || 0;
+    
+    // 기지(0,0)까지의 거리 계산 (Euclidean)
+    const distance = Math.sqrt(Math.pow(curX, 2) + Math.pow(curY, 2));
+    const speed = 0.2; // 0.2 m/sec
+    const travelTimeSec = distance / speed;
+    const travelTimeMs = Math.max(travelTimeSec * 1000, 2000); // 최소 2초 대기
+    
+    // 기지 복귀 명령 알림 (거리 및 시간 정보 포함)
+    console.log(`순찰을 마치고 복귀합니다. (이동 거리: ${distance.toFixed(2)}m, 예상 소요 시간: ${travelTimeSec.toFixed(1)}초)`);
+
     try {
       setTimeout(async () => {
         const res = await fetch('/api/patrol/finish', { method: 'POST' });
         if (res.ok) {
-          alert("성공적으로 복귀 완료되었습니다.");
+          // 낙관적 업데이트: 즉시 UI 변경
+          setStatus(prev => ({ ...prev, robot_status: '휴식중' }));
+          alert(`성공적으로 복귀 완료되었습니다. (${travelTimeSec.toFixed(1)}초 소요됨)`);
           fetchGilbotData();
         } else { alert("복귀 실패 (진행중인 순찰 없음)"); }
-      }, 5000);
+      }, travelTimeMs);
     } catch (err) { alert("연결 오류"); }
   };
 
   const handleEmergencyStop = async () => {
-    if (!window.confirm("🚨 비상 정지 하시겠습니까?")) return;
     try {
       const res = await fetch('/api/patrol/stop', { method: 'POST' });
       if (res.ok) {
+        // 낙관적 업데이트: 즉시 UI 변경 (백엔드 반영 전이라도)
+        setStatus(prev => ({ ...prev, robot_status: '비상정지' }));
         alert("순찰이 즉시 중단되었습니다.");
-        fetchGilbotData();
+        await fetchGilbotData();
       }
     } catch (err) { alert("명령 전달 실패"); }
+  };
+
+  const handleResumePatrol = async () => {
+    try {
+      const res = await fetch('/api/patrol/resume', { method: 'POST' });
+      if (res.ok) {
+        // 낙관적 업데이트: 순찰중으로 복구 (또는 적절한 상태)
+        setStatus(prev => ({ ...prev, robot_status: '순찰중' }));
+        alert("순찰이 재개되었습니다.");
+        await fetchGilbotData();
+      } else {
+        const err = await res.json();
+        alert("재개 실패: " + err.detail);
+      }
+    } catch (err) { alert("연결 오류"); }
   };
 
   const handleStorePlan = async (e) => {
@@ -393,10 +501,38 @@ function App() {
 
         <div className="sidebar-section">
           <div className="status-indicator">
-            <span className={`dot ${status.status === 'running' || status.status === 'online' ? 'online pulsing' : 'offline'}`}></span>
-            <div>
-              <div className="robot-status-text">Robot {status.status === 'running' || status.status === 'online' ? 'Online' : 'Offline'}</div>
-              <div className="db-status-text">DB: {status.database}</div>
+            {/* 1. Robot Status Label */}
+            <div className="status-label" style={{ textAlign: 'center' }}>Robot Status</div>
+
+            {/* 2. Combined Status Value */}
+            <div className="status-row" style={{ justifyContent: 'center' }}>
+              <span className={`dot ${
+                (status.status !== 'online' && status.status !== 'running') ? 'offline' :
+                status.robot_status === '순찰중' ? 'patrolling pulsing' : 
+                status.robot_status === '비상정지' ? 'emergency pulsing' : 'online pulsing'
+              }`}></span>
+              <div className={`robot-status-display ${
+                (status.status !== 'online' && status.status !== 'running') ? 'offline' :
+                status.robot_status === '순찰중' ? 'patrol' : 
+                status.robot_status === '비상정지' ? 'emergency' : 'online'
+              }`}>
+                {(status.status !== 'online' && status.status !== 'running') ? '로봇 오프라인' :
+                 status.robot_status === '순찰중' ? '순찰중' : 
+                 status.robot_status === '비상정지' ? '비상정지' : '로봇 온라인'}
+              </div>
+            </div>
+
+            {/* 3. Robot Position Display */}
+            <div className="pos-status-row">
+              <div className="pos-status-text">
+                📍 ({status.odom_x?.toFixed(2) || '0.00'}, {status.odom_y?.toFixed(2) || '0.00'})
+              </div>
+            </div>
+            
+            <div className="db-status-row">
+              <div className="db-status-text">
+                Database: {status.database}
+              </div>
             </div>
           </div>
         </div>
@@ -408,13 +544,53 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button className="apple-button primary slim"
                 onClick={handleStartPatrol}
-                style={{ padding: '12px', fontSize: '13px', background: 'var(--accent-blue)', color: 'white', justifyContent: 'center' }}>🚀 순찰 개시</button>
+                disabled={(status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중'}
+                style={{ 
+                  padding: '12px', 
+                  fontSize: '13px', 
+                  background: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중') ? '#E5E5E7' : 'var(--accent-blue)', 
+                  color: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중') ? '#86868B' : 'white', 
+                  justifyContent: 'center',
+                  cursor: ((status.status !== 'online' && status.status !== 'running') || status.robot_status === '비상정지' || status.robot_status === '순찰중') ? 'not-allowed' : 'pointer'
+                }}>🚀 순찰 개시</button>
+              
               <button className="apple-button success-btn slim"
                 onClick={handleFinishPatrol}
-                style={{ padding: '12px', fontSize: '13px', justifyContent: 'center' }}>🏠 기지로 복귀</button>
-              <button className="apple-button slim"
-                onClick={handleEmergencyStop}
-                style={{ padding: '12px', fontSize: '13px', background: '#FF453A', color: 'white', justifyContent: 'center' }}>🛑 비상 정지</button>
+                disabled={status.status !== 'online' && status.status !== 'running'}
+                style={{ 
+                  padding: '12px', 
+                  fontSize: '13px', 
+                  background: (status.status !== 'online' && status.status !== 'running') ? '#E5E5E7' : 'var(--accent-green)', 
+                  color: (status.status !== 'online' && status.status !== 'running') ? '#86868B' : 'white', 
+                  justifyContent: 'center',
+                  cursor: (status.status !== 'online' && status.status !== 'running') ? 'not-allowed' : 'pointer'
+                }}>🏠 기지로 복귀</button>
+
+              {status.robot_status === '비상정지' ? (
+                <button className="apple-button slim"
+                  onClick={handleResumePatrol}
+                  disabled={status.status !== 'online' && status.status !== 'running'}
+                  style={{ 
+                    padding: '12px', 
+                    fontSize: '13px', 
+                    background: (status.status !== 'online' && status.status !== 'running') ? '#E5E5E7' : 'var(--accent-green)', 
+                    color: (status.status !== 'online' && status.status !== 'running') ? '#86868B' : 'white', 
+                    justifyContent: 'center',
+                    cursor: (status.status !== 'online' && status.status !== 'running') ? 'not-allowed' : 'pointer'
+                  }}>🔓 비상 해제 (재개)</button>
+              ) : (
+                <button className="apple-button slim"
+                  onClick={handleEmergencyStop}
+                  disabled={status.status !== 'online' && status.status !== 'running'}
+                  style={{ 
+                    padding: '12px', 
+                    fontSize: '13px', 
+                    background: (status.status !== 'online' && status.status !== 'running') ? '#E5E5E7' : '#FF453A', 
+                    color: (status.status !== 'online' && status.status !== 'running') ? '#86868B' : 'white', 
+                    justifyContent: 'center',
+                    cursor: (status.status !== 'online' && status.status !== 'running') ? 'not-allowed' : 'pointer'
+                  }}>🛑 비상 정지</button>
+              )}
             </div>
           </div>
         </div>
@@ -495,9 +671,56 @@ function App() {
               </div>
             </div>
 
+            <section className="apple-card">
+              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
+              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="fixed-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '85px', textAlign: 'center' }}>시각</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>정상 상품 / 바코드</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>인식 상품 / 바코드</th>
+                      <th style={{ width: '70px', textAlign: 'center' }}>결과</th>
+                      <th style={{ width: '90px', textAlign: 'center' }}>신뢰도</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detections.length === 0 ? (
+                      <tr><td colSpan="5" className="empty-shelf">수집된 인식 데이터가 없습니다.</td></tr>
+                    ) : (
+                      detections.map(d => (
+                        <tr key={d.log_id}>
+                          <td style={{ color: '#8E8E93', textAlign: 'center', fontSize: '12px' }}>
+                            {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_target}</div>
+                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.tag_barcode}</div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_detected || "미지정"}</div>
+                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.detected_barcode || "-"}</div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`} style={{ padding: '2px 8px', fontSize: '11px' }}>{d.result}</span></td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
+                                <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
+                              </div>
+                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{((d.confidence || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <section className="apple-card shelf-visualizer-section">
               <div className="v-header">
-                <h2>🏬 실시간 매대 진열 현황</h2>
+                <h2>🏬 매대 진열 현황판</h2>
                 <div className="shelf-legend">
                   <span className="legend-item"><span className="legend-dot normal"></span> 정상</span>
                   <span className="legend-item"><span className="legend-dot missing"></span> 결품</span>
@@ -519,7 +742,15 @@ function App() {
                     {shelfStatus.length === 0 ? (
                       <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>데이터를 수집 중입니다...</td></tr>
                     ) : (
-                      shelfStatus.map(item => (
+                      [...shelfStatus]
+                        .sort((a, b) => {
+                          const wpA = a.waypoint_name || "";
+                          const wpB = b.waypoint_name || "";
+                          const nameCompare = wpA.localeCompare(wpB);
+                          if (nameCompare !== 0) return nameCompare;
+                          return (a.row_num || 0) - (b.row_num || 0);
+                        })
+                        .map(item => (
                         <tr key={item.status_id}>
                           <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.waypoint_name}</td>
                           <td style={{ textAlign: 'center', padding: '14px 2px' }}>{item.row_num || 1}</td>
@@ -538,53 +769,6 @@ function App() {
                             ) : (
                               <span style={{ color: '#8E8E93' }}>-</span>
                             )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className="apple-card">
-              <h2 className="section-title" style={{ marginTop: 0 }}>🔍 실시간 인식 상세 로그 (Detection Detail)</h2>
-              <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <table className="fixed-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '85px', textAlign: 'center' }}>시각</th>
-                      <th style={{ width: '150px', textAlign: 'center' }}>정상 상품 / 바코드</th>
-                      <th style={{ width: '150px', textAlign: 'center' }}>인식 상품 / 바코드</th>
-                      <th style={{ width: '70px', textAlign: 'center' }}>결과</th>
-                      <th style={{ width: '90px', textAlign: 'center' }}>신뢰도</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detections.length === 0 ? (
-                      <tr><td colSpan="5" className="empty-shelf">진행 중인 순찰이 없거나 데이터가 없습니다.</td></tr>
-                    ) : (
-                      detections.map(d => (
-                        <tr key={d.log_id}>
-                          <td style={{ color: '#8E8E93', textAlign: 'center', fontSize: '12px' }}>
-                            {new Date(d.created_at).toLocaleString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_target}</div>
-                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.tag_barcode}</div>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px' }}>{d.p_name_detected || "미지정"}</div>
-                            <div style={{ fontSize: '11px', color: '#86868B', fontFamily: 'monospace' }}>{d.detected_barcode || "-"}</div>
-                          </td>
-                          <td style={{ textAlign: 'center' }}><span className={`tag ${d.result}`} style={{ padding: '2px 8px', fontSize: '11px' }}>{d.result}</span></td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ flex: 1, height: '4px', background: '#E5E5EA', borderRadius: '2px', overflow: 'hidden' }}>
-                                <div style={{ width: `${d.confidence * 100}%`, height: '100%', background: d.confidence > 0.8 ? 'var(--accent-green)' : 'var(--accent-orange)' }}></div>
-                              </div>
-                              <span style={{ fontSize: '11px', color: '#8E8E93' }}>{(d.confidence * 100).toFixed(0)}%</span>
-                            </div>
                           </td>
                         </tr>
                       ))
@@ -662,19 +846,36 @@ function App() {
                   <div className="table-container" style={{ maxHeight: '440px', overflowY: 'auto', border: 'none', background: 'transparent' }}>
                     <table className="selectable-table slim">
                       <thead>
-                        <tr><th style={{ textAlign: 'center' }}>상품명</th><th style={{ textAlign: 'center' }}>바코드</th></tr>
+                        <tr>
+                          <th style={{ textAlign: 'center' }}>상품명</th>
+                          <th style={{ textAlign: 'center' }}>바코드</th>
+                          <th style={{ textAlign: 'center' }}>위치(W.P.)</th>
+                        </tr>
                       </thead>
                       <tbody>
                         {products
                           .filter(p => !searchTerm || p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) || p.barcode.includes(searchTerm))
-                          .map(p => (
-                            <tr key={p.product_id}
-                              onClick={() => setUnifiedForm({ ...unifiedForm, product_name: p.product_name, product_barcode: p.barcode, category: p.category || '기타' })}
-                              className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
-                              <td style={{ fontSize: '13px', textAlign: 'center' }}>{p.product_name}</td>
-                              <td style={{ fontSize: '12px', textAlign: 'center' }}><code>{p.barcode}</code></td>
-                            </tr>
-                          ))}
+                          .map(p => {
+                            const pInPlan = (patrolPlan || []).find(plan => plan.product_barcode === p.barcode);
+                            return (
+                              <tr key={p.product_id}
+                                onClick={() => setUnifiedForm({ 
+                                  ...unifiedForm, 
+                                  product_name: p.product_name, 
+                                  product_barcode: p.barcode, 
+                                  category: p.category || '기타',
+                                  waypoint_name: pInPlan ? pInPlan.waypoint_name : '',   // Auto-fill existing waypoint
+                                  row_num: pInPlan ? pInPlan.row_num : 1               // Auto-fill existing row
+                                })}
+                                className={unifiedForm.product_barcode === p.barcode ? 'selected-row' : ''}>
+                                <td style={{ fontSize: '13px', textAlign: 'center' }}>{p.product_name}</td>
+                                <td style={{ fontSize: '11px', textAlign: 'center' }}><code>{p.barcode}</code></td>
+                                <td style={{ fontSize: '12px', textAlign: 'center', color: pInPlan ? 'var(--accent-blue)' : 'var(--text-secondary)', wordBreak: 'break-all', whiteSpace: 'normal' }}>
+                                  {pInPlan ? pInPlan.waypoint_name : '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>
@@ -709,7 +910,7 @@ function App() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                       <div className="form-group">
-                        <label>웨이포인트 (Waypoint)</label>
+                        <label>W.P.</label>
                         <input
                           type="text"
                           list="waypoint-list"
@@ -725,7 +926,7 @@ function App() {
                       </div>
 
                       <div className="form-group">
-                        <label>진열 단 (Shelf Level)</label>
+                        <label>진열 단</label>
                         <input
                           type="number" min="1"
                           value={unifiedForm.row_num}
@@ -1038,36 +1239,86 @@ function App() {
                  </div>
                </section>
 
-               <section className="apple-card">
-                 <h2 className="section-title" style={{ marginTop: 0 }}>📍 등록된 웨이포인트(구역) 관리</h2>
-                 <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없어야 가능합니다.)</p>
-                 <div className="table-container">
-                   <table className="fixed-table">
-                     <thead>
-                       <tr>
-                         <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
-                         <th>웨이포인트 이름</th>
-                         <th style={{ width: '100px', textAlign: 'center' }}>번호</th>
-                         <th style={{ width: '120px', textAlign: 'center' }}>조치</th>
-                       </tr>
-                     </thead>
-                     <tbody>
-                       {waypoints.map(wp => (
-                         <tr key={wp.waypoint_id}>
-                           <td style={{ textAlign: 'center' }}>#{wp.waypoint_id}</td>
-                           <td style={{ fontWeight: '600' }}>{wp.waypoint_name}</td>
-                           <td style={{ textAlign: 'center' }}>{wp.waypoint_no}</td>
-                           <td style={{ textAlign: 'center' }}>
-                             <button className="apple-button secondary" 
-                               style={{ padding: '6px 12px', fontSize: '13px', color: '#FF453A', borderRadius: '8px' }}
-                               onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>
-                           </td>
-                         </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                 </div>
-               </section>
+                <section className="apple-card">
+                  <h2 className="section-title" style={{ marginTop: 0 }}>📍 등록된 웨이포인트(구역) 관리</h2>
+                  <p style={{ color: '#8E8E93', fontSize: '14px', marginBottom: '20px' }}>더 이상 사용하지 않는 웨이포인트를 삭제합니다. (단, 해당 위치에 연결된 상품이 없고, 순찰로그에서 삭제된 상태여야 삭제 가능합니다.)</p>
+                  <div className="table-container">
+                    <table className="fixed-table">
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'center' }}>웨이포인트 별칭</th>
+                          <th style={{ textAlign: 'center' }}>등록 상품 이름</th>
+                          <th style={{ width: '90px', textAlign: 'center' }}>X 좌표</th>
+                          <th style={{ width: '90px', textAlign: 'center' }}>Y 좌표</th>
+                          <th style={{ width: '150px', textAlign: 'center' }}>조치</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {waypoints.map(wp => {
+                          const linkedProducts = (patrolPlan || []).filter(plan => plan.waypoint_id === wp.waypoint_id);
+                          return (
+                            <tr key={wp.waypoint_id}>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="text" value={wp.waypoint_name} 
+                                  className="slim-input wide"
+                                  onChange={(e) => {
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, waypoint_name: e.target.value} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {linkedProducts.length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
+                                    {linkedProducts.map(p => (
+                                      <span key={p.plan_id} className="tag info" style={{ fontSize: '10px', padding: '2px 6px' }}>
+                                        {p.product_name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#8E8E93', fontSize: '12px' }}>없음</span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="number" step="0.1" value={wp.loc_x} 
+                                  className="slim-input"
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, loc_x: val} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="number" step="0.1" value={wp.loc_y} 
+                                  className="slim-input"
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    const newWps = waypoints.map(w => w.waypoint_id === wp.waypoint_id ? {...w, loc_y: val} : w);
+                                    setWaypoints(newWps);
+                                  }} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button className="apple-button" 
+                                    style={{ padding: '6px 8px', fontSize: '11px', borderRadius: '6px' }}
+                                    onClick={() => handleUpdateWaypoint(wp)}>저장</button>
+                                  {linkedProducts.length > 0 && (
+                                    <button className="apple-button secondary" 
+                                      style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--accent-orange)', borderRadius: '6px' }}
+                                      onClick={() => handleClearWaypointPlans(wp.waypoint_id)}>비우기</button>
+                                  )}
+                                  <button className="apple-button secondary" 
+                                    style={{ padding: '6px 8px', fontSize: '11px', color: '#FF453A', borderRadius: '6px' }}
+                                    onClick={() => handleDeleteWaypoint(wp.waypoint_id)}>삭제</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
             </div>
           </div>
         ) : (
