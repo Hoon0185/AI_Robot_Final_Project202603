@@ -1,10 +1,17 @@
 import cv2
 import os
+import datetime
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSlider, QFrame, QStackedWidget,
-                             QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView)
+                             QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QTextCursor
+
+# --- [추가: MinimapWidget 임포트] ---
+try:
+    from minimap import MinimapWidget
+except ImportError:
+    MinimapWidget = QFrame  # 파일이 없을 경우를 대비한 방어 코드
 
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 
@@ -35,7 +42,6 @@ class RobotControlPanel(QWidget):
             QSlider::sub-page:horizontal { background: #28A745; height: 8px; border-radius: 4px; }
             QSlider::handle:horizontal { background: #E86464; width: 18px; height: 18px; margin: -5px 0; border-radius: 9px; }
         """
-        # 공통 버튼 스타일 (팝업용)
         self.btn_confirm_qss = "QPushButton { background-color: #28A745; color: white; border-radius: 12px; font-size: 18px; font-weight: bold; } QPushButton:hover { background-color: #218838; }"
         self.btn_cancel_qss = "QPushButton { background-color: #E86464; color: white; border-radius: 12px; font-size: 18px; font-weight: bold; } QPushButton:hover { background-color: #C0392B; }"
 
@@ -109,9 +115,16 @@ class RobotControlPanel(QWidget):
         return {'frame': row_frame, 'slider': slider, 'btn': btn}
 
     def _setup_right_panel(self):
+        # 전체 우측 레이아웃
+        self.right_panel_layout = QVBoxLayout()
+        self.right_panel_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 상단 스택 (메인 버튼 페이지 vs 수동 조작 페이지)
         self.right_stack = QStackedWidget()
+
+        # [Page 1: Main Buttons]
         self.page_main = QWidget()
-        layout = QVBoxLayout(self.page_main); layout.setContentsMargins(0, 0, 0, 0)
+        layout_main = QVBoxLayout(self.page_main); layout_main.setContentsMargins(0, 0, 0, 0)
 
         self.btn_alarm = QPushButton("🔔 재고 알림")
         self.btn_alarm.setStyleSheet("QPushButton { border: 2px solid #E86464; background-color: #E86464; color: white; border-radius: 12px; font-size: 16px; font-weight: bold; } QPushButton:hover { background-color: #FF7676; border-color: #FF7676; } QPushButton:pressed { background-color: #D55555; padding-top: 5px; padding-left: 5px; }")
@@ -132,31 +145,50 @@ class RobotControlPanel(QWidget):
         self.map_btn.setStyleSheet("QPushButton { background-color: white; border: 2px solid #0056b3; color: #0056b3; font-size: 16px; font-weight: bold; border-radius: 12px; } QPushButton:hover { background-color: #E8F0FE; border-color: #004494; } QPushButton:pressed { background-color: #D2E3FC; padding-top: 5px; padding-left: 5px; }")
 
         for btn in [self.btn_alarm, self.btn_db, self.btn_manual, self.btn_reset, self.btn_patrol, self.map_btn]:
-            btn.setFixedHeight(85)
-            layout.addWidget(btn)
-            layout.addSpacing(12)
+            btn.setFixedHeight(75) # 조작 패널 확보를 위해 높이 살짝 조절
+            layout_main.addWidget(btn)
+            layout_main.addSpacing(10)
 
-        layout.addSpacing(13)
-        self.logo_area = QFrame(); self.logo_area.setStyleSheet("QFrame { background-color: white; border: 2px dashed #D1D9E6; border-radius: 15px; }")
-        logo_label = QLabel("LOGO HERE"); logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter); QVBoxLayout(self.logo_area).addWidget(logo_label)
-        layout.addWidget(self.logo_area, stretch=2)
-
+        # [Page 2: Remote Control]
         self._setup_remote_page()
-        self.right_stack.addWidget(self.page_main); self.right_stack.addWidget(self.page_remote)
-        self.main_layout.addWidget(self.right_stack, 1)
+
+        self.right_stack.addWidget(self.page_main)
+        self.right_stack.addWidget(self.page_remote)
+
+        # 하단 공통 로그 콘솔
+        self.log_console = QTextEdit()
+        self.log_console.setReadOnly(True)
+        self.log_console.setStyleSheet("""
+            QTextEdit {
+                background-color: #2C2C2C;
+                color: #82E0AA;
+                font-family: 'Consolas', 'Malgun Gothic';
+                font-size: 12px;
+                border-radius: 15px;
+                border: 2px solid #D1D9E6;
+                padding: 10px;
+            }
+        """)
+
+        self.right_panel_layout.addWidget(self.right_stack, stretch=3)
+        self.right_panel_layout.addSpacing(15)
+        self.right_panel_layout.addWidget(self.log_console, stretch=2)
+
+        self.main_layout.addLayout(self.right_panel_layout, 1)
+        self.append_log("System Ready. Waiting for commands...")
 
     def _setup_remote_page(self):
         self.page_remote = QWidget()
         layout = QVBoxLayout(self.page_remote); layout.setContentsMargins(0, 0, 0, 0)
         remote_frame = QFrame()
         remote_frame.setStyleSheet("QFrame { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #E3E9F0, stop:1 #FFFFFF); border-radius: 20px; border: 1px solid #CFD8E3; }")
-        inner = QVBoxLayout(remote_frame); inner.setContentsMargins(25, 30, 25, 30)
-        title = QLabel("🕹 수동 조작 모드"); title.setAlignment(Qt.AlignmentFlag.AlignCenter); title.setStyleSheet("font-size: 24px; font-weight: 900; color: #2C3E50; border: none; background: transparent;")
+        inner = QVBoxLayout(remote_frame); inner.setContentsMargins(15, 20, 15, 20)
+        title = QLabel("🕹 수동 조작 모드"); title.setAlignment(Qt.AlignmentFlag.AlignCenter); title.setStyleSheet("font-size: 20px; font-weight: 900; color: #2C3E50; border: none; background: transparent;")
         inner.addWidget(title); inner.addStretch(1)
         nav_card = QFrame(); nav_card.setStyleSheet("background: rgba(255, 255, 255, 0.5); border-radius: 20px; border: 1px solid #DDE4ED;")
         nav_grid = QGridLayout(nav_card)
-        nav_style = "QPushButton { background-color: white; border: 2px solid #28A745; border-radius: 25px; font-size: 32px; min-height: 100px; min-width: 80px; color: #28A745; } QPushButton:hover { background-color: #EAF7ED; border-color: #218838; } QPushButton:pressed { background-color: #D4EDDA; padding-top: 8px; padding-left: 8px; }"
-        stop_style = "QPushButton { background-color: white; border: 2px solid #5A6268; border-radius: 25px; font-size: 22px; min-height: 100px; min-width: 80px; color: #5A6268; } QPushButton:hover { background-color: #F8F9FA; } QPushButton:pressed { background-color: #E2E6EA; padding-top: 8px; padding-left: 8px; }"
+        nav_style = "QPushButton { background-color: white; border: 2px solid #28A745; border-radius: 20px; font-size: 28px; min-height: 70px; min-width: 60px; color: #28A745; } QPushButton:hover { background-color: #EAF7ED; border-color: #218838; } QPushButton:pressed { background-color: #D4EDDA; padding-top: 5px; padding-left: 5px; }"
+        stop_style = "QPushButton { background-color: white; border: 2px solid #5A6268; border-radius: 20px; font-size: 18px; min-height: 70px; min-width: 60px; color: #5A6268; } QPushButton:hover { background-color: #F8F9FA; } QPushButton:pressed { background-color: #E2E6EA; padding-top: 5px; padding-left: 5px; }"
         self.btn_up = QPushButton("▲"); self.btn_up.setStyleSheet(nav_style)
         self.btn_down = QPushButton("▼"); self.btn_down.setStyleSheet(nav_style)
         self.btn_left = QPushButton("◀"); self.btn_left.setStyleSheet(nav_style)
@@ -165,17 +197,16 @@ class RobotControlPanel(QWidget):
         nav_grid.addWidget(self.btn_up, 0, 1); nav_grid.addWidget(self.btn_left, 1, 0); nav_grid.addWidget(self.btn_stop, 1, 1); nav_grid.addWidget(self.btn_right, 1, 2); nav_grid.addWidget(self.btn_down, 2, 1)
         inner.addWidget(nav_card); inner.addStretch(1)
         extra_h_box = QHBoxLayout()
-        ex_style = "QPushButton { background-color: white; border-radius: 15px; font-weight: bold; min-height: 85px; font-size: 16px; border: 2px solid %s; color: %s; } QPushButton:hover { background-color: %s; } QPushButton:pressed { padding-top: 5px; padding-left: 5px; background-color: %s; }"
+        ex_style = "QPushButton { background-color: white; border-radius: 12px; font-weight: bold; min-height: 65px; font-size: 14px; border: 2px solid %s; color: %s; } QPushButton:hover { background-color: %s; } QPushButton:pressed { padding-top: 5px; padding-left: 5px; background-color: %s; }"
         self.btn_buzzer = QPushButton("🔊\n부저"); self.btn_buzzer.setStyleSheet(ex_style % ("#789D9E", "#4A6E6F", "#F0F7F7", "#D9E8E8"))
         self.btn_return = QPushButton("🔄\n순찰복귀"); self.btn_return.setStyleSheet(ex_style % ("#789D9E", "#4A6E6F", "#F0F7F7", "#D9E8E8"))
-        self.btn_emerg = QPushButton("🚨\n비상정지"); self.btn_emerg.setStyleSheet("QPushButton { background-color: #E86464; border-radius: 15px; font-weight: bold; min-height: 85px; font-size: 16px; border: 2px solid #E86464; color: white; } QPushButton:hover { background-color: #FF7676; border-color: #FF7676; } QPushButton:pressed { background-color: #C0392B; padding-top: 5px; padding-left: 5px; }")
+        self.btn_emerg = QPushButton("🚨\n비상정지"); self.btn_emerg.setStyleSheet("QPushButton { background-color: #E86464; border-radius: 12px; font-weight: bold; min-height: 65px; font-size: 14px; border: 2px solid #E86464; color: white; } QPushButton:hover { background-color: #FF7676; border-color: #FF7676; } QPushButton:pressed { background-color: #C0392B; padding-top: 5px; padding-left: 5px; }")
         extra_h_box.addWidget(self.btn_buzzer); extra_h_box.addWidget(self.btn_return); extra_h_box.addWidget(self.btn_emerg)
-        inner.addLayout(extra_h_box); inner.addStretch(2)
-        self.btn_back = QPushButton("◀ 메인 화면으로 돌아가기"); self.btn_back.setFixedHeight(65); self.btn_back.setStyleSheet("QPushButton { background-color: #333; color: white; border-radius: 15px; font-weight: bold; } QPushButton:hover { background-color: #555; } QPushButton:pressed { padding-top: 3px; padding-left: 3px; }")
+        inner.addLayout(extra_h_box); inner.addStretch(1)
+        self.btn_back = QPushButton("◀ 메인 화면으로 돌아가기"); self.btn_back.setFixedHeight(50); self.btn_back.setStyleSheet("QPushButton { background-color: #333; color: white; border-radius: 12px; font-weight: bold; } QPushButton:hover { background-color: #555; } QPushButton:pressed { padding-top: 3px; padding-left: 3px; }")
         inner.addWidget(self.btn_back); layout.addWidget(remote_frame)
 
     def _setup_popups(self):
-        # 전체 공통 팝업 스타일
         popup_frame_style = "background-color: white; border-radius: 20px; border: 1px solid #DDE4ED;"
         popup_title_style = "font-size: 22px; font-weight: bold; color: #333; border: none; background: transparent;"
 
@@ -199,13 +230,20 @@ class RobotControlPanel(QWidget):
         self.btn_patrol_no = QPushButton("취소"); self.btn_patrol_no.setFixedHeight(55); self.btn_patrol_no.setStyleSheet(self.btn_cancel_qss)
         pat_btn_row.addWidget(self.btn_patrol_yes); pat_btn_row.addWidget(self.btn_patrol_no); pat_layout.addWidget(pat_title); pat_layout.addStretch(); pat_layout.addLayout(pat_btn_row)
 
-        # --- 나머지 오버레이 (미니맵, DB, 알림) ---
+        # --- 미니맵 오버레이 [수정됨] ---
         self.map_overlay = QFrame(); self.map_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 150);"); self.map_overlay.hide()
         self.map_popup_box = QFrame(self.map_overlay); self.map_popup_box.setFixedSize(850, 700); self.map_popup_box.setStyleSheet("background-color: white; border-radius: 30px;")
         m_layout = QVBoxLayout(self.map_popup_box); m_layout.setContentsMargins(30, 30, 30, 30)
-        self.map_area = QFrame(); self.map_area.setStyleSheet("background-color: #F8F9FA; border: 1px solid #DDE4ED; border-radius: 15px;")
+
+        # --- [수정: 단순 QFrame을 MinimapWidget으로 교체] ---
+        self.minimap = MinimapWidget()
+        self.minimap.setStyleSheet("background-color: #F8F9FA; border: 1px solid #DDE4ED; border-radius: 15px;")
+        # -----------------------------------------------
+
         self.btn_map_close = QPushButton("닫기"); self.btn_map_close.setFixedHeight(65); self.btn_map_close.setStyleSheet("QPushButton { background-color: #28A745; color: white; border-radius: 18px; font-size: 22px; font-weight: bold; } QPushButton:hover { background-color: #218838; }")
-        m_layout.addWidget(QLabel("로봇 실시간 위치", alignment=Qt.AlignmentFlag.AlignCenter, styleSheet="font-size: 26px; font-weight: 900; border:none;")); m_layout.addWidget(self.map_area, stretch=1); m_layout.addSpacing(20); m_layout.addWidget(self.btn_map_close)
+        m_layout.addWidget(QLabel("로봇 실시간 위치", alignment=Qt.AlignmentFlag.AlignCenter, styleSheet="font-size: 26px; font-weight: 900; border:none;"))
+        m_layout.addWidget(self.minimap, stretch=1) # self.minimap을 레이아웃에 추가
+        m_layout.addSpacing(20); m_layout.addWidget(self.btn_map_close)
 
         self.db_overlay = QFrame(); self.db_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 150);"); self.db_overlay.hide()
         self.db_popup_box = QFrame(self.db_overlay); self.db_popup_box.setFixedSize(1000, 750); self.db_popup_box.setStyleSheet("background-color: white; border-radius: 30px;")
@@ -308,7 +346,13 @@ class RobotControlPanel(QWidget):
                 qt_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
                 self.cam_label.setPixmap(QPixmap.fromImage(qt_img).scaled(self.cam_label.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
 
-    def open_map(self): self.map_overlay.show(); self.center_popup(self.map_popup_box)
+    def open_map(self):
+        self.map_overlay.show()
+        self.center_popup(self.map_popup_box)
+        # --- [추가: 맵이 열릴 때 강제로 다시 그리게 함] ---
+        if hasattr(self, 'minimap'):
+            self.minimap.update_map_display()
+
     def close_map(self): self.map_overlay.hide()
 
     def center_popup(self, box):
@@ -318,3 +362,13 @@ class RobotControlPanel(QWidget):
         for popup in [self.popup_box, self.patrol_popup_box, self.map_popup_box, self.db_popup_box, self.alarm_popup_box]:
             if popup.parentWidget().isVisible(): self.center_popup(popup)
         super().resizeEvent(event)
+
+    def append_log(self, message):
+            """우하단 로그 콘솔에 텍스트를 추가하고 자동으로 스크롤합니다."""
+            # 현재 시간을 [HH:MM:SS] 형식으로 생성
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            log_entry = f"[{timestamp}] {message}"
+            # 로그 메시지 추가
+            self.log_console.append(log_entry)
+            # 로그가 쌓일 때 자동으로 가장 아래로 스크롤
+            self.log_console.moveCursor(QTextCursor.MoveOperation.End)

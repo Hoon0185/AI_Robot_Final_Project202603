@@ -38,10 +38,9 @@ class InventoryDB:
       except Exception:
           return default
 
-  def report_detection(self, tag_barcode, patrol_id, waypoint_id, detected_barcode=None, confidence=0.99, yolo_class_id=None):
-      """서버로 인식 결과 전송 차단"""
-      # === 수정: 서버 전송을 하지 않고 성공했다고 반환합니다 ===
-      return True, "Local mode active"
+  def report_detection(self, tag_barcode, patrol_id, waypoint_id, x=None, y=None, detected_barcode=None, confidence=0.99, yolo_class_id=None):
+    """서버로 인식 결과 전송 차단"""
+    return True, "Local mode active"
 
   def get_patrol_history(self):
       """서버에서 최근 10개의 순찰 이력 조회 차단"""

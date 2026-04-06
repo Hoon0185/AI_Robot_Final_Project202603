@@ -11,7 +11,8 @@ class ObstacleInterface:
       rclpy.init()
     self.node = Node(node_name)
 
-    self.db = InventoryDB(base_url="http://16.184.56.119/api")
+    self.db = InventoryDB()
+    self.is_db_connected = True # DB 연결 상태 플래그
 
     # ---- 서비스 클라이언트 설정 ----
     self.param_client = self.node.create_client(
@@ -46,13 +47,16 @@ class ObstacleInterface:
 
         self.current_wait_time = int(db_value)
         self.node.get_logger().info(f"[API] 초기값 동기화 성공: {self.current_wait_time}초")
+        self.is_db_connected = True # DB 연결 성공 플래그 설정
         return self.current_wait_time
       else:
         self.node.get_logger().warn(f"서버 응답 에러: 기본 대기시간 {self.current_wait_time}초를 사용합니다.")
+        self.is_db_connected = False # DB 연결 실패 플래그 설정
         return self.current_wait_time # 서버 응답 실패 시 기본값 반환
 
     except Exception as e:
       self.node.get_logger().error(f"[API] 서버 연결 실패: {e}")
+      self.is_db_connected = False
       return self.current_wait_time # DB 연결 실패 시 기본값 반환
 
 
@@ -61,12 +65,12 @@ class ObstacleInterface:
     UI 슬라이더에서 대기 시간 변경 -> DB 업데이트 및 노드 전송을 동시에 처리하는 함수
     """
     self.current_wait_time = int(seconds)
+    db_success = False
 
     # ---- 로봇 노드 파라미터 전송 ----
     ros_success, _ = self.set_wait_time(self.current_wait_time)
-    db_success = True
     try:
-      # ---- DB에서 현재 설정값 가져오기 (동기화 목적) ----
+      # DB에서 현재 설정값 가져오기 (동기화 목적)
       current_config = self.db.get_patrol_config() or {}
 
       db_success = self.db.update_patrol_config(
@@ -76,8 +80,14 @@ class ObstacleInterface:
         hour=int(current_config.get("interval_hour", 0)),
         minute=int(current_config.get("interval_minute", 0))
       )
+      # DB 업데이트 성공 여부에 따라 연결 상태 플래그 설정
+      if db_success:
+        self.is_db_connected = True
+      else:
+        self.is_db_connected = False
     except Exception as e:
       self.node.get_logger().error(f"[API] 서버 전송 실패: {e}")
+      self.is_db_connected = False
 
 
     # 결과 분기 처리
@@ -127,7 +137,7 @@ class ObstacleInterface:
 
         if success:
           self.node.get_logger().info(f"재시도 성공: 누락되었던 {val}초가 서버에 저장되었습니다.")
+          self.is_db_connected = True
           self.pending_data = None
       except:
-        pass
-
+        self.is_db_connected = False

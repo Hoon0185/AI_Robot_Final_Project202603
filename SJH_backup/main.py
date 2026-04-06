@@ -8,6 +8,7 @@ class MainApp:
     def __init__(self):
         # 1. 로그인 창 생성 및 표시
         self.login_view = LoginWindow()
+<<<<<<< HEAD
         # 로그인 성공 시 전달되는 bool 값(is_debug)을 받을 수 있도록 연결
         self.login_view.login_success.connect(self.start_main_system)
         self.login_view.show()
@@ -17,6 +18,12 @@ class MainApp:
         로그인 성공 시 호출되는 함수
         :param is_debug: True(디버그 모드), False(릴리즈 모드)
         """
+=======
+        self.login_view.login_success.connect(self.start_main_system)
+        self.login_view.show()
+
+    def start_main_system(self,is_debug):
+>>>>>>> 8442dde4573edfc7ce551e9a80d91eb57b95dce0
         # 2. 로그인 창 닫기
         self.login_view.close()
 
@@ -24,8 +31,13 @@ class MainApp:
         self.main_view = RobotControlPanel()
 
         # 4. 로직 핸들러 생성 및 UI 연결
+<<<<<<< HEAD
         # 선택된 모드(is_debug)를 핸들러에 전달하여 미니맵 및 제어 방식을 결정합니다.
         self.logic = RobotLogicHandler(self.main_view, debug_mode=is_debug)
+=======
+        # 담당자들이 robot_logic.py만 수정하면 여기에 자동으로 반영됩니다.
+        self.logic = RobotLogicHandler(self.main_view,debug_mode=is_debug)
+>>>>>>> 8442dde4573edfc7ce551e9a80d91eb57b95dce0
 
         # 5. 메인 화면 표시
         self.main_view.show()

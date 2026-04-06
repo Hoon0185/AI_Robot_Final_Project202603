@@ -206,13 +206,18 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-
-# ROS 2 Build Artifacts
+# ROS 2 stuff
 install/
 log/
-
-# IDE Settings
+build/
+.colcon/
+*.swp
+*.swo
+*~
 .vscode/
 
-# 임시 파일
-UI/
+
+# Project Specific
+#logic01/notion_records/
+logic01/*.rviz
+DOCS_logic2/

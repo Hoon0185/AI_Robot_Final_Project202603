@@ -179,10 +179,10 @@ async def start_patrol():
         # 1. 새로운 순찰 로그 생성
         cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
         patrol_id = cursor.lastrowid
-        
+
         # 2. 로봇 명령 큐에 추가
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('START_PATROL', 'PENDING')")
-        
+
         conn.commit()
         return {"message": "Patrol started successfully", "patrol_id": patrol_id}
     except Error as e:
@@ -202,7 +202,6 @@ async def finish_patrol():
         patrol = cursor.fetchone()
         if not patrol:
             raise HTTPException(status_code=404, detail="No active patrol found to finish")
-        
         patrol_id = patrol['patrol_id']
         cursor.execute(
             "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
@@ -210,7 +209,6 @@ async def finish_patrol():
         )
         # 로봇 명령 큐에 복귀 추가
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
-        
         conn.commit()
         return {"message": "Patrol finished successfully", "patrol_id": patrol_id}
     finally:
@@ -227,7 +225,6 @@ async def stop_patrol():
         patrol = cursor.fetchone()
         if not patrol:
             raise HTTPException(status_code=404, detail="No active patrol found to stop")
-        
         patrol_id = patrol['patrol_id']
         cursor.execute(
             "UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE patrol_id = %s",
@@ -235,7 +232,6 @@ async def stop_patrol():
         )
         # 로봇 명령 큐에 비상정지 추가
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMERGENCY_STOP', 'PENDING')")
-        
         conn.commit()
         return {"message": "Patrol stopped (Emergency)", "patrol_id": patrol_id}
     finally:
@@ -305,13 +301,13 @@ async def update_inventory(product_id: int, data: InventoryUpdate):
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Product not found")
-        
+
         min_qty = row['min_inventory_qty']
         alert_log = "재고 부족 (최소 유지 수량 미달)" if data.current_inventory_qty < min_qty else None
         is_alert_resolved = False if data.current_inventory_qty < min_qty else True
-        
+
         query = """
-            UPDATE product_master 
+            UPDATE product_master
             SET current_inventory_qty = %s, alert_log = %s, is_alert_resolved = %s
             WHERE product_id = %s
         """
@@ -386,14 +382,14 @@ async def add_detection(data: DetectionInput):
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=500, detail="Database connection failed")
-    
+
     try:
         cursor = conn.cursor(dictionary=True)
-        
+
         # 1. 진행 중인 최신 순찰 회차 조회
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
-        
+
         if not patrol:
             # 진행 중인 순찰이 없으면 자동으로 새 순찰 회차 시작
             cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
@@ -410,10 +406,10 @@ async def add_detection(data: DetectionInput):
         """
         cursor.execute(query_plan, (data.tag_barcode,))
         plan = cursor.fetchone()
-        
+
         if not plan:
              raise HTTPException(status_code=404, detail=f"Tag barcode {data.tag_barcode} not found in plan")
-        
+
         waypoint_id = plan['waypoint_id']
         planned_product_id = plan['planned_product_id']
         row_num = plan['row_num']
@@ -436,7 +432,6 @@ async def add_detection(data: DetectionInput):
         # 5. shelf_status 업데이트 (현재 매대 현황)
         cursor.execute("SELECT status_id FROM shelf_status WHERE barcode_tag = %s", (data.tag_barcode,))
         existing_status = cursor.fetchone()
-        
         if existing_status:
             update_status_sql = "UPDATE shelf_status SET product_id = %s, status = %s, last_updated_at = NOW() WHERE barcode_tag = %s"
             cursor.execute(update_status_sql, (detected_product_id or planned_product_id, result_status, data.tag_barcode))
@@ -466,8 +461,8 @@ async def add_detection(data: DetectionInput):
 
         conn.commit()
         return {
-            "status": "success", 
-            "judgment": result_status, 
+            "status": "success",
+            "judgment": result_status,
             "location": f"Waypoint {waypoint_id}, Row {row_num}",
             "tag_barcode": data.tag_barcode,
             "patrol_id": patrol_id
@@ -488,13 +483,13 @@ async def list_detections():
         # 현재 '진행중'인 최신 순찰 ID를 가져옴
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY patrol_id DESC LIMIT 1")
         active_patrol = cursor.fetchone()
-        
+
         if not active_patrol:
             return []  # 진행 중인 순찰이 없으면 클리어
-            
+
         active_id = active_patrol['patrol_id']
         query = """
-            SELECT d.*, 
+            SELECT d.*,
                    p1.product_name as p_name_target,
                    p2.product_name as p_name_detected
             FROM detection_log d
@@ -518,12 +513,12 @@ async def get_patrol_config():
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT 
-                config_id, avoidance_wait_time, 
-                CAST(patrol_start_time AS CHAR) as patrol_start_time, 
+            SELECT
+                config_id, avoidance_wait_time,
+                CAST(patrol_start_time AS CHAR) as patrol_start_time,
                 CAST(patrol_end_time AS CHAR) as patrol_end_time,
                 interval_hour, interval_minute, is_active
-            FROM patrol_config 
+            FROM patrol_config
             ORDER BY config_id DESC LIMIT 1
         """)
         config = cursor.fetchone()
@@ -548,13 +543,13 @@ async def update_patrol_config(config: PatrolConfig):
     try:
         cursor = conn.cursor()
         query = """
-            INSERT INTO patrol_config 
+            INSERT INTO patrol_config
             (avoidance_wait_time, patrol_start_time, patrol_end_time, interval_hour, interval_minute, is_active)
             VALUES (%s, %s, %s, %s, %s, %s)
         """
         values = (
-            config.avoidance_wait_time, config.patrol_start_time, 
-            config.patrol_end_time, config.interval_hour, 
+            config.avoidance_wait_time, config.patrol_start_time,
+            config.patrol_end_time, config.interval_hour,
             config.interval_minute, config.is_active
         )
         cursor.execute(query, values)
@@ -570,7 +565,7 @@ async def get_patrol_plan():
     try:
         cursor = conn.cursor(dictionary=True)
         query = """
-            SELECT 
+            SELECT
                 p.plan_id, p.waypoint_id, p.barcode_tag, p.product_id,
                 p.plan_order, w.waypoint_name, p.row_num,
                 m.product_name, m.barcode as product_barcode
@@ -593,7 +588,6 @@ async def add_patrol_plan(plan: PlanAddInput):
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE barcode_tag = %s", (plan.barcode_tag,))
         existing_plan = cursor.fetchone()
-        
         if existing_plan:
             cursor.execute(
                 "UPDATE waypoint_product_plan SET product_id = %s, waypoint_id = %s, row_num = %s WHERE plan_id = %s",
@@ -604,7 +598,6 @@ async def add_patrol_plan(plan: PlanAddInput):
                 "INSERT INTO waypoint_product_plan (waypoint_id, barcode_tag, product_id, row_num) VALUES (%s, %s, %s, %s)",
                 (plan.waypoint_id, plan.barcode_tag, plan.product_id, plan.row_num)
             )
-        
         conn.commit()
         return {"message": "Planogram updated successfully"}
     except Error as e:
@@ -623,9 +616,9 @@ async def list_inventory():
     try:
         cursor = conn.cursor(dictionary=True)
         query = """
-            SELECT 
-                ss.*, 
-                p.product_name, 
+            SELECT
+                ss.*,
+                p.product_name,
                 p.barcode AS product_barcode,
                 w.waypoint_name,
                 pp.row_num,
@@ -715,7 +708,6 @@ async def delete_waypoint(waypoint_id: int):
         cursor.execute("SELECT COUNT(*) as count FROM waypoint_product_plan WHERE waypoint_id = %s", (waypoint_id,))
         if cursor.fetchone()[0] > 0:
             raise HTTPException(status_code=400, detail="삭제 실패: 해당 웨이포인트에 연결된 상품 진열 계획이 남아있습니다. 먼저 계획을 삭제해 주세요.")
-        
         cursor.execute("DELETE FROM waypoint WHERE waypoint_id = %s", (waypoint_id,))
         conn.commit()
         if cursor.rowcount == 0:
@@ -757,7 +749,7 @@ async def unified_register(data: UnifiedRegisterInput):
             res_max = cursor.fetchone()
             new_no = (res_max['max_no'] if res_max and res_max['max_no'] else 100) + 1
             cursor.execute(
-                "INSERT INTO waypoint (waypoint_no, waypoint_name, loc_x, loc_y) VALUES (%s, %s, 0.0, 0.0)", 
+                "INSERT INTO waypoint (waypoint_no, waypoint_name, loc_x, loc_y) VALUES (%s, %s, 0.0, 0.0)",
                 (new_no, data.waypoint_name)
             )
             waypoint_id = cursor.lastrowid

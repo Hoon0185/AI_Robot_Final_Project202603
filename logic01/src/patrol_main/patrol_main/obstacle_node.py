@@ -363,7 +363,8 @@ class ObstacleNode(Node):
     self.cmd_vel_pub.publish(msg)
 
 def main(args=None):
-  rclpy.init(args=args)
+  if not rclpy.ok():
+    rclpy.init(args=args)
   node = ObstacleNode()
   try:
     rclpy.spin(node)
