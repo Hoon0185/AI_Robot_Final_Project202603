@@ -34,6 +34,6 @@ chromium-browser \
     --no-first-run \
     --no-sandbox \
     --user-data-dir=/tmp/chromium-hmi \
-    "http://192.168.1.5:8000/hmi/"
+    "http://16.184.56.119:8000/hmi/"
 
-echo "🚀 Gilbot HMI Kiosk launched at http://192.168.1.5:8000/hmi/"
+echo "🚀 Gilbot HMI Kiosk launched at http://16.184.56.119:8000/hmi/"
