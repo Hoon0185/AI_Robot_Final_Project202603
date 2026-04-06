@@ -17,7 +17,7 @@ class PatrolInterface:
         self.node = Node(node_name)
 
         # Database & Server Sync
-        self.db = InventoryDB(base_url="http://16.184.56.119/api")
+        self.db = InventoryDB(base_url="http://16.184.56.119/api")#16.184.56.119
 
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
@@ -76,7 +76,7 @@ class PatrolInterface:
                 if data:
                     cmd_name = data.get('command_type') or data.get('command')
                     cmd_id = str(data.get('command_id') or "")
-                    
+
                     # 1. ID 중복 체크 (로컬 블랙리스트 및 마지막 ID 비교)
                     is_duplicate_id = (cmd_id == str(self.last_cmd_id) if self.last_cmd_id else False) or (cmd_id in self.processed_ids)
                     if not cmd_id or is_duplicate_id:
@@ -95,15 +95,15 @@ class PatrolInterface:
                         continue
 
                     self.node.get_logger().info(f"[REMOTE] Executing command (ID: {cmd_id}, Name: {cmd_name})")
-                    
+
                     # 3. 명령 실행
                     self._execute_remote_command(cmd_name)
-                    
+
                     # 4. 상태 업데이트
                     self.last_cmd_id = cmd_id
                     self.processed_ids.add(cmd_id)
                     self.last_command_execution_times[cmd_name] = now
-                    
+
                     # 5. 서버에 완료 보고
                     success = self.db.complete_command(cmd_id)
                     if success:
@@ -317,17 +317,17 @@ class PatrolInterface:
         # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
         if self.latest_status:
             topic_status = self.latest_status.get("status")
-            
+
             # 토픽 상태가 유의미할 때만(순찰 중이거나 에러 등) DB 정보를 덮어씀
             # 'idle'인 경우엔 DB에 기록된 마지막 'Completed' 등의 기록을 보여주는 것이 더 정확함
             if topic_status and topic_status not in ["idle", "IDLE"]:
                 res["status"] = topic_status
-                
+
                 # 토픽에 시간 정보가 있다면 DB 정보보다 우선 (진행 중인 세션 표시용)
                 topic_start_time = self.latest_status.get("start_time")
                 if topic_start_time and topic_start_time != 'No Data':
                     res["start_time"] = topic_start_time
-            
+
             if res.get("status") == "patrolling" and "current_shelf" in self.latest_status:
                 res["current_shelf"] = self.latest_status["current_shelf"]
                 res["progress"] = self.latest_status.get("progress", "")

@@ -7,7 +7,7 @@ from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 
 class InventoryDB:
-    def __init__(self, base_url="http://16.184.56.119/api"):
+    def __init__(self, base_url="http://16.184.56.119/api"):#16.184.56.119
         self.base_url = base_url
         try:
             pkg_dir = get_package_share_directory('patrol_main')
@@ -26,8 +26,8 @@ class InventoryDB:
             if res.status_code == 200:
                 server_data = res.json()
                 return [
-                    [d.get('category', '-'), d.get('product_name', '-'), 
-                     d.get('barcode', '-'), d.get('min_inventory_qty', 0), 
+                    [d.get('category', '-'), d.get('product_name', '-'),
+                     d.get('barcode', '-'), d.get('min_inventory_qty', 0),
                      d.get('last_updated_at', 'No Data'), d.get('waypoint_name', '-')]
                     for d in server_data
                 ]
@@ -43,7 +43,7 @@ class InventoryDB:
             if res.status_code == 200:
                 server_data = res.json()
                 return [
-                    [d.get('category', '-'), d.get('product_name', '-'), 
+                    [d.get('category', '-'), d.get('product_name', '-'),
                      d.get('waypoint_name', '-'), d.get('alert_type', 'X')]
                     for d in server_data
                 ]
@@ -208,7 +208,7 @@ class InventoryDB:
         payload = {
             "odom_x": float(x),
             "odom_y": float(y),
-            "status": str(status) 
+            "status": str(status)
         }
         try:
             res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=0.5)
@@ -236,8 +236,8 @@ class InventoryDB:
                 cursor = conn.cursor()
                 # '진행중'이거나 가장 최근인 순찰 로그의 좌표 업데이트
                 query = """
-                    UPDATE patrol_log 
-                    SET last_odom_x = %s, last_odom_y = %s 
+                    UPDATE patrol_log
+                    SET last_odom_x = %s, last_odom_y = %s
                     WHERE status = '진행중' OR status = '중단'
                     ORDER BY patrol_id DESC LIMIT 1
                 """
