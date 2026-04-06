@@ -207,6 +207,7 @@ async def get_status():
             mode_cmd_id = mode_cmd_row['command_id'] if mode_cmd_row else 0
             
             # --- 하트비트 기반 온라인/오프라인 판정 및 최신 좌표 추출 ---
+            # (Chrony 동기화가 완료되어 이제 시차가 매우 정확함)
             cursor.execute("SELECT last_heartbeat, last_x, last_y FROM robot_status WHERE id = 1")
             hb_row = cursor.fetchone()
             if hb_row:
@@ -216,7 +217,7 @@ async def get_status():
                 
                 # 시차 계산 (현재 시각 - 마지막 하트비트)
                 diff = (datetime.now() - last_hb).total_seconds()
-                if diff <= 10:
+                if diff <= 5: # 기존 10초에서 5초로 단축하여 반응성 향상
                     robot_online_status = "online"
                 else:
                     robot_online_status = "offline"
