@@ -251,3 +251,12 @@ class InventoryDB:
             if conn and conn.is_connected():
                 conn.close()
         return False
+
+    def report_battery(self, percentage):
+        """서버로 로봇의 현재 배터리 잔량 전송"""
+        try:
+            payload = {"percentage": float(percentage)}
+            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=0.5)
+            return res.status_code == 200
+        except Exception:
+            return False

@@ -37,11 +37,21 @@ hmi_path = os.path.join(os.path.dirname(__file__), "hmi")
 app.mount("/hmi", StaticFiles(directory=hmi_path, html=True), name="hmi")
 
 # 전역 상태 (메모리 상에 유지, 시스템 재시작 시 초기화)
+current_robot_battery = 85.0  # 기본값 85%
 current_robot_alert = {
     "message": None,
     "active": False,
     "timestamp": None
 }
+
+class BatteryUpdate(BaseModel):
+    percentage: float
+
+@router.post("/robot/battery")
+async def update_battery(data: BatteryUpdate):
+    global current_robot_battery
+    current_robot_battery = round(data.percentage, 1)
+    return {"status": "success", "battery": current_robot_battery}
 
 # 데이터 모델 정의 (Pydantic)
 class PatrolInsert(BaseModel):
@@ -401,6 +411,7 @@ async def get_status():
         "database": db_status,
         "odom_x": res_x,
         "odom_y": res_y,
+        "battery": current_robot_battery,
         "db_host": actual_db_host,
         "server_time": datetime.now().strftime("%H:%M:%S")
     }

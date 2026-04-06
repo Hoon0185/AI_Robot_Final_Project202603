@@ -4,6 +4,7 @@ from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import String, Bool
+from sensor_msgs.msg import BatteryState
 from action_msgs.msg import GoalStatus
 from protect_product_msgs.msg import DetectionArray # AI 인식 메시지 추가
 import yaml
@@ -63,6 +64,12 @@ class PatrolNode(Node):
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False
         self.ai_wait_start_time = None
+
+        # 9. 실시간 배터리 상태 모니터링 (서버 보고)
+        self.current_battery = 85.0
+        self.battery_sub = self.create_subscription(
+            BatteryState, '/battery_state', self.battery_callback, 10)
+        self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 

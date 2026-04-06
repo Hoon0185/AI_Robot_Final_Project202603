@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentMode = document.getElementById('current-mode');
     const alertBanner = document.getElementById('alert-banner');
     const alertText = document.getElementById('alert-text');
+    const batteryValue = document.getElementById('battery-value');
 
     const btnTogglePause = document.getElementById('btn-toggle-pause');
 
@@ -48,6 +49,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update Positioning
             posX.innerText = data.odom_x.toFixed(1);
             posY.innerText = data.odom_y.toFixed(1);
+
+            // Update Battery (Real-time from Server)
+            if (data.battery !== undefined) {
+                batteryValue.innerText = Math.round(data.battery);
+            }
 
             // Update Mode & Toggle Button UI (English Only)
             const koStatus = data.robot_status;
