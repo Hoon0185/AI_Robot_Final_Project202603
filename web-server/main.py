@@ -150,6 +150,9 @@ class PoseUpdate(BaseModel):
     odom_x: float
     odom_y: float
 
+class BatteryUpdate(BaseModel):
+    percentage: float
+
 @router.post("/robot/pose")
 async def update_robot_pose(pose: PoseUpdate):
     conn = get_db_connection()
@@ -173,6 +176,26 @@ async def update_robot_pose(pose: PoseUpdate):
                 last_y = %s 
             WHERE id = 1
         """, (pose.odom_x, pose.odom_y))
+        conn.commit()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@router.post("/robot/battery")
+async def update_robot_battery(battery: BatteryUpdate):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        # 로봇 상태 테이블의 배터리 수치 업데이트
+        cursor.execute("""
+            UPDATE robot_status 
+            SET battery_level = %s 
+            WHERE id = 1
+        """, (battery.percentage,))
         conn.commit()
         return {"status": "success"}
     except Exception as e:
@@ -208,12 +231,14 @@ async def get_status():
             
             # --- 하트비트 기반 온라인/오프라인 판정 및 최신 좌표 추출 ---
             # (Chrony 동기화가 완료되어 이제 시차가 매우 정확함)
-            cursor.execute("SELECT last_heartbeat, last_x, last_y FROM robot_status WHERE id = 1")
+            cursor.execute("SELECT last_heartbeat, last_x, last_y, battery_level FROM robot_status WHERE id = 1")
             hb_row = cursor.fetchone()
+            res_battery = 0.0
             if hb_row:
                 last_hb = hb_row['last_heartbeat']
                 res_x = round(hb_row['last_x'] or 0.0, 2)
                 res_y = round(hb_row['last_y'] or 0.0, 2)
+                res_battery = round(hb_row['battery_level'] or 0.0, 1)
                 
                 # 시차 계산 (현재 시각 - 마지막 하트비트)
                 diff = (datetime.now() - last_hb).total_seconds()
@@ -275,6 +300,7 @@ async def get_status():
         "database": db_status,
         "odom_x": res_x,
         "odom_y": res_y,
+        "battery": res_battery,
         "db_host": actual_db_host,
         "server_time": datetime.now().strftime("%H:%M:%S")
     }
