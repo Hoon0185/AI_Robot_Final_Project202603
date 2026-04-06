@@ -4,6 +4,8 @@ import time
 import threading
 import sys
 import random
+import subprocess
+import os
 from datetime import datetime
 from typing import List, Optional
 
@@ -11,19 +13,62 @@ from typing import List, Optional
 LOCAL_URL = "http://localhost:8000/api"
 SERVER_URL = "http://16.184.56.119/api"
 
-if len(sys.argv) > 1:
-    arg = sys.argv[1].lower()
-    if arg == "local":
-        BASE_URL = LOCAL_URL
-    elif arg == "server":
-        BASE_URL = SERVER_URL
-    elif arg.startswith("http"):
-        BASE_URL = arg
-    else:
-        # If it's not a keyword or URL, assume it's an IP or hostname
-        BASE_URL = f"http://{arg}:8000/api"
+# --- Argument Parsing & Environment Selection ---
+def parse_args():
+    target = "local"
+    no_sync = False
+    password = None
+
+    for i, arg in enumerate(sys.argv):
+        if arg.lower() == "local":
+            target = "local"
+        elif arg.lower() in ["server", "remote"]:
+            target = "remote"
+        elif arg == "--no-sync":
+            no_sync = True
+        elif arg == "--password" and i + 1 < len(sys.argv):
+            password = sys.argv[i+1]
+            
+    return target, no_sync, password
+
+TARGET, NO_SYNC, SUDO_PWD = parse_args()
+
+if TARGET == "local":
+    BASE_URL = LOCAL_URL
+elif TARGET == "remote":
+    BASE_URL = SERVER_URL
 else:
     BASE_URL = LOCAL_URL
+
+def sync_time(mode):
+    """지정한 모드에 맞춰 Chrony 시간 동기화 스크립트 실행"""
+    if NO_SYNC:
+        print("[INFO] 시간 동기화(Chrony)를 건너뜁니다. (--no-sync)")
+        return
+
+    script_path = os.path.join(os.path.dirname(__file__), "..", "scripts", "chrony_client_setup.sh")
+    flag = "--local" if mode == "local" else "--remote"
+    
+    print(f"\n[SYNC] {mode} 모드 시간 동기화를 시도합니다...")
+    
+    try:
+        # sudo 암호가 있으면 -S 옵션으로 자동 입력 시도
+        if SUDO_PWD:
+            cmd = f"echo '{SUDO_PWD}' | sudo -S bash {script_path} {flag}"
+        else:
+            cmd = f"sudo bash {script_path} {flag}"
+            
+        # 쉘 명령 직접 실행 (상호작용 가능성 고려)
+        result = os.system(cmd)
+        if result == 0:
+            print(f"[SUCCESS] 시간 동기화 완료 ({mode})")
+        else:
+            print(f"[WARNING] 시간 동기화 실패 (종료 코드: {result})")
+    except Exception as e:
+        print(f"[ERROR] 시간 동기화 실행 중 오류 발생: {e}")
+
+# 시뮬레이터 시작 전 동기화 수행
+sync_time(TARGET)
 
 DETECT_URL = f"{BASE_URL}/detections/add"
 CONFIG_URL = f"{BASE_URL}/patrol/config"
