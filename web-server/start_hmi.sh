@@ -24,26 +24,31 @@ if [[ -z "$DISPLAY" ]]; then
     fi
 fi
 
-# 3. Environment & Display Configuration
+# 3. Environment & Display Configuration (Permission Fix)
 export DISPLAY=:0
 
 # Prevent Chromium from failing to create a directory in /run/user/0 when run via sudo
-export XDG_RUNTIME_DIR=/tmp/runtime-hmi
-mkdir -p $XDG_RUNTIME_DIR
-chmod 700 $XDG_RUNTIME_DIR
+export XDG_RUNTIME_DIR="/tmp/runtime-hmi-$(whoami)"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
 
 # Disable screensavers and power management
 xset s off 2>/dev/null
 xset -dpms 2>/dev/null
 xset s noblank 2>/dev/null
 
-# 4. Launch Chromium in Kiosk Mode (16.184.56.119)
-TARGET_URL="http://16.184.56.119:8000/hmi/"
+# 4. Launch Chromium in Kiosk Mode (Dynamic IP Detection)
+SERVER_IP=$(hostname -I | awk '{print $1}')
+TARGET_URL="http://${SERVER_IP}:8000/hmi/"
 
-echo "🚀 Gilbot HMI Kiosk launching at $TARGET_URL"
+# 보안 경고 무시 및 안전한 오리진 강제 지정
+SECURITY_FLAGS="--ignore-certificate-errors --allow-running-insecure-content --unsafely-treat-insecure-origin-as-secure=$TARGET_URL"
+
+echo "🚀 Gilbot HMI Kiosk launching at $TARGET_URL (with Security Bypass)"
 
 chromium-browser \
     --kiosk \
+    $SECURITY_FLAGS \
     --noerrdialogs \
     --disable-infobars \
     --window-size=800,480 \
@@ -58,3 +63,4 @@ chromium-browser \
     --no-default-browser-check \
     --user-data-dir=/tmp/chromium-hmi \
     "$TARGET_URL"
+

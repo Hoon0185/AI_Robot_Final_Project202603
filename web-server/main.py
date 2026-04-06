@@ -20,8 +20,8 @@ app = FastAPI(
     version="0.3.0"
 )
 
-# API 라우터 설정 (기본 /api 경로 사용)
-router = APIRouter(prefix="/api")
+# API 라우터 설정 (기본 경로 사용 - 프록시에서 /api 처리)
+router = APIRouter(prefix="")
 
 # CORS 설정: 프론트엔드(React 등)의 접속을 허용합니다.
 app.add_middleware(
