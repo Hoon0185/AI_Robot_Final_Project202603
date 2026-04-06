@@ -4,7 +4,6 @@ from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import threading
 from .inventory_db import InventoryDB
-# from .test_db import InventoryDB # DB 연결이 안되는 상황을 가정한 더미 DB 클래스
 
 class ObstacleInterface:
   def __init__(self, node_name='ui_obstacle_interface'):
@@ -13,7 +12,6 @@ class ObstacleInterface:
     self.node = Node(node_name)
 
     self.db = InventoryDB(base_url="http://16.184.56.119/api")
-    # self.db = InventoryDB(base_url="http://16.0000") # DB 연결이 안되는 상황을 가정한 더미 URL
 
     # ---- 서비스 클라이언트 설정 ----
     self.param_client = self.node.create_client(

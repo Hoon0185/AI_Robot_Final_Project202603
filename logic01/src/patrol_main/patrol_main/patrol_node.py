@@ -43,7 +43,6 @@ class PatrolNode(Node):
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
         self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
         self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
-        # self.retry_sub = self.create_subscription(Bool, '/retry_patrol_goal', self.retry_callback, 10) # 장애물 노드로부터 재출발 요청 수신
         self.pause_sub = self.create_subscription(Bool, '/pause_patrol', self.pause_callback, 10) # 장애물 노드로부터 일시정지 요청 수신
 
         # 5. 순찰 상태 발행 (UI용)

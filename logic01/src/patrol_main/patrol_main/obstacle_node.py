@@ -8,8 +8,7 @@ from nav2_msgs.srv import ClearEntireCostmap # 유령 장애물 방지
 from nav_msgs.msg import Path # 경로 수신용 메시지
 from std_msgs.msg import Bool
 import copy # 라이다 메시지 복사용
-# from .inventory_db import InventoryDB
-from .test_db import InventoryDB
+from .inventory_db import InventoryDB
 from rclpy.parameter import Parameter
 
 
@@ -46,7 +45,6 @@ class ObstacleNode(Node):
 
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
-    self.emergency_pub = self.create_publisher(Bool, '/emergency_stop', 10)
     self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
     self.pause_pub = self.create_publisher(Bool, '/pause_patrol', 10) # 순찰 노드에 일시정지를 요청
     self.obstacle_status_pub = self.create_publisher(Bool, '/obstacle_detected_status', 10) # 행동트리에서 장애물 감지 여부 파악 위한 토픽
