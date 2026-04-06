@@ -49,9 +49,18 @@ class BatteryUpdate(BaseModel):
 
 @router.post("/robot/battery")
 async def update_battery(data: BatteryUpdate):
-    global current_robot_battery
-    current_robot_battery = round(data.percentage, 1)
-    return {"status": "success", "battery": current_robot_battery}
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE robot_status SET battery_level = %s WHERE id = 1", (data.percentage,))
+        conn.commit()
+        return {"status": "success", "battery": data.percentage}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
 
 # 데이터 모델 정의 (Pydantic)
 class PatrolInsert(BaseModel):
@@ -121,7 +130,7 @@ class WaypointUpdate(BaseModel):
 # 데이터베이스 연결 함수
 def get_db_connection():
     db_mode = os.getenv("DB_MODE", "local").lower()
-    
+
     if db_mode == "remote":
         config = {
             "host": os.getenv("REMOTE_DB_HOST", "16.184.56.119"),
@@ -138,7 +147,7 @@ def get_db_connection():
             "password": os.getenv("LOCAL_DB_PASSWORD", "robot123"),
             "database": os.getenv("LOCAL_DB_NAME", "gilbot")
         }
-        
+
     try:
         connection = mysql.connector.connect(
             **config,
@@ -197,7 +206,7 @@ async def get_activity_log_html():
         # 최신 100건 조회
         cursor.execute("SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT 100")
         logs = cursor.fetchall()
-        
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -298,18 +307,18 @@ async def update_robot_pose(pose: PoseUpdate):
         cursor = conn.cursor()
         # 진행 중이거나 가장 최근인 순찰 로그의 좌표 업데이트
         cursor.execute("""
-            UPDATE patrol_log 
-            SET last_odom_x = %s, last_odom_y = %s 
+            UPDATE patrol_log
+            SET last_odom_x = %s, last_odom_y = %s
             WHERE status = '진행중' OR status = '중단'
             ORDER BY patrol_id DESC LIMIT 1
         """, (pose.odom_x, pose.odom_y))
-        
+
         # 하트비트 테이블 및 최신 좌표 갱신 추가
         cursor.execute("""
-            UPDATE robot_status 
-            SET last_heartbeat = CURRENT_TIMESTAMP, 
-                last_x = %s, 
-                last_y = %s 
+            UPDATE robot_status
+            SET last_heartbeat = CURRENT_TIMESTAMP,
+                last_x = %s,
+                last_y = %s
             WHERE id = 1
         """, (pose.odom_x, pose.odom_y))
         conn.commit()
@@ -323,45 +332,49 @@ async def update_robot_pose(pose: PoseUpdate):
 async def get_status():
     conn = get_db_connection()
     db_status = "connected" if conn and conn.is_connected() else "disconnected"
-    
+
     # 기본값 설정
     robot_online_status = "offline" # 로봇 통신 상태 (online/offline)
     res_status = "휴식중"
     res_cmd = "None"
     res_x = 0.0
     res_y = 0.0
-    
+
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-            
+
             # 1. 최신 '모드 정의' 명령 확인 (ID 기준 정렬로 클럭 드리프트 문제 방지)
             cursor.execute("""
-                SELECT command_type, command_id FROM robot_command 
+                SELECT command_type, command_id FROM robot_command
                 WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
                 ORDER BY command_id DESC LIMIT 1
             """)
             mode_cmd_row = cursor.fetchone()
             mode_cmd = str(mode_cmd_row['command_type']).upper().strip() if mode_cmd_row else "NONE"
             mode_cmd_id = mode_cmd_row['command_id'] if mode_cmd_row else 0
-            
-            # --- 하트비트 기반 온라인/오프라인 판정 및 최신 좌표 추출 ---
-            # (Chrony 동기화가 완료되어 이제 시차가 매우 정확함)
-            cursor.execute("SELECT last_heartbeat, last_x, last_y FROM robot_status WHERE id = 1")
+
+            # --- 하트비트 기반 온라인/오프라인 판정 및 데이터 추출 ---
+            # TIMESTAMPDIFF를 사용하여 DB서버 시각 기준으로 판정함으로써 노트북과의 시차 문제 해결
+            cursor.execute("""
+                SELECT 
+                    last_heartbeat, last_x, last_y, battery_level,
+                    TIMESTAMPDIFF(SECOND, last_heartbeat, CURRENT_TIMESTAMP) as diff_sec
+                FROM robot_status WHERE id = 1
+            """)
             hb_row = cursor.fetchone()
             if hb_row:
-                last_hb = hb_row['last_heartbeat']
                 res_x = round(hb_row['last_x'] or 0.0, 2)
                 res_y = round(hb_row['last_y'] or 0.0, 2)
+                current_robot_battery = hb_row['battery_level'] or 85.0
                 
-                # 시차 계산 (현재 시각 - 마지막 하트비트)
-                diff = (datetime.now() - last_hb).total_seconds()
-                if diff <= 5: # 기존 10초에서 5초로 단축하여 반응성 향상
+                # 시차 판정 (DB 서버 기준)
+                if hb_row['diff_sec'] is not None and hb_row['diff_sec'] <= 7:
                     robot_online_status = "online"
                 else:
                     robot_online_status = "offline"
             # ---------------------------------------
-            
+
             # 2. 최신 순찰 로그 확인
             cursor.execute("SELECT status, last_odom_x, last_odom_y FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
             last_patrol = cursor.fetchone()
@@ -481,19 +494,19 @@ async def start_patrol():
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         cursor = conn.cursor(dictionary=True)
-        
+
         # 비상정지 상태 확인
         cursor.execute("""
-            SELECT command_type FROM robot_command 
+            SELECT command_type FROM robot_command
             WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
             ORDER BY created_at DESC, command_id DESC LIMIT 1
         """)
         last_cmd = cursor.fetchone()
         cursor.execute("SELECT status FROM patrol_log ORDER BY patrol_id DESC LIMIT 1")
         last_patrol = cursor.fetchone()
-        
+
         is_locked = (last_patrol and last_patrol['status'] == '중단') or (last_cmd and last_cmd['command_type'] == 'EMERGENCY_STOP')
-        
+
         if is_locked:
             raise HTTPException(status_code=403, detail="비상정지 상태입니다. 비상해제를 먼저 눌러주세요.")
 
@@ -507,7 +520,7 @@ async def start_patrol():
 
         # 2. 로봇 명령 큐에 추가
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('START_PATROL', 'PENDING')")
-        
+
         log_activity('user', 'robot', 'COMMAND', 'START_PATROL', None, 'User initiated patrol start.')
         conn.commit()
         return {"message": "Patrol started successfully", "patrol_id": patrol_id}
@@ -529,14 +542,14 @@ async def finish_patrol():
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status IN ('진행중', '중단') ORDER BY start_time DESC LIMIT 1")
 
         patrol = cursor.fetchone()
-        
+
         if patrol:
             patrol_id = patrol['patrol_id']
             cursor.execute(
                 "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
                 (patrol_id,)
             )
-        
+
         # 로봇 명령 큐에 복귀 추가 (비상 정지 상태였을 경우에도 해제 효과를 가짐)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
 
@@ -555,7 +568,7 @@ async def stop_patrol():
         cursor = conn.cursor(dictionary=True)
         # 1. 일단 로봇 명령 큐에 비상정지 추가 (최우선)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('EMERGENCY_STOP', 'PENDING')")
-        
+
         log_activity('user', 'robot', 'COMMAND', 'EMERGENCY_STOP', None, 'User initiated emergency stop!')
 
         # 2. 진행중인 순찰이 있다면 '중단'으로 변경
@@ -582,8 +595,8 @@ async def resume_patrol():
         cursor = conn.cursor(dictionary=True)
         # 마지막 중단된 순찰 회차 조회 (최근 1시간 이내 것만 유효한 것으로 간주)
         cursor.execute("""
-            SELECT patrol_id FROM patrol_log 
-            WHERE status = '중단' 
+            SELECT patrol_id FROM patrol_log
+            WHERE status = '중단'
             AND start_time > NOW() - INTERVAL 1 HOUR
             ORDER BY patrol_id DESC LIMIT 1
         """)
@@ -617,10 +630,10 @@ async def resume_patrol():
                 log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', {"patrol_id": patrol_id}, f"Emergency release at base for patrol {patrol_id} (closeout)")
         else:
             log_activity('web_server', 'robot', 'COMMAND', 'RESUME_PATROL', None, "Emergency released (no active patrol to resume)")
-        
+
         # 기지에 정지상태이든 순찰중이었든 상관없이 비상정지 신호 해제를 위해 명령 전송
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RESUME_PATROL', 'PENDING')")
-        
+
         conn.commit()
         return {"message": "Emergency release command sent", "resumed_patrol": patrol['patrol_id'] if (patrol and not at_base) else None}
     finally:
@@ -655,11 +668,11 @@ async def clear_pending_commands():
         # 1. 미완료된 로봇 명령 초기화 (DB Enum에 맞춰 FAILED로 변경)
         cursor.execute("UPDATE robot_command SET status = 'FAILED' WHERE status IN ('PENDING', 'PROCESSING')")
         cmd_count = cursor.rowcount
-        
+
         # 2. '진행중'인 순찰 로그 모두 강제 중단 처리 (잔류 로그 정리)
         cursor.execute("UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE status = '진행중'")
         log_count = cursor.rowcount
-        
+
         conn.commit()
         print(f"🧹 CLEAR: {cmd_count} commands and {log_count} patrol logs cleared.")
         return {
@@ -689,10 +702,10 @@ async def list_products():
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM product_master ORDER BY product_id DESC")
-        
+
         # 로봇 부팅 시 상품 리스트 로딩 로그 기록
         log_activity('robot', 'web_server', 'BOOT', 'GET_PRODUCTS', None, 'Robot requested product master list.')
-        
+
         return cursor.fetchall()
     finally:
         conn.close()
@@ -837,7 +850,7 @@ async def add_detection(data: DetectionInput):
         # 3. 인식된 바코드 또는 YOLO ID로 실제 바코드 및 상품 정보 조회
         final_detected_barcode = data.detected_barcode
         detected_product_id_internal = None # 판독용 내부 변수
-        
+
         if not final_detected_barcode and data.yolo_class_id is not None and data.yolo_class_id not in [-1, 0]:
             # YOLO 클래스 아이디로 상품 바코드 조회
             cursor.execute("SELECT barcode, product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
@@ -958,7 +971,7 @@ async def get_patrol_config():
             ORDER BY config_id DESC LIMIT 1
         """)
         config = cursor.fetchone()
-        
+
         # 로봇 부팅 시 설정 로딩 로그 기록
         log_activity('robot', 'web_server', 'BOOT', 'GET_CONFIG', None, 'Robot requested patrol configuration.')
 
@@ -1015,10 +1028,10 @@ async def get_patrol_plan():
             ORDER BY p.plan_order, p.plan_id
         """
         cursor.execute(query)
-        
+
         # 로봇 부팅 시 순찰 계획 로딩 로그 기록
         log_activity('robot', 'web_server', 'BOOT', 'GET_PLAN', None, 'Robot requested patrol plan.')
-        
+
         return cursor.fetchall()
     finally:
         conn.close()
@@ -1143,8 +1156,8 @@ async def update_waypoint(waypoint_id: int, wp: WaypointUpdate):
     try:
         cursor = conn.cursor()
         query = """
-            UPDATE waypoint 
-            SET waypoint_no = %s, waypoint_name = %s, loc_x = %s, loc_y = %s 
+            UPDATE waypoint
+            SET waypoint_no = %s, waypoint_name = %s, loc_x = %s, loc_y = %s
             WHERE waypoint_id = %s
         """
         cursor.execute(query, (wp.waypoint_no, wp.waypoint_name, wp.loc_x, wp.loc_y, waypoint_id))
@@ -1184,17 +1197,17 @@ async def delete_waypoint(waypoint_id: int):
         cursor.execute("DELETE FROM detection_log WHERE waypoint_id = %s", (waypoint_id,))
         cursor.execute("DELETE FROM alert WHERE waypoint_id = %s", (waypoint_id,))
         cursor.execute("DELETE FROM waypoint WHERE waypoint_id = %s", (waypoint_id,))
-        
+
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="웨이포인트를 찾을 수 없습니다.")
-        
+
         return {"message": "웨이포인트 및 관련 모든 데이터가 삭제되었습니다."}
-        
+
     except Error as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=f"데이터베이스 오류: {str(e)}")
-            
+
     except HTTPException:
         raise
     except Exception as e:

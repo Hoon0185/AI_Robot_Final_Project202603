@@ -32,6 +32,6 @@ chromium-browser \
     --disable-pinch \
     --overscroll-history-navigation=0 \
     --no-first-run \
-    "http://localhost:8000/hmi/" &
+    "http://192.168.1.5:8000/api/hmi/" &
 
-echo "🚀 Gilbot HMI Kiosk launched at http://localhost:8000/hmi/"
+echo "🚀 Gilbot HMI Kiosk launched at http://192.168.1.5:8000/api/hmi/"
