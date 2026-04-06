@@ -3,7 +3,7 @@
 # Optimized for Raspberry Pi 4 CPU Rendering
 
 # 1. 서버 정보 설정 (필요 시 여기를 수정)
-SERVER_IP="192.168.0.7"
+SERVER_IP=${1:-"16.184.56.119"}
 SERVER_PORT="8000"
 
 # Clean up any existing instances

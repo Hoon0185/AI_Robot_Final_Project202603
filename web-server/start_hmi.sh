@@ -37,8 +37,9 @@ xset s off 2>/dev/null
 xset -dpms 2>/dev/null
 xset s noblank 2>/dev/null
 
-# 4. Launch Chromium in Kiosk Mode (Dynamic IP Detection)
-SERVER_IP=$(hostname -I | awk '{print $1}')
+# 4. Launch Chromium in Kiosk Mode (Server IP Selection)
+# 기본적으로 원격 서버(16.184.56.119)를 바라보며, 필요 시 인자로 IP를 변경할 수 있습니다.
+SERVER_IP=${1:-"16.184.56.119"}
 TARGET_URL="http://${SERVER_IP}:8000/hmi/"
 
 # 보안 경고 무시 및 안전한 오리진 강제 지정
