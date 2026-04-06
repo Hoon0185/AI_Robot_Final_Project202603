@@ -35,6 +35,8 @@ setup(
             'qr_detector = protect_product.qr_detector:main',
             'verifier = protect_product.verifier:main',
             'viewer = protect_product.viewer:main',
+            'camera_node = protect_product.camera_node:main',
+            'camera = protect_product.camera:main',
         ],
     },
 )

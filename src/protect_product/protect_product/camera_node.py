@@ -12,22 +12,26 @@ class RtspBridgeNode(Node):
 
         # RTSP 설정
         USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
-        self.rtsp_url = f"rtsp://{USER}:{PASS}@{IP}:554/stream1"
+        self.rtsp_url = f"rtsp://robot1:robot123@192.168.1.18:554/stream1"
 
         self.cap = cv2.VideoCapture(self.rtsp_url)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        self.cam_width = 640
+        self.cam_height = 360
 
         # 발행 토픽명을 /rtsp_image로 고정
         self.publisher = self.create_publisher(CompressedImage, '/rtsp_image', 10)
 
         # 30 FPS 송출
-        self.timer = self.create_timer(1.0 / 30.0, self.timer_callback)
+        self.timer = self.create_timer(1.0 / 45.0, self.timer_callback)
         self.get_logger().info('/rtsp_image로 송출 중...')
 
     def timer_callback(self):
         ret, frame = self.cap.read()
         if ret:
-            msg = self.bridge.cv2_to_compressed_imgmsg(frame)
+            resized_frame=cv2.resize(frame,(self.cam_width,self.cam_height))
+            msg = self.bridge.cv2_to_compressed_imgmsg(resized_frame)
             msg.header.stamp = self.get_clock().now().to_msg()
             self.publisher.publish(msg)
 
