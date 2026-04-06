@@ -25,30 +25,59 @@ DB_CONFIG = {
 }
 
 def capture_image(filename="capture.jpg"):
-    """Captures a single frame from the camera and saves it to a file."""
-    print("Initializing camera...")
-    # Try index 0 as default
-    cap = cv2.VideoCapture(0)
+    """Shows a live camera preview and captures an image when the spacebar is pressed."""
+    print("Initializing camera preview...")
+    print("Commands: [Space]: Capture, [q] or [Esc]: Quit")
     
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
+    cap = None
+    for index in [0, 1, 2]:
+        temp_cap = cv2.VideoCapture(index)
+        if temp_cap.isOpened():
+            ret, _ = temp_cap.read()
+            if ret:
+                cap = temp_cap
+                print(f"Connected to camera index: {index}")
+                break
+            temp_cap.release()
+
+    if cap is None:
+        print("Error: Could not open any camera device.")
         return None
-        
-    # Standard warmup for camera
-    print("Warming up camera...")
-    for _ in range(5):
-        cap.read()
     
-    ret, frame = cap.read()
-    if ret:
-        cv2.imwrite(filename, frame)
-        print(f"Image captured and saved to {filename}")
+    window_name = "Camera Preview - Press Space to Capture"
+    captured_file = None
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Failed to grab frame.")
+                break
+
+            # Show the frame
+            cv2.imshow(window_name, frame)
+            
+            key = cv2.waitKey(1) & 0xFF
+            
+            # [Space] key to capture
+            if key == ord(' '):
+                cv2.imwrite(filename, frame)
+                print(f"Image captured and saved to {filename}")
+                captured_file = filename
+                break
+            
+            # [q] or [Esc] key to quit
+            elif key == ord('q') or key == 27:
+                print("Capture cancelled by user.")
+                break
+                
+    finally:
         cap.release()
-        return filename
-    else:
-        print("Error: Could not capture image.")
-        cap.release()
-        return None
+        cv2.destroyAllWindows()
+        # Briefly wait for windows to close properly
+        cv2.waitKey(1)
+
+    return captured_file
 
 def identify_product_from_image(image_path):
     """Uploads image to Gemini and returns the recognized product name."""
@@ -56,14 +85,14 @@ def identify_product_from_image(image_path):
         return "None"
 
     print("Processing image with Gemini (v2.5 Flash)...")
-    
+
     # Load the image
     with open(image_path, "rb") as f:
         image_data = f.read()
 
     # Prompt Gemini to extract the product name
     prompt = "이 사진 속에 정면으로 보이는 상품이 무엇인지 한국어로 상품명만 딱 한 단어로 말해줘. 만약 상품명을 찾을 수 없다면 'None'이라고 답변해줘."
-    
+
     # Use the multimodal capabilities of gemini-2.5-flash
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -72,7 +101,7 @@ def identify_product_from_image(image_path):
             genai.types.Part.from_bytes(data=image_data, mime_type="image/jpeg")
         ]
     )
-    
+
     product_name = response.text.strip()
     print(f"Recognized Product: {product_name}")
     return product_name
@@ -118,12 +147,12 @@ def main():
         img_file = "capture.jpg"
         if capture_image(img_file):
             product_name = identify_product_from_image(img_file)
-            
+
             info = get_product_info(product_name)
             print(f"\n--- [인식 결과] ---\n{info}\n-------------------")
 
             # Keep the image for review? No, delete it if it's temporary.
-            # os.remove(img_file) 
+            # os.remove(img_file)
     except Exception as e:
         print(f"오류 발생: {e}")
 
