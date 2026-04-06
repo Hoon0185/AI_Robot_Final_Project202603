@@ -15,7 +15,7 @@ class ObstacleNode(Node):
     # ---- [LOGIC_02 기반 통합] 웹 DB로부터 초기 설정값 수신 ----
     default_wait_time = 10
     try:
-        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=2.0)
+        response = requests.get("http://16.184.56.119/patrol/config", timeout=2.0)
         if response.status_code == 200:
             config = response.json()
             raw_val = config.get('avoidance_wait_time', 10)
@@ -157,7 +157,7 @@ class ObstacleNode(Node):
 
   def sync_config_from_db(self):
     try:
-        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=3.0)
+        response = requests.get("http://16.184.56.119/patrol/config", timeout=3.0)
         if response.status_code == 200:
             config = response.json()
             raw_val = config.get('avoidance_wait_time')

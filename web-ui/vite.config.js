@@ -9,12 +9,11 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      // '/api'로 시작하는 모든 요청을 FastAPI(8000)로 전달합니다.
-      '/api': {
+      // '/api' 없이도 개별 API 경로를 감지하여 백엔드(8000)로 전달합니다.
+      '^/(status|patrol|alerts|detections|inventory|products|waypoints|admin|robot)': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-        // 요청 주소에서 '/api'를 제거하고 전달합니다. (예: /api/status -> /status)
-        rewrite: (path) => path.replace(/^\/api/, '')
+        secure: false
       }
     }
   }

@@ -22,8 +22,8 @@ logging.basicConfig(
 logger = logging.getLogger("Gilbot")
 
 # --- Configuration Defaults ---
-LOCAL_URL = "http://localhost:8000/api"
-SERVER_URL = "http://16.184.56.119/api"
+LOCAL_URL = "http://localhost:8000"
+SERVER_URL = "http://16.184.56.119"
 
 # --- Argument Parsing & Environment Selection ---
 def parse_args():
@@ -114,7 +114,7 @@ class VirtualRobot:
             self.base_url = LOCAL_URL
         else:
             # Assume it's an IP or hostname
-            self.base_url = f"http://{mode}:8000/api"
+            self.base_url = f"http://{mode}:8000"
 
         self.DETECT_URL = f"{self.base_url}/detections/add"
         self.CONFIG_URL = f"{self.base_url}/patrol/config"

@@ -14,4 +14,4 @@ sudo rm -f /tmp/.X0-lock /tmp/.X11-unix/X0
 # --disable-gpu: Mandatory for stable Pi 4 headless X11
 # --no-sandbox: Required for Snap-based Chromium in some headless configs
 # --disable-dev-shm-usage: Prevents crashes in low-memory/container scenarios
-xinit /bin/sh -c "matchbox-window-manager -use_titlebar no & chromium-browser --kiosk --window-size=800,480 --window-position=0,0 --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --disable-features=Translate,PasswordImport,AutofillAddressEnabled,TouchpadAndWheelScrollLatching --ozone-platform=x11 http://$SERVER_IP:$SERVER_PORT/api/hmi/index.html" -- :0 -nolisten tcp vt7
+xinit /bin/sh -c "matchbox-window-manager -use_titlebar no & chromium-browser --kiosk --window-size=800,480 --window-position=0,0 --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --disable-features=Translate,PasswordImport,AutofillAddressEnabled,TouchpadAndWheelScrollLatching --ozone-platform=x11 http://$SERVER_IP:$SERVER_PORT/hmi/index.html" -- :0 -nolisten tcp vt7

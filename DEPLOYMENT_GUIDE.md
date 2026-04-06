@@ -66,7 +66,7 @@ sudo systemctl status gilbot-backend.service
 | **백엔드 (FastAPI)** | API 및 명령 관리 | `systemd` 서비스 (`gilbot-backend.service`)로 자동 실행 |
 | **프론트엔드 (React)** | 사용자 인터페이스 | `Apache2` 웹 서버가 `/web-ui/dist`의 정적 파일 서빙 |
 | **DB (MySQL)** | 데이터 저장 | 로컬 MySQL 서비스 (`3306` 포트) |
-| **Reverse Proxy** | 경로 제어 | Apache의 `ProxyPass` 기능을 이용해 `/api` 요청을 `8000`번 포트로 전달 |
+| **Reverse Proxy** | 경로 제어 | Apache의 `ProxyPass` 기능을 이용해 전체 요청을 `8000`번 포트로 전달 |
 
 ---
 
