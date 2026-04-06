@@ -36,8 +36,7 @@ def generate_launch_description():
           executable='obstacle_node',
           name='patrol_obstacle_node',
           parameters=[{
-              'use_sim_time': use_sim_time,
-              'obstacle_wait_time': 10
+            'use_sim_time': use_sim_time,
           }],
           output='screen'
       ),
@@ -47,7 +46,7 @@ def generate_launch_description():
           name='twist_mux',
           output='screen',
           parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-          remappings=[('/cmd_vel_out', '/cmd_vel')] # 최종 출력 토픽 (네임스페이스 결합 고려 슬래시 제거)
+          remappings=[('cmd_vel_out', 'cmd_vel')] # 최종 출력 토픽 (네임스페이스 결합 고려 슬래시 제거)
       )
     ]
   )

@@ -8,39 +8,41 @@ from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import json
 import threading
 from .inventory_db import InventoryDB
+# from .test_db import InventoryDB
 
 class PatrolInterface:
     def __init__(self, node_name='ui_patrol_interface'):
         if not rclpy.ok():
             rclpy.init()
         self.node = Node(node_name)
-        
+
         # Database & Server Sync
         self.db = InventoryDB(base_url="http://16.184.56.119/api")
-        
+        # self.db = InventoryDB(base_url="http://000000/api") # 개발/테스트용 더미 URL
+
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
         self.param_client = self.node.create_client(SetParameters, '/patrol_scheduler/set_parameters')
-        
+
         # Publishers (Manual Control)
         # LOGIC_02의 twist_mux 우선순위에 따라 /cmd_vel_teleop 사용
         self.teleop_pub = self.node.create_publisher(Twist, '/cmd_vel_teleop', 10)
         self.buzzer_pub = self.node.create_publisher(Bool, '/robot_buzzer', 10)
         self.emergency_pub = self.node.create_publisher(Bool, '/emergency_stop', 10)
         self.cmd_pub = self.node.create_publisher(String, '/patrol_cmd', 10)
-        
+
         # Status Subscriber
         self.latest_status = None
         self.status_sub = self.node.create_subscription(
             String, '/patrol_status', self._status_cb, 10)
         self.last_status_received_time = 0.0
-            
+
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
         self.executor.add_node(self.node)
         self.spin_thread = threading.Thread(target=self.executor.spin, daemon=True)
         self.spin_thread.start()
-        
+
         # Remote Command Polling
         self.last_cmd_id = None
         try:
@@ -65,15 +67,15 @@ class PatrolInterface:
                 if data:
                     cmd_name = data.get('command_type') or data.get('command')
                     cmd_id = data.get('command_id')
-                    
+
                     # 새로운 ID의 명령일 경우에만 실행
                     if cmd_id is not None and cmd_id != self.last_cmd_id:
                         self.node.get_logger().info(f"[REMOTE] New command (ID:{cmd_id}): {cmd_name}")
                         self._execute_remote_command(cmd_name)
-                        
+
                         # 실행 직후 즉시 로컬 ID 업데이트하여 중복 실행 방지
                         self.last_cmd_id = cmd_id
-                        
+
                         # 서버에 완료 보고
                         success = self.db.complete_command(cmd_id)
                         if success:
@@ -112,7 +114,7 @@ class PatrolInterface:
         """Internal helper to set parameters on the patrol_scheduler node."""
         if not self.param_client.wait_for_service(timeout_sec=2.0):
             return False, "Parameter service /patrol_scheduler/set_parameters not available"
-        
+
         req = SetParameters.Request()
         val = ParameterValue(type=param_type)
         if param_type == ParameterType.PARAMETER_STRING:
@@ -121,20 +123,20 @@ class PatrolInterface:
             val.double_value = float(value)
         elif param_type == ParameterType.PARAMETER_STRING_ARRAY:
             val.string_array_value = [str(v) for v in value]
-            
+
         req.parameters = [Parameter(name=name, value=val)]
         self.param_client.call_async(req)
         return True, f"Request to set {name} sent"
 
     # --- Public API Methods (UI/Logic 연동용) ---
-    
+
     def move_robot(self, direction: str):
         """수동 이동 명령을 /cmd_vel_teleop 토픽으로 발행합니다."""
         try:
             twist = Twist()
             speed = 0.2
             turn = 0.5
-            
+
             if direction == "UP":
                 twist.linear.x = float(speed)
             elif direction == "DOWN":
@@ -146,7 +148,7 @@ class PatrolInterface:
             elif direction == "STOP":
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
-            
+
             p_res = self.teleop_pub.publish(twist)
             print(f"[ROS] Topic /cmd_vel_teleop published: {direction}")
             return True, f"Move command {direction} sent"
@@ -218,7 +220,7 @@ class PatrolInterface:
         """최근 순찰 상태 및 시간 정보를 가져옵니다. (DB 로그 시간 기준 + ROS 실시간 상태 덮어쓰기)"""
         res = {}
         history = self.db.get_patrol_history()
-        
+
         # 1. DB에서 가장 최근에 있었던 순찰의 시간 정보를 기본으로 가져옴
         if history and len(history) > 0:
             latest = history[0]
@@ -228,7 +230,7 @@ class PatrolInterface:
                 "end_time": latest.get('end_time', '-'),
                 "error_found": latest.get('error_found', 0)
             }
-        
+
         # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 덮어씀
         if self.latest_status:
             res["status"] = self.latest_status.get("status", res.get("status", "idle"))
@@ -237,7 +239,7 @@ class PatrolInterface:
             if res["status"] == "patrolling" and "current_shelf" in self.latest_status:
                 res["current_shelf"] = self.latest_status["current_shelf"]
                 res["progress"] = self.latest_status.get("progress", "")
-                
+
         return res if res else None
 
     def is_robot_online(self):

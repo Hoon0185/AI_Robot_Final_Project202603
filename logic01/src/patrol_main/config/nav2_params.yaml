@@ -53,8 +53,8 @@ bt_navigator:
     robot_base_frame: base_link
     transform_tolerance: 2.0
     filter_duration: 0.3
-    default_nav_to_pose_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml" # behavior trees location.
-    default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"
+    default_nav_to_pose_bt_xml: "$(find-pkg-share patrol_main)/config/navigate_to_pose_w_replanning_and_recovery.xml" # behavior trees location.
+    default_nav_through_poses_bt_xml: "$(find-pkg-share patrol_main)/config/navigate_to_pose_w_replanning_and_recovery.xml"
     always_reload_bt_xml: false
     goal_blackboard_id: goal
     goals_blackboard_id: goals
@@ -139,7 +139,7 @@ controller_server:
       vx_samples: 20
       vy_samples: 0
       vtheta_samples: 40
-      sim_time: 1.5
+      sim_time: 2.0 # 장애물 회피력 증가
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
@@ -148,7 +148,7 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.02
+      BaseObstacle.scale: 3.00 # 장애물 회피 가중치 높여서 장애물에 더 민감하게 반응하도록 조정
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -180,7 +180,7 @@ local_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: scan
+        observation_sources: scan scan_virtual
         scan:
           topic: /scan
           max_obstacle_height: 2.0
@@ -226,8 +226,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 5.0 # 1초에 5번 업데이트하여 장애물 회피 개선
+      publish_frequency: 2.0 # 1초에 2번 전체 맵 퍼블리시하여 최신 정보 유지
       global_frame: map
       robot_base_frame: base_link
       transform_tolerance: 2.0
@@ -238,7 +238,7 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: scan
+        observation_sources: scan scan_virtual
         scan:
           topic: /scan
           max_obstacle_height: 2.0
@@ -275,7 +275,7 @@ global_costmap:
         transform_tolerance: 1.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.35 # 장애물 회피력 증가 위해 반경 줄임
         cost_scaling_factor: 5.0
       always_send_full_costmap: true
 
@@ -354,7 +354,7 @@ collision_monitor:
     polygons: ["PolygonStop", "PolygonSlow", "FootprintApproach"]
     PolygonStop:
       type: "circle"
-      radius: 0.1
+      radius: 0.15
       action_type: "stop"
       min_points: 4
       visualize: true

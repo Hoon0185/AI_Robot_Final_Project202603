@@ -4,6 +4,7 @@ from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 import threading
 from .inventory_db import InventoryDB
+# from .test_db import InventoryDB # DB 연결이 안되는 상황을 가정한 더미 DB 클래스
 
 class ObstacleInterface:
   def __init__(self, node_name='ui_obstacle_interface'):
@@ -12,6 +13,7 @@ class ObstacleInterface:
     self.node = Node(node_name)
 
     self.db = InventoryDB(base_url="http://16.184.56.119/api")
+    # self.db = InventoryDB(base_url="http://16.0000") # DB 연결이 안되는 상황을 가정한 더미 URL
 
     # ---- 서비스 클라이언트 설정 ----
     self.param_client = self.node.create_client(
@@ -21,7 +23,6 @@ class ObstacleInterface:
 
     # ---- 기본값 및 상태 관리 변수 ----
     self.current_wait_time = 5 #  기본 대기 시간(초)
-    self.is_db_connected = True
     self.pending_data = None # DB 저장에 실패한 임시데이터 저장 변수
 
     # ---- DB 저장 실패 재시도 타이머 설정 (10초) ----
@@ -65,8 +66,7 @@ class ObstacleInterface:
 
     # ---- 로봇 노드 파라미터 전송 ----
     ros_success, _ = self.set_wait_time(self.current_wait_time)
-
-    db_success = False
+    db_success = True
     try:
       # ---- DB에서 현재 설정값 가져오기 (동기화 목적) ----
       current_config = self.db.get_patrol_config() or {}
@@ -105,7 +105,7 @@ class ObstacleInterface:
 
     req = SetParameters.Request()
     val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=int(seconds))
-    req.parameters = [Parameter(name='obstacle_wait_time', value=val)]
+    req.parameters = [Parameter(name='current_wait_time', value=val)]
     self.param_client.call_async(req)
     return True, f"대기 시간이 {seconds}s로 설정되었습니다."
 

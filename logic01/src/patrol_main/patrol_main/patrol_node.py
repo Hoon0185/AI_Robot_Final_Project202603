@@ -43,7 +43,8 @@ class PatrolNode(Node):
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
         self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
         self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
-        self.retry_sub = self.create_subscription(Bool, '/retry_patrol_goal', self.retry_callback, 10) # 장애물 노드로부터 재출발 요청 수신
+        # self.retry_sub = self.create_subscription(Bool, '/retry_patrol_goal', self.retry_callback, 10) # 장애물 노드로부터 재출발 요청 수신
+        self.pause_sub = self.create_subscription(Bool, '/pause_patrol', self.pause_callback, 10) # 장애물 노드로부터 일시정지 요청 수신
 
         # 5. 순찰 상태 발행 (UI용)
         self.patrol_status_pub = self.create_publisher(String, '/patrol_status', 10)
@@ -63,6 +64,7 @@ class PatrolNode(Node):
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False
         self.ai_wait_start_time = None
+        self.is_paused = False # 일시정지 상태 플래그
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
@@ -94,12 +96,48 @@ class PatrolNode(Node):
                 self.shelves = config.get('shelves', {})
         self.shelf_list = list(self.shelves.keys())
 
-    def retry_callback(self, msg):
-        """장애물 노드에서 가짜 벽이 쳐졌다는 신호를 받으면 실행되는 함수"""
+    def pause_callback(self, msg):
         if msg.data and self.is_patrolling:
-            self.get_logger().info('우회하기 위해 현재 목적지 좌표를 Nav2에 재전송합니다.')
+            # 장애물이 감지되었을 때의 처리
+            if not self.is_paused:
+                self.get_logger().warn('장애물 감지로 인해 현재 목적지 주행을 전면 취소하고 대기합니다.')
+                self.is_paused = True
 
-            self.send_next_goal() # 현재 목적지 좌표를 Nav2에 재전송하여 우회 경로를 생성하도록 유도
+                self.cancel_nav()
+
+        elif not msg.data and self.is_patrolling and self.is_paused:
+            self.get_logger().info('대기 시간이 끝나 장애물 상황이 해제되었습니다. 다시 가던 목적지로 출발합니다.')
+            self.is_paused = False
+
+            self.resend_current_goal()
+
+    def resend_current_goal(self):
+        """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
+        if self.current_shelf_idx >= len(self.shelf_list):
+            self.get_logger().warn('다시 보낼 목적지 인덱스가 범위를 벗어났습니다.')
+            return
+
+        shelf_name = self.shelf_list[self.current_shelf_idx]
+        coords = self.shelves[shelf_name]
+
+        tx, ty, tyaw = float(coords['x']), float(coords['y']), float(coords['yaw'])
+        self.get_logger().info(f'--- [재출발] Goal: {shelf_name} ---')
+        self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.header.frame_id = self.map_frame
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.pose.position.x = tx
+        goal_msg.pose.pose.position.y = ty
+
+        import math
+        yaw = float(coords['yaw'])
+        goal_msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
+        goal_msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
+
+        self._action_client.wait_for_server()
+        self._send_goal_future = self._action_client.send_goal_async(goal_msg)
+        self._send_goal_future.add_done_callback(self.goal_response_callback)
 
     def emergency_callback(self, msg):
         if msg.data:
@@ -212,6 +250,12 @@ class PatrolNode(Node):
         # 액션 종료 시 핸들 초기화
         self._goal_handle = None
         status = future.result().status
+
+        if status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().info('순찰이 일시 정지되어 주행이 안전하게 취소되었습니다.')
+            self.is_patrolling = True
+            self.is_paused = True
+            return
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             shelf_name = self.shelf_list[self.current_shelf_idx]

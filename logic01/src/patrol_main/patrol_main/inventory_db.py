@@ -26,8 +26,8 @@ class InventoryDB:
             if res.status_code == 200:
                 server_data = res.json()
                 return [
-                    [d.get('category', '-'), d.get('product_name', '-'), 
-                     d.get('barcode', '-'), d.get('min_inventory_qty', 0), 
+                    [d.get('category', '-'), d.get('product_name', '-'),
+                     d.get('barcode', '-'), d.get('min_inventory_qty', 0),
                      d.get('last_updated_at', 'No Data'), d.get('waypoint_name', '-')]
                     for d in server_data
                 ]
@@ -43,7 +43,7 @@ class InventoryDB:
             if res.status_code == 200:
                 server_data = res.json()
                 return [
-                    [d.get('category', '-'), d.get('product_name', '-'), 
+                    [d.get('category', '-'), d.get('product_name', '-'),
                      d.get('waypoint_name', '-'), d.get('alert_type', 'X')]
                     for d in server_data
                 ]
@@ -62,7 +62,7 @@ class InventoryDB:
         except Exception:
             return default
 
-    def report_detection(self, tag_barcode, patrol_id, waypoint_id, detected_barcode=None, confidence=0.99, yolo_class_id=None):
+    def report_detection(self, tag_barcode, patrol_id, waypoint_id, x, y, detected_barcode=None, confidence=0.99, yolo_class_id=None):
         """서버로 인식 결과 전송 (DetectionInput 형식)"""
         payload = {
             "patrol_id": int(patrol_id),
@@ -71,8 +71,8 @@ class InventoryDB:
             "detected_barcode": detected_barcode if detected_barcode else None,
             "yolo_class_id": yolo_class_id,
             "confidence": float(confidence),
-            "odom_x": 0.0,
-            "odom_y": 0.0,
+            "odom_x": float(x),
+            "odom_y": float(y),
             "timestamp": datetime.now().isoformat()
         }
         try:
@@ -208,7 +208,7 @@ class InventoryDB:
         payload = {
             "odom_x": float(x),
             "odom_y": float(y),
-            "status": str(status) 
+            "status": str(status)
         }
         try:
             res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=0.5)
@@ -236,8 +236,8 @@ class InventoryDB:
                 cursor = conn.cursor()
                 # '진행중'이거나 가장 최근인 순찰 로그의 좌표 업데이트
                 query = """
-                    UPDATE patrol_log 
-                    SET last_odom_x = %s, last_odom_y = %s 
+                    UPDATE patrol_log
+                    SET last_odom_x = %s, last_odom_y = %s
                     WHERE status = '진행중' OR status = '중단'
                     ORDER BY patrol_id DESC LIMIT 1
                 """
