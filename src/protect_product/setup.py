@@ -30,9 +30,13 @@ setup(
     entry_points={
         'console_scripts': [
             #'detect_product=protect_product.detect_product:main',
-            'detector = protect_product.detector:main',
+            #'detector = protect_product.detector:main',
+            'product_detector = protect_product.product_detector:main',
+            'qr_detector = protect_product.qr_detector:main',
             'verifier = protect_product.verifier:main',
             'viewer = protect_product.viewer:main',
+            'camera_node = protect_product.camera_node:main',
+            'camera = protect_product.camera:main',
         ],
     },
 )
