@@ -19,9 +19,10 @@ Gilbot 시스템은 다음과 같은 4가지 핵심 컴포넌트로 구성됩니
 
 시스템의 안정적인 연결을 위해 다음 순서대로 서비스를 기동하십시오.
 
-### **Step 1: 데이터베이스 서버 확인**
--   MySQL 또는 MariaDB 서비스가 실행 중인지 확인합니다.
--   `web-server/.env` 파일의 설정(`DB_HOST`, `DB_USER`, `DB_PASSWORD`)이 실제 환경과 일치하는지 확인하십시오.
+### **Step 1: 데이터베이스 서버 확인 (Lightsail Remote DB)**
+-   AWS Lightsail 서버의 MySQL 서비스가 정상인지 확인합니다.
+-   `web-server/.env` 파일의 설정(`DB_HOST=16.184.56.119`)이 원격 서버 주소와 일치하는지 확인하십시오.
+-   현재 로컬 개발 환경에서도 Lightsail의 통합 DB를 바라보도록 설정되어 있습니다.
 
 ### **Step 2: 백엔드 API 서버 기동**
 웹 서버는 모든 통신의 중심입니다.
@@ -31,8 +32,9 @@ cd /home/robot/final_ws/AI_Robot_Final_Project202603/web-server
 # source venv/bin/activate
 python main.py
 ```
--   **기본 포트**: `8000`
--   **정상 확인**: 브라우저에서 `http://localhost:8000/api/status` 접속 시 `"status": "running"` 메시지 확인.
+-   **API 주소**: `http://localhost:8000` (Local 구동 시)
+-   **연동 DB**: `16.184.56.119` (AWS Lightsail)
+-   **정상 확인**: 브라우저에서 `http://localhost:8000/api/status` 접속 시 `"database": "connected"` 확인.
 
 ### **Step 3: 관리자 웹 UI 기동**
 직관적인 모니터링을 위해 프론트엔드를 실행합니다.
@@ -41,7 +43,7 @@ cd /home/robot/final_ws/AI_Robot_Final_Project202603/web-ui
 npm run dev
 ```
 -   **기본 포트**: `5173`
--   **정상 확인**: 브라우저에서 `http://localhost:5173` 접속 시 '관제상황판' 출력 확인.
+-   **정상 확인**: 대시보드 상단 로고 옆 `DB Connected` 녹색 상태 등을 확인하십시오.
 
 ### **Step 4: 로봇 및 이미지 인식 서버 연결**
 로봇(또는 시뮬레이터)을 실행하여 서버와 통신을 시작합니다.
@@ -49,8 +51,8 @@ npm run dev
 cd /home/robot/final_ws/AI_Robot_Final_Project202603/web-server
 python simulate_robot.py
 ```
--   **핵심 설정**: `simulate_robot.py` 상단의 `BASE_URL`이 백엔드 서버 주소(`http://localhost:8000`)와 맞는지 확인하십시오.
--   **정상 확인**: 시뮬레이터 로딩 시 "등록된 웨이포인트/상품 수: X개" 메시지가 출력되면 연결 성공입니다.
+-   **핵심 설정**: `simulate_robot.py` 상단의 `BASE_URL`이 백엔드 서버 주소와 맞는지 확인하십시오. (로컬이면 `http://localhost:8000`)
+-   **연동 환경**: 로컬 로봇이 중앙 Lightsail DB의 상품 계획을 읽어와 동작합니다.
 
 ---
 
@@ -166,4 +168,4 @@ sequenceDiagram
 
 ---
 
-> **연동 시 주의사항**: 시뮬레이터의 `BASE_URL = "http://localhost:8000"` 설정은 백엔드 서버가 실행 중인 실제 주소와 일치해야 합니다. 원격 서버를 사용 중이라면 `.env` 파일의 `DB_HOST` 뿐만 아니라 시뮬레이터 설정도 함께 변경해 주어야 합니다.
+> **연동 시 주의사항**: Gilbot 프로젝트는 이제 **Lightsail 중앙 DB(`16.184.56.119`) 하나만을 바라봅니다.** 로컬에서 `main.py`나 `simulate_robot.py`를 실행하더라도 데이터는 Lightsail에서 관리되므로, 로컬 MySQL 서버를 별도로 기동할 필요가 없습니다. 시뮬레이터의 `BASE_URL` 설정은 로컬일 경우 `localhost:8000`으로, 전체 원격 모드일 경우 `http://16.184.56.119/api`로 맞춰주면 됩니다.

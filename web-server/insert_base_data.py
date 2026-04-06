@@ -43,17 +43,33 @@ def insert_base_data():
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         print("✅ 기존 테이블 데이터 초기화 완료.")
 
-        # 2. 상품 마스터 등록
+        # 2. 상품 마스터 등록 (YOLO Class ID 매핑 포함)
+        # (id, name, category, barcode, yolo_class_id)
         products = [
-            (1, '신라면', 'snack', '8801111222233'),
-            (2, '초코에몽', 'drink', '8801111999999'),
-            (3, '불닭볶음면', 'snack', '8801111555555')
+            (1, '맛동산', 'snack', '881010101010', 102),
+            (2, '죠리퐁', 'snack', '882020202020', 96),
+            (3, '포스틱', 'snack', '883030303030', 106),
+            (4, '썬칩', 'snack', '884040404040', 108),
+            (5, 'C콘칲', 'snack', '885050505050', 93),
+            (6, '꼬북칩', 'snack', '886060606060', 97),
+            (7, '미닛메이드오렌지 1.5L', 'drink', '887070707070', 19),
+            (8, '스프라이트 500ml', 'drink', '888080808080', 20),
+            (9, '포카리스웨트 500ml', 'drink', '889090909090', 27),
+            (10, '칠성사이다 1.5L', 'drink', '881212121212', 47)
         ]
+        
+        # yolo_class_id 컬럼이 없을 경우를 대비해 추가 (Migration)
+        try:
+            cursor.execute("ALTER TABLE product_master ADD COLUMN yolo_class_id INT AFTER barcode")
+            print("✅ product_master 테이블에 yolo_class_id 컬럼 추가 완료.")
+        except:
+            print("ℹ️ yolo_class_id 컬럼이 이미 존재합니다.")
+
         cursor.executemany(
-            "INSERT INTO product_master (product_id, product_name, category, barcode) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO product_master (product_id, product_name, category, barcode, yolo_class_id) VALUES (%s, %s, %s, %s, %s)",
             products
         )
-        print(f"✅ 상품 {len(products)}종 등록 완료.")
+        print(f"✅ 신규 상품 {len(products)}종 등록 완료.")
 
         # 3. 웨이포인트 등록
         cursor.execute(
