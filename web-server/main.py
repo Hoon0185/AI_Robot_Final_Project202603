@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -28,6 +29,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# HMI 정적 파일 마운트 (http://IP:8000/hmi/index.html)
+hmi_path = os.path.join(os.path.dirname(__file__), "hmi")
+app.mount("/hmi", StaticFiles(directory=hmi_path, html=True), name="hmi")
 
 # 데이터 모델 정의 (Pydantic)
 class PatrolInsert(BaseModel):

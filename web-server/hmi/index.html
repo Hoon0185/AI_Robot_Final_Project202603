@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gilbot HMI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="glass-container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>GILBOT <small>v2.1</small></span>
+            </div>
+            <div id="status-indicator" class="status offline">
+                <span class="dot"></span>
+                <span class="label">OFFLINE</span>
+            </div>
+        </header>
+
+        <!-- Main Dashboard -->
+        <main>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-map-marker-alt"></i></div>
+                    <div class="stat-info">
+                        <label>POSITION</label>
+                        <div class="value">X:<span id="pos-x">0.0</span> Y:<span id="pos-y">0.0</span></div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-play-circle"></i></div>
+                    <div class="stat-info">
+                        <label>STATUS</label>
+                        <div id="current-mode" class="value">IDLE</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-battery-half"></i></div>
+                    <div class="stat-info">
+                        <label>BATTERY</label>
+                        <div class="value">85%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alert Section -->
+            <div id="alert-banner" class="alert-banner hidden">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="alert-text">PATH FINDING...</span>
+            </div>
+
+            <!-- Control Buttons -->
+            <div class="controls">
+                <button id="btn-start" class="btn btn-primary">
+                    <i class="fas fa-play"></i> START
+                </button>
+                <button id="btn-toggle-pause" class="btn btn-danger">
+                    <i class="fas fa-stop"></i> STOP
+                </button>
+                <button id="btn-return" class="btn btn-warning">
+                    <i class="fas fa-home"></i> RETURN
+                </button>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <div class="connection-info">API: <span>CONNECTED</span></div>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
