@@ -64,6 +64,9 @@ class RFIDRobotNode(Node):
         self.heartbeat_pub = self.create_publisher(Bool, '/robot_heartbeat', 10)
         # self.status_timer = self.create_timer(1.0, self.publish_heartbeat)
 
+        # RFID 태그를 주기적으로 읽기 위한 타이머 추가 (0.5초 간격)
+        self.read_timer = self.create_timer(0.5, self.read_rfid_callback)
+
         self.get_logger().info('--- Standalone RFID & Buzzer Node (v1.0.2) Started ---')
         self.get_logger().info('Robot Heartbeat active on /robot_heartbeat.')
 
