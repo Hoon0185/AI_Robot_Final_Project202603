@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Grou
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from nav2_common.launch import RewrittenYaml
 
 def generate_launch_description():
     pkg_dir = get_package_share_directory('patrol_main')
@@ -22,6 +23,23 @@ def generate_launch_description():
     run_rfid = LaunchConfiguration('run_rfid', default='false')
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     use_ai_sim = LaunchConfiguration('use_ai_sim', default='false')
+
+    # Dynamic path for BT XML (Portability Fix)
+    bt_xml_file = os.path.join(pkg_dir, 'config', 'navigate_to_pose_w_replanning_and_recovery.xml')
+
+    # Parameters to rewrite at runtime
+    param_substitutions = {
+        'default_nav_to_pose_bt_xml': bt_xml_file,
+        'default_nav_through_poses_bt_xml': bt_xml_file
+    }
+
+    # Create RewrittenYaml
+    configured_params = RewrittenYaml(
+        source_file=nav2_params_file,
+        root_key='',
+        param_rewrites=param_substitutions,
+        convert_types=True
+    )
 
 
     return LaunchDescription([
@@ -41,7 +59,7 @@ def generate_launch_description():
                     launch_arguments={
                         'map': map_file,
                         'use_sim_time': use_sim_time,
-                        'params_file': nav2_params_file,
+                        'params_file': configured_params, # [수정] 재작성된(Rewritten) YAML 사용
                         'autostart': 'true'
                     }.items()
                 ),

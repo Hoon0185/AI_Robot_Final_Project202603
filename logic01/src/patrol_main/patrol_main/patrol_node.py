@@ -79,7 +79,10 @@ class PatrolNode(Node):
         # 초기 성공 시까지 15초 주기로 시도하고, 성공 시 타이머 중단
         self.param_client = self.create_client(SetParameters, '/obstacle_node/set_parameters')
         self.config_sync_timer = self.create_timer(15.0, self.initial_config_sync)
-        self.last_avoidance_wait = 10 # 초기값
+        self.last_avoidance_wait = None # 초기값을 None으로 하여 서버 설정이 10초여도 첫 동기화를 보장함
+
+        # --- [추가] 실행 즉시 최신 설정 강제 동기화 ---
+        self.sync_remote_config()
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
