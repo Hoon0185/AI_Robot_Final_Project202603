@@ -14,6 +14,7 @@ import os
 import time
 import json
 import math
+import threading
 from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 from .inventory_db import InventoryDB
@@ -57,7 +58,7 @@ class PatrolNode(Node):
         self.pose_received = False # 위치 정보 수신 여부 확인 (0,0 보고 방지)
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
-        self.pose_timer = self.create_timer(2.0, self.report_pose_to_server)
+        self.pose_timer = self.create_timer(3.0, self.report_pose_to_server)
 
         # 7. AI 인식 연동 (Verifier 노드 데이터 수신)
         self.ai_sub = self.create_subscription(
@@ -380,7 +381,7 @@ class PatrolNode(Node):
         self.pose_received = True
 
     def report_pose_to_server(self):
-        """정해진 주기(2초)마다 서버로 현재 위치 및 상태 보고 (Keep-alive Heartbeat)"""
+        """정해진 주기마다 서버로 현재 위치 및 상태 보고 (Non-blocking Thread 방식)"""
         # 위치 정보를 한 번도 받지 못했다면 보고하지 않음 (0,0 보고 방지)
         if not self.pose_received:
             return
@@ -390,10 +391,14 @@ class PatrolNode(Node):
         if self.is_patrolling:
             status = "SCANNING" if self.is_waiting_for_ai else "PATROLLING"
 
-        # 좌표값과 상관없이 로봇이 살아있음을 알리기 위해 무조건 전송 (DB 전송)
-        self.db.report_robot_pose(self.current_x, self.current_y, status=status)
+        # 메인 스레드 블로킹 방지를 위해 별도 스레드에서 DB 보고 수행
+        threading.Thread(
+            target=self.db.report_robot_pose, 
+            args=(self.current_x, self.current_y, status),
+            daemon=True
+        ).start()
 
-        # UI 인터페이스(patrol_interface.py)가 5초 이내 토픽 수신 여부로 온라인 상태를 판별하므로, 지속 발행 추가
+        # UI 인터페이스(patrol_interface.py)를 위한 지속 발행
         status_for_ui = "patrolling" if self.is_patrolling else "idle"
         self.publish_status(status_for_ui)
 
@@ -415,10 +420,13 @@ class PatrolNode(Node):
         self.current_battery = val * 100.0 if val <= 1.0 else val
 
     def report_battery_to_server(self):
-        """서버의 /api/robot/battery 엔드포인트로 배터리 상태 보고"""
-        success = self.db.report_battery(self.current_battery)
-        if not success:
-            self.get_logger().warn("Failed to report battery status to server.")
+        """서버로 배터리 상태 보고 (Non-blocking Thread 방식)"""
+        def run_report():
+            success = self.db.report_battery(self.current_battery)
+            if not success:
+                self.get_logger().warn("Failed to report battery status to server.")
+        
+        threading.Thread(target=run_report, daemon=True).start()
 
     def check_ai_result_and_proceed(self):
         """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행"""
