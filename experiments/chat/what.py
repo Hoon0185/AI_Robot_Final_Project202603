@@ -56,8 +56,8 @@ def identify_product_from_image(image_data):
     prompt = """
     사진 속 정면에 보이는 상품을 분석하여 다음 형식으로 답변하세요.
     - [PRODUCT_NAME]: 상품명 (DB 검색용 한 단어)
-    - [BOT_RESPONSE]: 고객에게 말할 친절한 안내 (예: "고객님, 이 제품은 [PRODUCT_NAME]입니다.")
-    경고: 절대 구체적인 위치(진열대 번호 등)를 지어내지 마십시오.
+    - [BOT_RESPONSE]: 고객에게 말할 친절한 안내 (예: "고객님, [PRODUCT_NAME]. 이 제품은 무엇입니다.")
+    경고: 절대 은(는) 같은 조사를 사족으로 달지 마세요.
     """
     try:
         response = client.models.generate_content(
@@ -91,8 +91,6 @@ def draw_text_overlay(frame, text):
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (DISPLAY_WIDTH, 60), (0, 0, 0), -1)
     cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
-    
-    # Use simple font
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(frame, text, (20, 40), font, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
@@ -108,51 +106,61 @@ def get_camera():
 
 def main():
     print("\n" + "★"*40)
-    print("  GILBOT NEXTION VISION ASSISTANT")
+    print("  GILBOT NEXTION VISION ASSISTANT (CAMERA FLIPPED)")
     print("★"*40)
     
     cap = get_camera()
     if not cap:
         print("Camera Error."); return
 
-    window_name = "Gilbot Vision (Nextion 800x480)"
+    window_name = "Gilbot Vision (800x480)"
     img_file = "capture.jpg"
 
     while True:
-        # STEP 1: HIDDEN (Wait for Enter in Terminal)
+        # STEP 1: HIDDEN 
         print("\n[대기 중] 눈앞의 사물을 확인하려면 [Enter]를 누르세요. (종료: q)")
         key_input = input(">> ")
         if key_input.lower() == 'q': break
 
-        # STEP 2: PREVIEW (Show Window)
-        print("카메라를 켭니다. 상품을 비추고 [Space]를 눌러 분석하세요.")
+        # STEP 2: PREVIEW 
+        print("카메라를 켭니다. [Space]를 눌러 분석하세요.")
         while True:
             ret, frame = cap.read()
             if not ret: break
+            
+            # Flip 180 deg for upside-down camera mount
+            frame = cv2.flip(frame, -1)
             frame = cv2.resize(frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
             cv2.imshow(window_name, frame)
             
             key = cv2.waitKey(1) & 0xFF
-            if key == ord(' '): # CAPTURE & ANALYZE
+            if key == ord(' '): 
                 cv2.imwrite(img_file, frame)
-                # Show "Analyzing..."
-                draw_text_overlay(frame, "Analyzing... Please Wait.")
+                draw_text_overlay(frame, "Analyzing...")
                 cv2.imshow(window_name, frame)
                 cv2.waitKey(1)
                 
                 with open(img_file, "rb") as f: image_data = f.read()
                 prod_key, bot_text = identify_product_from_image(image_data)
                 
+                # FACT CHECK with DB
                 db_res = search_product_db(prod_key)
                 if db_res:
-                    loc = db_res['waypoint_name'] if db_res['waypoint_name'] else "미진열"
-                    final_msg = f"고객님! 상품 {db_res['product_name']}은(는) {loc}에 있습니다."
+                    raw_loc = db_res['waypoint_name'] if db_res['waypoint_name'] else "미진열"
+                    aisle = raw_loc.split('-')[1] if '-' in raw_loc else raw_loc
+                    stock = db_res['current_inventory_qty']
+                    
+                    if stock <= 0:
+                        final_msg = f"고객님! {db_res['product_name']}. 현재 품절입니다."
+                    else:
+                        final_msg = f"고객님! {db_res['product_name']}. {aisle} 매대에 있습니다."
                 else:
-                    final_msg = bot_text if prod_key != "None" else "상품을 찾을 수 없습니다."
+                    # Clean up Gemini's response (remove 은/는 if present)
+                    clean_bot = bot_text.replace("은(는) ", " ").replace("은 ", " ").replace("는 ", " ")
+                    final_msg = clean_bot if prod_key != "None" else "상품을 찾을 수 없습니다."
 
-                # STEP 3: RESULT (Show Fixed Screen with Text)
+                # STEP 3: RESULT 
                 print(f"결과: {final_msg}")
-                # Update frame with result text
                 draw_text_overlay(frame, final_msg)
                 cv2.imshow(window_name, frame)
                 speak_result(final_msg)
@@ -164,7 +172,7 @@ def main():
                     if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1: break
                 
                 cv2.destroyAllWindows()
-                break # Exit preview mode, go back to HIDDEN
+                break 
 
             elif key == ord('q') or key == 27:
                 cv2.destroyAllWindows()

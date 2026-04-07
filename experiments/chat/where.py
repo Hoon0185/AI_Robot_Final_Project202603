@@ -198,12 +198,16 @@ def main():
             if product_name and product_name.lower() != "none":
                 res = search_product_location(product_name)
                 if not res or res['stock'] <= 0:
-                    bot_response = f"죄송합니다. 현재 {product_name} 상품은 재고가 없습니다."
+                    bot_response = f"고객님! {product_name}. 현재 품절입니다."
                 elif not res['location']:
                     bot_response = f"상품이 진열되어 있지 않습니다. 재고가 있으니 카운터에 문의하세요."
                 else:
+                    # Parse location (e.g., TAG-A1-001 -> A1)
+                    raw_loc = res['location']
+                    aisle = raw_loc.split('-')[1] if '-' in raw_loc else raw_loc
                     # STRICT OVERRIDE: Ignore Gemini's bot_response, use our verified template
-                    bot_response = f"고객님! 상품 {res['name']}은(는) {res['location']}에 있습니다."
+                    # Add a period after the product name for a natural pause in TTS
+                    bot_response = f"고객님! {res['name']}. {aisle} 매대에 있습니다."
             
             # Additional safety: If Gemini hallucinated a location without product_name
             elif "[LOCATION_RESULT]" in bot_response:
