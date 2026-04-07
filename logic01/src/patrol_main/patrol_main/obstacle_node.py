@@ -4,39 +4,58 @@ from sensor_msgs.msg import LaserScan
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from nav2_msgs.srv import ClearEntireCostmap
+from nav2_msgs.srv import ClearEntireCostmap # 유령 장애물 방지
+from nav_msgs.msg import Path # 경로 수신용 메시지
+from std_msgs.msg import Bool
+import copy # 라이다 메시지 복사용
+from .inventory_db import InventoryDB
+from rclpy.parameter import Parameter
 
 class ObstacleNode(Node):
   def __init__(self):
-    super().__init__('patrol_obstacle_node')
-    self.declare_parameter('obstacle_wait_time',10) # 장애물 대기 시간(ui 조정을 위함)
+    super().__init__('obstacle_node')
+
+    self.db = InventoryDB(base_url="http://16.184.56.119/api")
+    # self.db = InventoryDB(base_url="http://16.")
+    db_wait_time = 5
+    try:
+      config = self.db.get_patrol_config()
+      if config:
+        db_wait_time = int(config.get('avoidance_wait_time', 5))
+        self.get_logger().info(f"[DB] 초기 대기시간 로드 성공: {db_wait_time}초")
+      else:
+        self.get_logger().warn(f"[DB]서버 응답 없음: 기본 대기시간 {db_wait_time}초를 사용합니다.")
+    except Exception as e:
+      self.get_logger().error(f"[DB] 서버 연결 실패: {e}")
+
+    self.declare_parameter('current_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
+
+    current_param_val = self.get_parameter('current_wait_time').get_parameter_value().integer_value
+    if current_param_val != db_wait_time:
+      self.set_parameters([Parameter('current_wait_time', Parameter.Type.INTEGER, db_wait_time)])
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,
       depth=10
     )
-    # ---- 구독 ----
-    self.scan_sub = self.create_subscription(
-      LaserScan,
-      '/scan',
-      self.scan_callback,
-      qos_profile
-    )
-    self.odom_sub = self.create_subscription(
-      Odometry,
-      '/odom',
-      self.odom_callback,
-      10
-    )
+
+    # ---- 구독 발행----
+    self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile)
+    self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+    self.plan_sub = self.create_subscription(Path, '/plan', self.plan_callback, 10) # 경로 수신
+    self.teleop_sub = self.create_subscription(Twist, '/cmd_vel_teleop', self.teleop_callback, 10) # 수동
+    self.ai_mode_sub = self.create_subscription(Bool, '/ai_mode_active', self.ai_mode_callback, 10) # AI 인식 대기 모드 활성화 여부 구독
+
     # ---- 명령어 발행 ----
-    # self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10) # 기존
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
-    self.get_logger().info('Obstacle Node initialized with absolute topic /cmd_vel_obstacle')
+    self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
+    self.pause_pub = self.create_publisher(Bool, '/pause_patrol', 10) # 순찰 노드에 일시정지를 요청
+    self.obstacle_status_pub = self.create_publisher(Bool, '/obstacle_detected_status', 10) # 행동트리에서 장애물 감지 여부 파악 위한 토픽
 
     # ---- 서비스 클라이언트 ----
     self.clear_costmap_client = self.create_client(
       ClearEntireCostmap,
-      'local_costmap/clear_entirely_local_costmap'
+      '/local_costmap/clear_entirely_local_costmap'
     )
 
     # ---- 타이머 설정 ----
@@ -45,124 +64,337 @@ class ObstacleNode(Node):
     self.timer = self.create_timer(timer_pub, self.timer_callback)
 
     # ---- 초기 변수 설정 ----
-    self.is_blocked = False # 길 막힘 체크
-    self.clear_count = 0 # 장애물이 확실히 사라졌는지 체크
-    self.wait_counter = 0 # 대기시간 측정
-    self.safe_distance = 0.40 # 40cm로 살짝 상향 (확실한 정지 보장)
-    self.min_front_dist = 9.9 # 실시간 전방 최소 거리 초기값
-    self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간
+    # 상태 제어 및 플래그 변수
+    self.is_blocked = False # (순찰)전방 길 막힘 체크
+    self.is_moving_backward = False # 현재 후진 중인지 여부
+    self.is_rear_blocked = False # 후방 막힘 확인 플래그
+    self.is_detouring = False # 대기 후 장애물 회피(우회) 중인지 여부
+    self.is_new_path_generated = False # 경로 생성 확인 플래그
+    self.is_started_moving = False # 실제 우회 주행 시작 확인 플래그
+    self.is_teleop_active = False # 수동 조작 활성화 여부
+    self.is_front_danger = False # 수동 조작 안전 플래그
+    self.is_retry_sent = False # 재출발 요청 발행 여부 체크
+    self.is_ai_mode = False # AI 시뮬레이션 모드 활성화 여부
+    # UI/수동 조작 방향 감시 변수
+    self.teleop_linear_x = 0.0
+    self.teleop_angular_z = 0.0
+    # 시간 및 카운터 변수
+    self.blocked_start_time = None # 장애물 감지 시작 시각 기록용
+    self.no_obstacle_start_time = None # 장애물 사라진 시각 기록용
+    self.safe_distance = 0.50 # 50cm (확실한 정지 보장)
+    self.clear_distance = self.safe_distance + 0.1 # 장애물 완전 제거 기준 (60cm)
+    self.current_wait_time = db_wait_time # 대기시간
+    self.latest_scan_msg = None # 최신 라이다 데이터 저장용
+    self.fake_scan = None # 가짜 벽 메시지 재사용을 위한 변수
+    self.detour_direction = 0.7 # 우회 회전 방향 (양수: 좌회전, 음수: 우회전)
+    # 현재 로봇 속도 저장
+    self.current_linear_velocity = 0.0 # 현재 x축 선속도
+    self.current_angular_velocity = 0.0 # 현재 z축 각속도
 
-    # ---- 현재 로봇 좌표 저장 ----
-    self.current_x = 0.0
-    self.current_y = 0.0
-    self.obstacle_x = 0.0
-    self.obstacle_y = 0.0
-    self.recovery_counter = 0 # 우회 완료 후 안정화 유예 시간
 
-  def odom_callback(self, msg): # 현재 좌표 실시간 업데이트
-    self.current_x = msg.pose.pose.position.x
-    self.current_y = msg.pose.pose.position.y
+  def ai_mode_callback(self, msg):
+    """AI 인식 대기 모드 활성화 여부 구독 콜백"""
+    self.is_ai_mode = msg.data
 
-  def scan_callback(self, msg):
-    front_ranges = msg.ranges[0:30] + msg.ranges[330:360] # 60도
-    valid_ranges = [r for r in front_ranges if 0.1 < r < 3.0] # 유효반경 ~ 3m
+  def teleop_callback(self, msg):
+    """수동조작 도중 장애물 부딪힘 방지하는 함수"""
+    self.teleop_linear_x = msg.linear.x
+    self.teleop_angular_z = msg.angular.z
 
-    if valid_ranges:
-      self.min_front_dist = min(valid_ranges) # 실시간 거리 정보 업데이트
-    else:
-      self.min_front_dist = 9.9 # 전방 장애물 없음
-
-    if valid_ranges:
-      min_distance = min(valid_ranges)
-
-      # 우회 및 탈출 시퀀스 중이거나, 종료 후 유예 기간(1초) 중에는 장애물 감지 무시
-      if self.wait_counter < 0 or self.recovery_counter > 0:
-        return
-      else:
-        check_dist = self.safe_distance # 기본 장애물 기준 거리
-
-      if min_distance < check_dist:
-        self.clear_count = 0 # 장애물 감지 -> clear_count 초기화
-        if not self.is_blocked:
-          ## ---- 장애물 좌표 기록 ----
-          self.obstacle_x = self.current_x
-          self.obstacle_y = self.current_y
-
-          self.get_logger().warn(f'장애물이 감지되었습니다! 거리: {min_distance:.2f}m')
-          self.is_blocked = True
-          self.wait_counter = 0
-        self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
-      else:
-        ## ---- 장애물이 사라졌을 때 (10초 강제 대기를 위해 조기 취소 로직 비활성화) ----
-        if self.is_blocked and self.wait_counter >= 0:
-          pass # 기존의 0.5초만에 재출발 해버리는 로직을 무효화하여 무조건 10초 대기 타이머를 타게 함.
-
-  def timer_callback(self):
-    self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value # 대기시간 실시간 업데이트
-    max_count = int(self.wait_time_s * self.timer_second) # 1초
-
-    if self.recovery_counter > 0:
-      self.recovery_counter -= 1
-
-    if self.is_blocked:
-      self.stop_robot()
-      self.wait_counter += 1
-
-      if self.wait_counter % self.timer_second == 0 : # 1초 주기 로그
-        seconds = self.wait_counter // self.timer_second
-        self.get_logger().info(f'대기중... {seconds}s / {self.wait_time_s}s')
-
-      if self.wait_counter >= max_count:
-        self.get_logger().info(f'{self.wait_time_s}초가 지났습니다. 우회 및 탈출 시퀀스를 진행합니다.')
-        self.is_blocked = False
-        # 총 4.5초 탈출 시간 (회전 2s + 직진 1.5s + 정지 1.0s)
-        self.wait_counter = -int(4.5 * self.timer_second)
-
-    ## ---- 우회 로직(수정 예정) ----
-    elif self.wait_counter < 0:
-      self.wait_counter += 1
-      msg = Twist()
-
-      # 탈출 및 우회 시퀀스 분기 (총 4.5초 중)
-      # 1. 0.0 ~ 2.0초: 제자리 회전 (장애물이 사라질 때까지만 수행)
-      if self.wait_counter < -int(2.5 * self.timer_second):
-        # 전방 60도 이내에 장애물이 일정이상(0.7m) 멀어지면 즉시 다음 단계(직진)로 전환
-        if self.min_front_dist > 0.7:
-          self.get_logger().info(f'전방 시야 확보됨({self.min_front_dist:.2f}m). 회전을 멈추고 직진 탈출을 시작합니다.')
-          self.wait_counter = -int(2.5 * self.timer_second) # 직진 탈출 단계로 강제 이동
-          return
-
-        msg.linear.x = 0.0
-        msg.angular.z = 0.5 # 정밀도를 위해 0.5 rad/s로 더 느리게 회전
-      # 2. 2.0 ~ 3.5초: 전진 탈출
-      elif self.wait_counter < -int(1.0 * self.timer_second):
-        msg.linear.x = 0.15 
-        msg.angular.z = 0.0
-      # 3. 3.5 ~ 4.5초: 정지 및 안정화 (장애물 센서 무시 지속)
-      else:
-        if self.wait_counter == -int(1.0 * self.timer_second) + 1:
-          self.get_logger().info('직진 완료. 정지 후 시스템을 안정화합니다...')
-          self.call_clear_costmap() # 정지 시작 시 코스트맵 클리어
-
-        msg.linear.x = 0.0
-        msg.angular.z = 0.0
-
-      self.cmd_vel_pub.publish(msg)
-
-      if self.wait_counter == 0:
-        self.stop_robot() # 최종적으로 한 번 더 정지 명령 발행
-        self.recovery_counter = self.timer_second # 완료 후 1초간 유예 시간 가동
-        self.get_logger().info('우회 및 안정화 완료. 1초 후 순찰을 재개합니다.')
-
-  def call_clear_costmap(self):
-    """Nav2 로컬 코스트맵을 초기화하는 서비스 호출"""
-    if not self.clear_costmap_client.service_is_ready():
-      self.get_logger().warn('Clear Costmap 서비스를 이용할 수 없습니다.')
+    if abs(self.teleop_linear_x) > 0.001 or abs(self.teleop_angular_z) > 0.001:
+      self.is_teleop_active = True # 수동 조작중
+    else: # 사용자가 긴급 정지(속도 0)를 눌렀다면 즉각 통과
+      self.is_teleop_active = False # 수동 조작 멈춤
+      self.is_front_danger = False # 전방 위험 플래그 초기화
+      self.cmd_vel_pub.publish(msg) # 정지 명령 바로 발행 (수동 조작 멈춤 시 즉시 정지)
       return
 
-    req = ClearEntireCostmap.Request()
-    self.clear_costmap_client.call_async(req)
-    self.get_logger().info('Local costmap 클리어 요청을 보냈습니다.')
+    if self.latest_scan_msg is None: # 라이다 데이터가 아직 안들어왔으면 수동조작 무시
+      return
+
+    final_msg = copy.deepcopy(msg) # 원본 메시지 복사
+    num_ranges = len(self.latest_scan_msg.ranges)
+
+    # ---- 수동 전진 방어 ----
+    if self.teleop_linear_x > 0.0 :
+      idx_30 = int(num_ranges * (30 / 360))
+      idx_330 = int(num_ranges * (330 / 360))
+      front_ranges = self.latest_scan_msg.ranges[0:idx_30] + self.latest_scan_msg.ranges[idx_330:num_ranges]
+      valid_ranges = [r for r in front_ranges if 0.1 < r < 3.0]
+
+      if valid_ranges and min(valid_ranges) < self.safe_distance: # 0.50m보다 가까우면 멈춤 유지
+          if not self.is_front_danger:
+            self.get_logger().warn(f'[수동] 전방 충돌 위험! 전진을 차단합니다. 거리: {min(valid_ranges):.2f}m')
+          self.is_front_danger = True
+          final_msg.linear.x = 0.0 # 속도 삭제
+
+      elif valid_ranges and min(valid_ranges) >= self.clear_distance: # 위험 해제
+        self.is_front_danger = False
+
+    # ---- 수동 후진 방어 ----
+    elif self.teleop_linear_x < 0.0 :
+      idx_150 = int(num_ranges * (150 / 360))
+      idx_210 = int(num_ranges * (210 / 360))
+      rear_ranges = self.latest_scan_msg.ranges[idx_150:idx_210] # 60도 기준 후방
+      valid_rear = [r for r in rear_ranges if 0.1 < r < 3.0]
+
+      if valid_rear and min(valid_rear) < self.safe_distance: # 0.50m보다 가까우면 멈춤 유지
+        if not self.is_front_danger:
+          self.get_logger().warn(f'[수동] 후방 충돌 위험! 후진을 차단합니다. 거리: {min(valid_rear):.2f}m')
+        self.is_front_danger = True
+        final_msg.linear.x = 0.0  # 후진 명령 묵살
+
+    if self.is_front_danger and final_msg.linear.x > 0.0: # 위험 상태에서 전진 명령이 들어오면 차단
+      final_msg.linear.x = 0.0
+
+    self.cmd_vel_pub.publish(final_msg)
+
+
+  def plan_callback(self, msg):
+    """가짜 벽을 쏘는 중에만 체크 - 우회 전용"""
+    if self.is_detouring:
+      self.get_logger().info('Nav2가 새로운 우회 경로를 생성했습니다.')
+      self.is_new_path_generated = True
+
+  def odom_callback(self, msg):
+    # ---- 현재 속도 실시간 업데이트 ----
+    self.current_linear_velocity = msg.twist.twist.linear.x
+    self.current_angular_velocity = msg.twist.twist.angular.z
+    # ---- 로봇의 실제 이동 속도가 후진(음수)인지 체크 ----
+    current_linear_velocity = msg.twist.twist.linear.x
+
+    if current_linear_velocity < -0.01:
+      self.is_moving_backward = True
+    else:
+      self.is_moving_backward = False
+
+
+  def scan_callback(self, msg):
+    """라이다 데이터 수신 시마다 장애물 감지 및 우회 로직 처리"""
+    self.latest_scan_msg = msg
+
+    if self.is_teleop_active or self.is_detouring :
+      return
+
+    # ---- [조건부] 후방 60도 감지 ----
+    num_ranges = len(msg.ranges)
+    idx_120 = int(num_ranges * (120 / 360))
+    idx_240 = int(num_ranges * (240 / 360))
+
+    rear_ranges = msg.ranges[idx_120:idx_240] # 사각지대 없도록 120도 감지
+    valid_rear = [r for r in rear_ranges if 0.1 < r < 3.0]
+
+    if valid_rear and min(valid_rear) < 0.30:
+      self.is_rear_blocked = True
+    else:
+      self.is_rear_blocked = False
+
+    # 후진 중에 후방 장애물을 만나면 즉시 멈추고 함수 종료
+    if self.is_moving_backward and self.is_rear_blocked:
+      self.get_logger().warn('후방 주행 중 장애물이 감지되었습니다! 강제 정지합니다.')
+      self.stop_robot()
+      return
+
+    # ---- 수동 조작, AI 모드, 우회 중에는 장애물 감지 무시 ----
+    if self.is_teleop_active or self.is_ai_mode or self.is_detouring or self.is_started_moving:
+      return
+
+    # ---- 전방 60도 감지 ----
+    num_ranges = len(msg.ranges)
+    idx_30 = int(num_ranges * (30 / 360))
+    idx_330 = int(num_ranges * (330 / 360))
+
+    front_ranges = msg.ranges[0:idx_30] + msg.ranges[idx_330:num_ranges]
+    valid_ranges = [r for r in front_ranges if 0.1 < r < 3.0]
+
+    if len(valid_ranges) > 0:
+      min_distance = min(valid_ranges)
+
+      if min_distance < self.safe_distance: # 기준거리
+        if not self.is_blocked:
+          self.get_logger().warn(f'장애물이 감지되었습니다! 거리: {min_distance:.2f}m')
+
+          self.is_blocked = True
+          self.blocked_start_time = self.get_clock().now()
+          self.no_obstacle_start_time = None
+
+          status_msg = Bool() # 행동트리에 장애물 감지 상태 발행
+          status_msg.data = True # 장애물 감지 상태 True
+          self.obstacle_status_pub.publish(status_msg)
+
+          pause_msg = Bool() # 순찰 노드에 일시정지 요청
+          pause_msg.data = True
+          self.pause_pub.publish(pause_msg)
+
+        self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
+      else:
+        ## ---- 장애물이 사라졌을 때 ----
+        if self.is_blocked:
+          if self.no_obstacle_start_time is None:
+            self.no_obstacle_start_time = self.get_clock().now()
+
+          no_obstacle = (self.get_clock().now() - self.no_obstacle_start_time).nanoseconds / 1e9
+
+          if no_obstacle >= 1.5:
+            self.get_logger().info('1.5초 동안 전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
+
+            pause_msg = Bool()
+            pause_msg.data = False
+            self.pause_pub.publish(pause_msg)
+
+            status_msg = Bool()
+            status_msg.data = False
+            self.obstacle_status_pub.publish(status_msg)
+
+            self.is_blocked = False
+            self.no_obstacle_start_time = None # 다음을 위해 초기화
+          else:
+            self.stop_robot()
+
+    else:
+      if self.is_blocked:
+        self.get_logger().info('전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
+        self.is_blocked = False
+        self.no_obstacle_start_time = None # 다음을 위해 초기화
+
+        status_msg = Bool()
+        status_msg.data = False
+        self.obstacle_status_pub.publish(status_msg)
+
+        pause_msg = Bool()
+        pause_msg.data = False
+        self.pause_pub.publish(pause_msg)
+
+  def timer_callback(self):
+    if self.is_moving_backward: # 후진 중일 때는 10초 대기 및 우회 타이머 작동 X
+      return
+    if self.is_teleop_active :
+      if self.is_front_danger:
+        self.stop_robot()
+      return
+
+    if self.is_ai_mode: # AI 인식 모드에서는 장애물 대기 및 우회 로직 완전 비활성화
+      if self.is_blocked:
+        self.get_logger().info('AI 인식 모드가 활성화되어 장애물 대기를 취소합니다.')
+        self.is_blocked = False
+        self.blocked_start_time = None
+
+        status_msg = Bool()
+        status_msg.data = False
+        self.obstacle_status_pub.publish(status_msg)
+      return
+
+    self.current_wait_time = self.get_parameter('current_wait_time').get_parameter_value().integer_value # 대기시간 실시간 업데이트
+
+    # ---- 장애물 대기 구간 ----
+    if self.is_blocked:
+      self.stop_robot()
+
+      if self.no_obstacle_start_time is not None:
+        return
+
+      elapsed_duration = self.get_clock().now() - self.blocked_start_time
+      elapsed_seconds = elapsed_duration.nanoseconds / 1e9 # 나노초를 초 단위로 변환
+      current_int_second = int(elapsed_seconds)
+
+      if not hasattr(self, 'last_logged_second') or self.last_logged_second != current_int_second: # 1초 주기 로그
+        if current_int_second > 0:
+          self.get_logger().info(f'대기중... {current_int_second}s / {self.current_wait_time}s')
+        self.last_logged_second = current_int_second
+
+      if elapsed_seconds >= self.current_wait_time:
+        self.get_logger().info(f'{self.current_wait_time}초가 지났습니다. 우회 판단을 요청합니다.')
+
+        self.is_blocked = False
+        self.is_detouring = True
+        self.blocked_start_time = None
+
+        if hasattr(self, 'last_logged_second'):
+          del self.last_logged_second
+
+          # 장애물 감지 상태 False로 발행 (행동트리가 우회 행동으로 넘어갈 수 있도록)
+          status_msg = Bool()
+          status_msg.data = False
+          self.obstacle_status_pub.publish(status_msg)
+
+    # ---- 가짜 벽 생성 및 우회 개시 구간 ----
+    elif self.is_detouring:
+      if not self.is_started_moving: # 회전을 아직 시작하지 않은 최초 1회만 진입
+        if self.latest_scan_msg is not None:
+          num_ranges = len(self.latest_scan_msg.ranges)
+
+          # 인덱스 범위 지정 (라이다 데이터의 배열 길이에 맞춰 동적 계산)
+          left_idx_start = int(num_ranges * (30 / 360))
+          left_idx_end = int(num_ranges * (60 / 360))
+          right_idx_start = int(num_ranges * (300 / 360))
+          right_idx_end = int(num_ranges * (330 / 360))
+
+          left_distances = [r for r in self.latest_scan_msg.ranges[left_idx_start:left_idx_end] if 0.1 < r < 3.0]
+          right_distances = [r for r in self.latest_scan_msg.ranges[right_idx_start:right_idx_end] if 0.1 < r < 3.0]
+
+          left_avg = sum(left_distances) / len(left_distances) if left_distances else 0.0
+          right_avg = sum(right_distances) / len(right_distances) if right_distances else 0.0
+
+          if left_avg >= right_avg:
+            self.detour_direction = 0.7 # 좌회전 (양수)
+            self.get_logger().info('라이다 분석 결과: 좌측 공간이 넓어 좌회전으로 우회합니다.')
+          else:
+            self.detour_direction = -0.7 # 우회전 (음수)
+            self.get_logger().info('라이다 분석 결과: 우측 공간이 넓어 우회전으로 우회합니다.')
+
+          # 가짜벽 생성
+          self.fake_scan = copy.deepcopy(self.latest_scan_msg)
+          self.fake_scan.ranges = [float('inf')] * len(self.fake_scan.ranges)
+
+          # 360도 라이다 데이터 중 전방 40도 구역 설정
+          num_ranges = len(self.fake_scan.ranges)
+          idx_15 = int(num_ranges * (20 / 360))
+          idx_345 = int(num_ranges * (340 / 360))
+
+          for i in range(num_ranges):
+            if i < idx_15 or i > idx_345:
+              self.fake_scan.ranges[i] = 0.6 # 60cm에 가짜 벽 생성
+
+          self.virtual_obstacle_pub.publish(self.fake_scan)
+
+          pause_msg = Bool()
+          pause_msg.data = False
+          self.pause_pub.publish(pause_msg)
+          self.get_logger().info('순찰 노드에 속도 잠금 해제를 요청했습니다.')
+
+          self.is_started_moving = True
+          self.call_clear_costmap_service() # 가짜 벽 쏘자마자 코스트맵 클리어
+          self.detour_start_time = self.get_clock().now() # 우회 시작 시각 기록
+
+      else: # 이미 우회 시작한 상태에서는 5초 동안 제자리 회전으로 장애물 피하기
+        elapsed = (self.get_clock().now() - self.detour_start_time).nanoseconds / 1e9
+
+        if elapsed < 5.0:
+          twist_msg = Twist()
+          twist_msg.linear.x = 0.0
+          twist_msg.angular.z = self.detour_direction # 분석한 방향으로 회전
+          self.cmd_vel_pub.publish(twist_msg)
+
+          if self.fake_scan is not None: # 우회 시작 후에도 가짜 벽 유지 (실제 장애물과의 충돌 방지)
+            self.virtual_obstacle_pub.publish(self.fake_scan) # 교체 발행으로 가짜 벽 지속
+        else:
+          self.is_detouring = False
+          self.is_new_path_generated = False
+          self.is_started_moving = False
+          self.fake_scan = None # 가짜 벽 메시지 초기화
+
+          self.stop_robot()
+          self.call_clear_costmap_service() # 3초 뒤에 가짜 벽 지우기
+          self.get_logger().info('우회 복귀가 완료되어 장애물 감지 방어막을 다시 켭니다.')
+
+  def call_clear_costmap_service(self):
+    if not self.clear_costmap_client.wait_for_service(timeout_sec=1.0):
+      self.get_logger().error('코스트맵 클리어 서비스를 찾을 수 없습니다.')
+      return
+
+    request = ClearEntireCostmap.Request()
+    future = self.clear_costmap_client.call_async(request)
+
 
   def stop_robot(self):
     msg = Twist()
@@ -171,7 +403,8 @@ class ObstacleNode(Node):
     self.cmd_vel_pub.publish(msg)
 
 def main(args=None):
-  rclpy.init(args=args)
+  if not rclpy.ok():
+    rclpy.init(args=args)
   node = ObstacleNode()
   try:
     rclpy.spin(node)

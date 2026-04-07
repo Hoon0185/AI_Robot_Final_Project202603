@@ -38,8 +38,9 @@ def generate_launch_description():
 
     # 2. 설정 파일 경로
     shelf_config = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
-    # LOGIC_02의 설정을 우선하여 사용
-    twist_mux_config = os.path.join(get_package_share_directory('logic2_pkg'), 'config', 'twist_mux.yaml')
+
+    # Behavior Tree XML 파일의 동적 절대 경로 완성
+    bt_xml_file = os.path.join(pkg_dir, 'config', 'navigate_to_pose_w_replanning_and_recovery.xml')
 
     # 3. 모든 순찰 관련 노드 실행 (네임스페이스 제거됨)
     patrol_actions = [
@@ -60,31 +61,10 @@ def generate_launch_description():
                 name='patrol_node',
                 parameters=[shelf_config, {
                     'use_sim_time': use_sim_time,
-                    'map_frame': map_frame
+                    'map_frame': map_frame,
+                    'default_nav_to_pose_bt_xml': bt_xml_file
                 }],
                 output='screen'
-            ),
-
-            # (3) 장애물 회피 제어 노드 (LOGIC_02 패키지 사용)
-            Node(
-                package='logic2_pkg',
-                executable='obstacle_node',
-                name='obstacle_node',
-                parameters=[{
-                    'use_sim_time': use_sim_time
-                }],
-                output='screen'
-            ),
-
-            # (4) Twist Mux (최종 명령 중재기)
-            # Nav2(/cmd_vel_nav), Teleop(/cmd_vel_teleop), Obstacle(/cmd_vel_obstacle) 명령 우선순위 중재
-            Node(
-                package='twist_mux',
-                executable='twist_mux',
-                name='twist_mux',
-                output='screen',
-                parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-                remappings=[('cmd_vel_out', 'cmd_vel')]
             ),
 
             # (5) 순찰 시각화 (RVIZ Marker 관리)

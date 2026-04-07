@@ -420,7 +420,6 @@ async def finish_patrol():
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status IN ('진행중', '중단') ORDER BY start_time DESC LIMIT 1")
 
         patrol = cursor.fetchone()
-        
         if patrol:
             patrol_id = patrol['patrol_id']
             cursor.execute(
@@ -430,7 +429,7 @@ async def finish_patrol():
         
         # 로봇 명령 큐에 복귀 추가 (비상 정지 상태였을 경우에도 해제 효과를 가짐)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
-        
+
         conn.commit()
         return {"message": "Return to base command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
     finally:
@@ -457,7 +456,7 @@ async def stop_patrol():
                 "UPDATE patrol_log SET status = '중단', end_time = NOW() WHERE patrol_id = %s",
                 (patrol_id,)
             )
-        
+
         conn.commit()
         return {"message": "Emergency stop command sent", "patrol_id": patrol_id}
     finally:
@@ -722,7 +721,7 @@ async def add_detection(data: DetectionInput):
         # 5. shelf_status 업데이트 (현재 매대 현황)
         cursor.execute("SELECT status_id FROM shelf_status WHERE barcode_tag = %s", (data.tag_barcode,))
         existing_status = cursor.fetchone()
-        
+
         if existing_status:
             update_status_sql = "UPDATE shelf_status SET product_id = %s, status = %s, last_updated_at = NOW() WHERE barcode_tag = %s"
             cursor.execute(update_status_sql, (detected_product_id_internal or planned_product_id, result_status, data.tag_barcode))
@@ -879,7 +878,7 @@ async def add_patrol_plan(plan: PlanAddInput):
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT plan_id FROM waypoint_product_plan WHERE barcode_tag = %s", (plan.barcode_tag,))
         existing_plan = cursor.fetchone()
-        
+
         if existing_plan:
             cursor.execute(
                 "UPDATE waypoint_product_plan SET product_id = %s, waypoint_id = %s, row_num = %s WHERE plan_id = %s",
@@ -890,7 +889,7 @@ async def add_patrol_plan(plan: PlanAddInput):
                 "INSERT INTO waypoint_product_plan (waypoint_id, barcode_tag, product_id, row_num) VALUES (%s, %s, %s, %s)",
                 (plan.waypoint_id, plan.barcode_tag, plan.product_id, plan.row_num)
             )
-        
+
         conn.commit()
         return {"message": "Planogram updated successfully"}
     except Error as e:
@@ -1021,7 +1020,6 @@ async def delete_waypoint(waypoint_id: int):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        
         # 1. 진열 계획 및 매대 현황 데이터 삭제 (CASCADE 수동 구현)
         cursor.execute("DELETE FROM waypoint_product_plan WHERE waypoint_id = %s", (waypoint_id,))
         cursor.execute("DELETE FROM shelf_status WHERE waypoint_id = %s", (waypoint_id,))
@@ -1031,6 +1029,7 @@ async def delete_waypoint(waypoint_id: int):
         cursor.execute("DELETE FROM alert WHERE waypoint_id = %s", (waypoint_id,))
         
         # 3. 웨이포인트 본체 삭제
+
         cursor.execute("DELETE FROM waypoint WHERE waypoint_id = %s", (waypoint_id,))
         
         conn.commit()

@@ -19,6 +19,7 @@ class PatrolInterface:
         # Database & Server Sync
         self.db = InventoryDB(base_url="http://16.184.56.119:8000")#16.184.56.119
 
+
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
         self.param_client = self.node.create_client(SetParameters, '/patrol_scheduler/set_parameters')

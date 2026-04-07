@@ -1,0 +1,19 @@
+# 우선순위 기반 교통 정리 설정
+twist_mux:
+  ros__parameters:
+    topics:
+      # 1순위: 장애물 관리 (사용자 노드) - 가장 강력한 제어, 장애물 감지 시 즉시 작동
+      obstacle:
+        topic:  "cmd_vel_obstacle"
+        timeout: 0.5
+        priority: 100
+      # 2순위: 수동 조작 (UI / 키보드) - 장애물 없을 때만 작동
+      teleop:
+        topic:  "cmd_vel_teleop"
+        timeout: 0.5
+        priority: 10
+      # 3순위: 기본 순찰 (내비게이션) - 평상시 주행
+      navigation:
+        topic:  "cmd_vel_nav"
+        timeout: 0.5
+        priority: 5
