@@ -1,0 +1,4 @@
+log:
+  level: info
+streams:
+  tapo_speaker: onvif://robot1:robot123@192.168.1.18:2020
