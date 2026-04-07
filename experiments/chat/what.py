@@ -54,10 +54,11 @@ def speak_result(text):
 def identify_product_from_image(image_data):
     if not client: return None, "API Key Error"
     prompt = """
-    사진 속 정면에 보이는 상품을 분석하여 다음 형식으로 답변하세요.
-    - [PRODUCT_NAME]: 상품명 (DB 검색용 한 단어)
-    - [BOT_RESPONSE]: 고객에게 말할 친절한 안내 (예: "고객님, [PRODUCT_NAME]. 이 제품은 무엇입니다.")
-    경고: 절대 은(는) 같은 조사를 사족으로 달지 마세요.
+    이미지 속 상품을 분석하여 DB 검색을 위한 핵심 명칭을 추출하세요.
+    - [PRODUCT_NAME]: 상품 고유 명칭만 추출 (카테고리 제외) 
+      (예: '과자 포스틱' -> '포스틱', '음료 코카콜라' -> '코카콜라', '라면 진라면' -> '진라면')
+    - [BOT_RESPONSE]: 고객 안내문 (조사 제거, 예: "고객님! [PRODUCT_NAME]. 이 제품은 무엇입니다.")
+    경고: '과자', '음료', '라면' 같은 대분류 명칭은 [PRODUCT_NAME]에서 반드시 제외하세요.
     """
     try:
         response = client.models.generate_content(
