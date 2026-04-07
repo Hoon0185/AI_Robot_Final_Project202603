@@ -331,6 +331,16 @@ class PatrolNode(Node):
             self.latest_ai_barcodes = msg.barcodes
             self.latest_ai_class_ids = msg.class_ids
 
+    def battery_callback(self, msg):
+        """로봇의 배터리 상태(0~100)를 수신하여 저장"""
+        self.current_battery = float(msg.percentage)
+
+    def report_battery_to_server(self):
+        """서버의 /api/robot/battery 엔드포인트로 배터리 상태 보고"""
+        success = self.db.report_battery(self.current_battery)
+        if not success:
+            self.get_logger().warn("Failed to report battery status to server.")
+
     def check_ai_result_and_proceed(self):
         """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행"""
         if not self.is_waiting_for_ai: return
