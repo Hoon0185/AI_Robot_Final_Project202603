@@ -1,39 +1,47 @@
 import rclpy
 from rclpy.node import Node
-from protect_product_msgs.msg import DetectionArray
-import os
+from sensor_msgs.msg import CompressedImage
+from cv_bridge import CvBridge
+import cv2
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 class ViewerNode(Node):
     def __init__(self):
         super().__init__('viewer_node')
-        self.qr_val = "None_QR"
-        self.sub = self.create_subscription(DetectionArray, '/verified_objs', self.callback, 10)
+        self.bridge = CvBridge()
 
-    def callback(self, msg):
-        print("\033[H\033[J", end="") # 화면 청소 최적화
-        for i in range(len(msg.class_ids)):
-            if msg.class_ids[i] == 999:
-                val = msg.class_names[i]
-                if val not in ["None_QR", "Scanning..."]: self.qr_val = val
+        # 터틀봇 환경에 최적화된 QoS 설정
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            depth=10
+        )
 
-        print("="*50)
-        print(f"       [ 실시간 편의점 재고 검출 현황 ]")
-        print("="*50)
-        print(f" [최근 인식된 QR]: {self.qr_val}") # 상시 노출
-        print("-" * 50)
-        print(f" {'TYPE':<10} | {'NAME':<15} | {'ID':<5} | {'CONF':<7}")
-        print("="*50)
+        # Verifier가 보낸 최종 결과 이미지를 구독합니다.
+        self.subscription = self.create_subscription(
+            CompressedImage,
+            '/verif_img/compressed',
+            self.image_callback,
+            qos_profile)
 
-        for i in range(len(msg.class_ids)):
-            if msg.class_ids[i] != 999:
-                name = msg.class_names[i]
-                prod_id = msg.class_ids[i] + 1
-                # 신뢰도(Score) 가져오기
-                score_str = "N/A"
-                if hasattr(msg, 'scores') and len(msg.scores) > i:
-                    score_str = f"{msg.scores[i]*100:.1f}%"
-                print(f" [PRODUCT] | {name:<15} | {prod_id:<5} | {score_str:<7}")
-        print("="*50)
+        self.get_logger().info('Viewer 노드 가동: 실시간 모니터링 창을 오픈합니다.')
+
+    def image_callback(self, msg):
+        try:
+            # 압축된 ROS 이미지를 OpenCV 형식으로 변환
+            frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
+
+            # 모니터링 창에 출력
+            cv2.imshow("Mart Monitoring System", frame)
+
+            # GUI 이벤트를 처리하기 위해 1ms 대기 (창이 닫히지 않게 함)
+            cv2.waitKey(1)
+
+        except Exception as e:
+            self.get_logger().error(f'이미지 변환 중 오류 발생: {e}')
+
+    def __del__(self):
+        # 노드 종료 시 OpenCV 창을 닫습니다.
+        cv2.destroyAllWindows()
 
 def main(args=None):
     rclpy.init(args=args)
@@ -41,8 +49,10 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info('사용자에 의해 노드가 종료되었습니다.')
     finally:
+        # 종료 처리
+        cv2.destroyAllWindows()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

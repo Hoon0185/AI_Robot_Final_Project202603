@@ -11,11 +11,11 @@ import math
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
-    
+
     # ---- [LOGIC_02 기반 통합] 웹 DB로부터 초기 설정값 수신 ----
     default_wait_time = 10
     try:
-        response = requests.get("http://16.184.56.119/patrol/config", timeout=2.0)
+        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=2.0)
         if response.status_code == 200:
             config = response.json()
             raw_val = config.get('avoidance_wait_time', 10)
@@ -65,13 +65,13 @@ class ObstacleNode(Node):
     # ---- 초기 변수 설정 ----
     self.is_blocked = False
     self.wait_counter = 0
-    self.recovery_counter = 0 
-    
+    self.recovery_counter = 0
+
     # 히스테리시스 설정 (단순 거리 기반)
     self.safe_distance_enter = 0.40 # 진입
     self.safe_distance_exit = 0.55 # 해제
-    
-    self.min_front_dist = 9.9 
+
+    self.min_front_dist = 9.9
     self.wait_time_s = self.get_parameter('obstacle_wait_time').get_parameter_value().integer_value
 
     self.current_x = 0.0
@@ -137,7 +137,7 @@ class ObstacleNode(Node):
           self.wait_counter = -int(2.0 * self.timer_second)
           return
         msg.linear.x = 0.0
-        msg.angular.z = 0.5 
+        msg.angular.z = 0.5
       elif self.wait_counter < -int(1.0 * self.timer_second):
         msg.linear.x = 0.15
         msg.angular.z = 0.0
@@ -152,12 +152,12 @@ class ObstacleNode(Node):
 
       if self.wait_counter == 0:
         self.stop_robot()
-        self.recovery_counter = self.timer_second 
+        self.recovery_counter = self.timer_second
         self.get_logger().info('전체 우회 시퀀스 완료. 순찰을 재개합니다.')
 
   def sync_config_from_db(self):
     try:
-        response = requests.get("http://16.184.56.119/patrol/config", timeout=3.0)
+        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=3.0)
         if response.status_code == 200:
             config = response.json()
             raw_val = config.get('avoidance_wait_time')

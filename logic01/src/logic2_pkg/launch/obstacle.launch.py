@@ -6,7 +6,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     # 패키지 공유 디렉토리 경로 획득
     logic2_pkg_share = get_package_share_directory('logic2_pkg')
-    
+
     # twist_mux 설정 파일 경로 (절대 경로)
     twist_mux_config = os.path.join(logic2_pkg_share, 'config', 'twist_mux.yaml')
 

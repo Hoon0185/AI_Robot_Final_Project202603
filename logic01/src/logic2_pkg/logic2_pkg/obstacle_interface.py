@@ -12,7 +12,7 @@ class ObstacleInterface:
     self.node = Node(node_name)
 
     # ---- DB 연결 정보 설정 ----
-    self.base_url = "http://16.184.56.119"
+    self.base_url = "http://16.184.56.119/api"
     self.config_id = 26
 
     # ---- 서비스 클라이언트 설정 ----
