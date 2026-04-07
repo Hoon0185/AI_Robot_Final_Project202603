@@ -517,7 +517,6 @@ class PatrolNode(Node):
         """서버에서 순찰 설정을 가져와 각 노드 파라미터에 실시간 반영"""
         config = self.db.get_patrol_config()
         if not config:
-            # self.get_logger().warn("[DB] Failed to fetch patrol configuration from server.")
             return False
 
         # 1. 장애물 대기 시간 (avoidance_wait_time) 동기화
@@ -527,10 +526,11 @@ class PatrolNode(Node):
             if new_wait_int != self.last_avoidance_wait:
                 self.get_logger().info(f'[DB] New Avoidance Wait Time detected: {new_wait_int}s (Syncing to obstacle_node...)')
                 
+                # obstacle_node의 파라미터명은 'current_wait_time'입니다.
                 if self.param_client.wait_for_service(timeout_sec=1.0):
                     req = SetParameters.Request()
                     val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=new_wait_int)
-                    req.parameters = [Parameter(name='obstacle_wait_time', value=val)]
+                    req.parameters = [Parameter(name='current_wait_time', value=val)]
                     self.param_client.call_async(req)
                     self.last_avoidance_wait = new_wait_int
                     self.get_logger().info(f'[SYNC] Obstacle wait time set to {new_wait_int}s')
@@ -539,41 +539,6 @@ class PatrolNode(Node):
         
         return True
 
-        # 공분산 초기화 (매우 낮은 값으로 설정하여 확신 부여)
-        msg.pose.covariance = [0.0] * 36
-        msg.pose.covariance[0] = 0.25 # x
-        msg.pose.covariance[7] = 0.25 # y
-        msg.pose.covariance[35] = 0.06 # yaw
-
-        self.initial_pose_pub.publish(msg)
-        self.get_logger().info('Published Initial Pose to (0,0)')
-
-    def sync_remote_config(self):
-        """서버에서 순찰 설정을 가져와 각 노드 파라미터에 실시간 반영"""
-        config = self.db.get_patrol_config()
-        if not config:
-            # self.get_logger().warn("[DB] Failed to fetch patrol configuration from server.")
-            return
-
-        # 1. 장애물 대기 시간 (avoidance_wait_time) 동기화
-        new_wait = config.get('avoidance_wait_time')
-        if new_wait is not None and int(new_wait) != self.last_avoidance_wait:
-            self.get_logger().info(f'[DB] New Avoidance Wait Time detected: {new_wait}s (Syncing to obstacle_node...)')
-            
-            if self.param_client.wait_for_service(timeout_sec=1.0):
-                req = SetParameters.Request()
-                val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=int(new_wait))
-                req.parameters = [Parameter(name='obstacle_wait_time', value=val)]
-                self.param_client.call_async(req)
-                self.last_avoidance_wait = int(new_wait)
-                self.get_logger().info(f'[SYNC] Obstacle wait time set to {new_wait}s')
-            else:
-                self.get_logger().warn('/obstacle_node/set_parameters service not available. Check if obstacle_node is running.')
-
-        # 2. 순찰 간격 및 기타 정보 로그 (디버깅용)
-        # interval_hour = config.get('interval_hour', 0)
-        # interval_minute = config.get('interval_minute', 0)
-        # self.get_logger().info(f"[DB] Remote Config Synced: Avoidance={new_wait}s, Interval={interval_hour}h {interval_minute}m", once=True)
 
 def main(args=None):
     rclpy.init(args=args)
