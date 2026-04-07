@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Configuration & Discovery
-    const API_BASE = window.location.origin + "/api";
+    const API_BASE = '';
     console.log("HMI initialized. API Base:", API_BASE);
 
     // 2. Elements Mapping
@@ -26,7 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
         "대기 중": "IDLE",
         "진행중": "PATROLLING",
         "완료": "FINISHED",
-        "중단": "STOPPED"
+        "중단": "STOPPED",
+        "복귀중": "RETURNING HOME"
     };
 
     const translateState = (koState) => STATUS_MAP[koState] || koState.toUpperCase();
@@ -78,24 +79,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (koStatus.includes("정지") || koStatus.includes("STOP") || enStatus.includes("STOP")) {
                 btnTogglePause.innerHTML = '<i class="fas fa-undo"></i> RESUME';
                 btnTogglePause.className = 'btn btn-success';
-                btnTogglePause.onclick = () => sendCommand('/patrol/resume');
+                // [수정] onclick 대신 속성 제거 후 이벤트 리스너에서 처리 (아래에서 일괄 처리)
             } else {
                 btnTogglePause.innerHTML = '<i class="fas fa-stop"></i> STOP';
                 btnTogglePause.className = 'btn btn-danger';
-                btnTogglePause.onclick = () => sendCommand('/patrol/stop');
             }
 
             // [추가] START 및 RETURN 버튼 상태 제어로직
-            if (enStatus === "ON PATROL" || enStatus === "PATROLLING") {
+            if (enStatus === "ON PATROL" || enStatus === "PATROLLING" || enStatus === "RETURNING HOME") {
                 btnStart.disabled = true;
-                btnReturn.disabled = false;
+                btnReturn.disabled = (enStatus === "RETURNING HOME"); // 복귀 중이면 복귀 버튼도 비활성화
             } else if (koStatus === "휴식중" || koStatus === "완료" || enStatus === "IDLE" || enStatus === "FINISHED") {
                 btnStart.disabled = false;
                 btnReturn.disabled = true;
-            } else if (koStatus.includes("정지") || enStatus.includes("STOP")) {
-                // 비상정지 시에는 둘 다 비활성화 (Resume 누르기 전까지)
+            } else {
                 btnStart.disabled = true;
-                btnReturn.disabled = false; // 복귀는 허용할 수도 있음 (사용자 정책에 따라)
+                btnReturn.disabled = false;
             }
 
         } catch (error) {
@@ -126,6 +125,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 4. Command Handlers
     const sendCommand = async (endpoint) => {
+        if (!endpoint) return;
+        console.log(`Attempting to send command: ${endpoint}`);
         try {
             const response = await fetch(`${API_BASE}${endpoint}`, {
                 method: 'POST',
@@ -133,6 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (response.ok) {
                 console.log(`Command ${endpoint} sent successfully.`);
+                // 즉시 상태 갱신 유도
+                setTimeout(pollStatus, 500);
             } else {
                 console.error(`Command ${endpoint} failed.`);
             }
@@ -141,8 +144,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    document.getElementById('btn-start').onclick = () => sendCommand('/patrol/start');
-    document.getElementById('btn-return').onclick = () => sendCommand('/patrol/return');
+    // [개선] 터치 이벤트와 클릭 이벤트를 모두 지원하는 통합 핸들러
+    const setupButton = (el, getEndpoint) => {
+        if (!el) return;
+        
+        const handleAction = (e) => {
+            if (el.disabled) return;
+            e.preventDefault();
+            const endpoint = typeof getEndpoint === 'function' ? getEndpoint() : getEndpoint;
+            sendCommand(endpoint);
+        };
+
+        el.addEventListener('click', handleAction);
+        el.addEventListener('touchstart', handleAction, { passive: false });
+    };
+
+    setupButton(btnStart, '/patrol/start');
+    setupButton(btnReturn, '/patrol/finish'); // 기존 /patrol/return 에서 /patrol/finish로 정정 (API에 맞춰)
+    
+    setupButton(btnTogglePause, () => {
+        const text = btnTogglePause.innerText.trim();
+        return text.includes("RESUME") ? '/patrol/resume' : '/patrol/stop';
+    });
 
 
     // 6. Intervals
