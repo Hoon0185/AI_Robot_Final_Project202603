@@ -261,17 +261,10 @@ async def get_status():
                 if p_status != "완료" and last_patrol:
                     res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
                     res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
-            elif "RETURN" in mode_cmd:
-                # [수정] 복귀 명령이 있으면 순찰 '진행중' 여부보다 복귀 중임을 먼저 표시
-                if mode_cmd_status != "COMPLETED":
-                    res_status = "복귀중"
-                else:
-                    res_status = "휴식중"
-            elif "진행" in p_status or "START" in mode_cmd:
+            elif "RETURN" in mode_cmd and mode_cmd_status != "COMPLETED":
+                res_status = "복귀중"
+            elif "진행" in p_status or ("START" in mode_cmd and mode_cmd_status != "COMPLETED"):
                 res_status = "순찰중"
-                if last_patrol:
-                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
-                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
             else:
                 res_status = "휴식중"
                 # 휴식 중에도 로봇이 전송한 최신 좌표를 유지 (위에서 hb_row로 이미 설정됨)

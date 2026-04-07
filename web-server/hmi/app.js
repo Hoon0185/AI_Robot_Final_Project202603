@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Configuration & Discovery
-    const API_BASE = '';
+    const API_BASE = '..';
     console.log("HMI initialized. API Base:", API_BASE);
 
     // 2. Elements Mapping

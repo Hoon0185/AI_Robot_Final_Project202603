@@ -216,13 +216,12 @@ class VirtualRobot:
         except:
             pass
 
-    def start_patrol(self, remote=False, resume=False):
+    def start_patrol(self, remote=False, resume=False, cmd_id=None):
         if self.status == STATUS_EMERGENCY_STOP and not resume:
             self.safe_print("⚠️ [거부] 비상 정환 상태입니다. 비상 해제를 먼저 수행하세요.")
             return
 
         if self.status == STATUS_PATROLLING:
-
             self.safe_print("⚠️ 이미 순찰 중입니다.")
             return
 
@@ -361,9 +360,9 @@ class VirtualRobot:
 
         self.last_index = len(self.patrol_path) # 완료 표시
         self.current_pos = (0.0, 0.0) # 복귀했으므로 0,0
-        self.return_to_base(remote=remote)
+        self.return_to_base(remote=remote, cmd_id=cmd_id)
 
-    def return_to_base(self, remote=False):
+    def return_to_base(self, remote=False, cmd_id=None):
         # 만약 비상 정지 상태에서 복귀 명령이 왔다면, 비상 해제 후 복귀 수행 (사용자 요청)
         if self.status == STATUS_EMERGENCY_STOP:
             self.safe_print("\n🔓 [비상 해제] 비상 정지 상태에서 기지 복귀 명령을 수신하여 비상을 해제합니다.")
@@ -404,6 +403,13 @@ class VirtualRobot:
         
         # 원격 실행인 경우 메뉴 재출력
         if remote:
+            # 명령 완료 처리 알림 (물리적 동작 종료 후)
+            if cmd_id:
+                try:
+                    requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                    self.safe_print(f"✅ 원격 명령 완료 처리됨 (ID: {cmd_id})")
+                except:
+                    pass
             self.print_menu()
 
     def emergency_stop(self, remote=False):
@@ -437,20 +443,20 @@ class VirtualRobot:
                         self.safe_print(f"\n📡 [원격 신호 수신] {cmd_type} (ID: {cmd_id})")
                         
                         if cmd_type == "START_PATROL":
-                            threading.Thread(target=self.start_patrol, args=(True,)).start()
+                            threading.Thread(target=self.start_patrol, args=(True, False, cmd_id)).start()
                         elif cmd_type == "RETURN_TO_BASE":
-                            threading.Thread(target=self.return_to_base, args=(True,)).start()
+                            threading.Thread(target=self.return_to_base, args=(True, cmd_id)).start()
                         elif cmd_type == "EMERGENCY_STOP":
                             self.emergency_stop(remote=True)
+                            # 비상 정지는 즉시 완료 처리 (대기하지 않음)
+                            if cmd_id:
+                                try:
+                                    requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                                except: pass
                         elif cmd_type == "RESUME_PATROL":
-                            threading.Thread(target=self.start_patrol, args=(True, True)).start()
+                            threading.Thread(target=self.start_patrol, args=(True, True, cmd_id)).start()
                         
-                        # 명령 완료 처리 알림
-                        if cmd_id:
-                            try:
-                                requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
-                            except:
-                                pass
+                        # [삭제됨] 즉시 완료 처리 로직을 각 액션 끝으로 이동함
                     
                     # [추가] 대기 중(IDLE)이거나 명령 확인 시마다 현재 좌표와 하트비트 전송 (상시 위치 업데이트)
                     self.send_pose(self.current_pos[0], self.current_pos[1])
