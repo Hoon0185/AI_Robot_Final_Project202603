@@ -77,6 +77,7 @@ COMMAND_URL = f"{BASE_URL}/robot/command/latest"
 COMMAND_FINISH_URL = f"{BASE_URL}/robot/command"  # /{id}/complete
 START_PATROL_URL = f"{BASE_URL}/patrol/start"
 FINISH_PATROL_URL = f"{BASE_URL}/patrol/finish"
+COMPLETE_PATROL_URL = f"{BASE_URL}/patrol/complete"
 STOP_PATROL_URL = f"{BASE_URL}/patrol/stop"
 LIST_PRODUCTS_URL = f"{BASE_URL}/products"
 CLEAR_COMMAND_URL = f"{BASE_URL}/robot/command/clear_pending"
@@ -204,9 +205,9 @@ class VirtualRobot:
         except:
             pass
 
-    def notify_alert(self, message):
+    def notify_alert(self, message, active=True):
         try:
-            requests.post(ALERT_URL, json={"message": message})
+            requests.post(ALERT_URL, json={"message": message, "active": active})
         except:
             pass
 
@@ -358,8 +359,7 @@ class VirtualRobot:
             if remote: self.print_menu()
             return
 
-        self.last_index = len(self.patrol_path) # 완료 표시
-        self.current_pos = (0.0, 0.0) # 복귀했으므로 0,0
+        self.last_index = len(self.patrol_path) # 모든 웨이포인트 완료 표시
         self.return_to_base(remote=remote, cmd_id=cmd_id)
 
     def return_to_base(self, remote=False, cmd_id=None):
@@ -392,14 +392,16 @@ class VirtualRobot:
         self.status = STATUS_IDLE
         self.current_pos = (0.0, 0.0) # 최종 위치 보정
         
-        # 복귀 완료 신호 전송
-        if not remote:
-            try:
-                res = requests.post(FINISH_PATROL_URL)
-                if res.status_code == 200:
-                    self.safe_print("✅ 서버에 기지 복귀 완료 신호를 전송했습니다.")
-            except:
-                pass
+        # 기지 도착 알림 송신 (UI 표시용)
+        self.notify_alert("🏁 로봇이 기지에 도착했습니다.", active=True)
+        
+        # 복귀 완료 및 순찰 세션 최종 정리 신호 전송
+        try:
+            res = requests.post(COMPLETE_PATROL_URL)
+            if res.status_code == 200:
+                self.safe_print("✅ 서버에 기지 복귀 및 순찰 완료 신호를 전송했습니다.")
+        except:
+            pass
         
         # 원격 실행인 경우 메뉴 재출력
         if remote:

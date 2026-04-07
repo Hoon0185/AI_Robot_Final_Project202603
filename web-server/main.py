@@ -384,6 +384,11 @@ async def start_patrol():
         # 0. 기존 인식 로그 초기화 (새 순찰 시작 시 클리어 요청 반영)
         cursor.execute("DELETE FROM detection_log")
 
+        # [추가] 기존 로봇 알림(도착 완료 등) 초기화
+        current_robot_alert["message"] = None
+        current_robot_alert["active"] = False
+        current_robot_alert["timestamp"] = None
+
         # 1. 새로운 순찰 로그 생성
         cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
 
@@ -429,6 +434,38 @@ async def finish_patrol():
         return {"message": "Return to base command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
     finally:
         conn.close()
+
+@router.post("/patrol/complete")
+async def complete_patrol():
+    """로봇이 기지에 도착했을 때 호출하여 순찰을 최종 완료 처리"""
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. 진행 중이거나 중단된 순찰 로그를 '완료'로 변경
+        #    (기지 근처 0,0 좌표 기록 포함 가능)
+        cursor.execute("UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE status IN ('진행중', '중단')")
+        log_count = cursor.rowcount
+        
+        # 2. 관련 명령들을 모두 완료 처리 (잔여물 정리)
+        cursor.execute("UPDATE robot_command SET status = 'COMPLETED' WHERE status IN ('PENDING', 'PROCESSING')")
+        cmd_count = cursor.rowcount
+        
+        conn.commit()
+        return {
+            "status": "success", 
+            "message": "Patrol session completed and status cleared",
+            "logs_updated": log_count,
+            "commands_cleared": cmd_count
+        }
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
 
 
 @router.post("/patrol/stop")

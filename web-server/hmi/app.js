@@ -113,8 +113,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.active) {
                 alertBanner.classList.remove('hidden');
-                // Force English for alerts to avoid tofu characters
-                alertText.innerText = (data.message && data.message.includes("우회")) ? "PATH FINDING..." : (data.message || "ROBOT ALERT");
+                
+                // 알림 메시지 번역 (로봇 하드웨어의 한글 출력 문제 대응)
+                let msg = data.message || "ROBOT ALERT";
+                if (msg.includes("우회")) {
+                    msg = "PATH FINDING...";
+                } else if (msg.includes("기지에 도착") || msg.includes("복귀 완료")) {
+                    msg = "MISSION COMPLETE (HOME)";
+                }
+                
+                alertText.innerText = msg;
             } else {
                 alertBanner.classList.add('hidden');
             }
