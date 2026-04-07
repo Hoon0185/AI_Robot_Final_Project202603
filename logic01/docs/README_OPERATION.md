@@ -31,8 +31,10 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 ```
 
 ### [Step 1] 순찰 및 장애물 회피 실행 (PC)
-- `logic2_pkg`의 장애물 회피 노드가 포함된 통합 순찰 런치를 실행합니다.
+- `patrol_main` 패키지로 통합된 장애물 회피 노드가 포함된 통합 순찰 런치를 실행합니다.
 ```bash
+source install/setup.bash
+colcon build --packages-select patrol_main protect_product_msgs protect_product
 source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```

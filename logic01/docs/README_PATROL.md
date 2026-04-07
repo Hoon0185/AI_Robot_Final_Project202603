@@ -8,7 +8,7 @@
 순찰 노드와 장애물 회피 패키지가 포함된 통합 로직을 실행합니다 (PC).
 ```bash
 cd ~/Documents/GitHub/AI_Robot_Final_Project202603/logic01
-colcon build --packages-select patrol_main logic2_pkg protect_product
+colcon build --packages-select patrol_main protect_product_msgs protect_product
 source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
@@ -16,8 +16,8 @@ ros2 launch patrol_main patrol.launch.py
 ---
 
 ## 2. 장애물 회피 및 대기 시간 설정
-- **장애물 노드(`logic2_pkg`)**: `twist_mux` 연동으로 장애물 감지 시 안전 거리를 유지하며 정지합니다.
-- **연동 파라미터**: `obstacle_wait_time` (초). 정지 후 대기 시간이 지나면 우회 시퀀스가 작동합니다.
+- **장애물 노드(`obstacle_node`)**: `patrol_main` 패키지로 통합되었습니다. `twist_mux` 연동으로 장애물 감지 시 안전 거리를 유지하며 정지합니다.
+- **연동 파라미터**: `current_wait_time` (초). 정지 후 대기 시간이 지나면 우회 시퀀스가 작동합니다.
 - **설정 변경**: UI에서 '장애물 인식 조절' 슬라이더를 통해 실시간으로 변경 가능합니다.
 
 ---
