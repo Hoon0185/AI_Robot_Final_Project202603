@@ -349,8 +349,10 @@ class PatrolNode(Node):
             self.latest_ai_class_ids = msg.class_ids
 
     def battery_callback(self, msg):
-        """로봇의 배터리 상태(0~100)를 수신하여 저장"""
-        self.current_battery = float(msg.percentage) * 100.0
+        """로봇의 배터리 상태를 수신하여 저장 (0.0~1.0 또는 0.0~100.0 대응)"""
+        val = float(msg.percentage)
+        # 1.0 이하면 표준 규격(0.0~1.0)으로 보고 100을 곱함, 그 이상이면 이미 퍼센트(0~100)임
+        self.current_battery = val * 100.0 if val <= 1.0 else val
 
     def report_battery_to_server(self):
         """서버의 /api/robot/battery 엔드포인트로 배터리 상태 보고"""
