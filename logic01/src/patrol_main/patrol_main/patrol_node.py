@@ -326,73 +326,64 @@ class PatrolNode(Node):
         self.publish_status(status_for_ui)
 
     def ai_callback(self, msg):
-        """AI 인식 노드로부터 실시간 바코드 및 YOLO ID 리스트 수신"""
-        if self.is_waiting_for_ai:
-            self.latest_ai_barcodes = msg.barcodes
-            self.latest_ai_class_ids = msg.class_ids
+        """PC로부터 검증 상세 데이터를 수신"""
+        if self.is_waiting_for_ai and len(msg.detections) > 0:
+            res = msg.detections[0]
+            # 수신된 데이터를 내부 변수에 저장
+            self.latest_ai_data = {
+                "class_id": res.class_id,
+                "detected_barcode": res.detected_barcode,
+                "confidence": res.confidence,
+                "status": res.status
+            }
 
     def check_ai_result_and_proceed(self):
-        """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행"""
+        """결과가 왔는지 확인하고 DB에 기록"""
         if not self.is_waiting_for_ai: return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
-        target_info = self.shelves[shelf_name]
-        target_barcode = target_info.get('tag_barcode', 'UNKNOWN')
-        waypoint_id = target_info.get('waypoint_id', -1)
+        target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
 
-        found = False
-        detected_barcode = ""
-        detected_yolo_id = None
-
-        # 1. 최근 인식된 결과 중 타겟 바코드가 있는지 확인
-        if target_barcode in self.latest_ai_barcodes:
-            found = True
-            detected_barcode = target_barcode
-            self.get_logger().info(f'[AI] Found matching barcode: {target_barcode}')
-
-        # 2. 바코드가 없고 YOLO ID가 있는 경우 첫 번째 ID를 결과로 채택
-        if not found and len(self.latest_ai_class_ids) > 0:
-            found = True
-            detected_yolo_id = int(self.latest_ai_class_ids[0])
-            self.get_logger().info(f'[AI] Found YOLO ID: {detected_yolo_id}')
-
-        # 타임아웃 체크 (8초)
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        if found or elapsed > 8.0: # 8초 경과 시 강제 종료 혹은 결과 리포팅
+        # 결과를 받았거나 8초가 지났을 때
+        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > 8.0:
             self.is_waiting_for_ai = False
+            self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
 
-            # 타이머 정리
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
-                self._delay_timer = None
 
-            # 인식 성공 또는 타임아웃에 따른 결과 리포팅
-            self.last_detection = {
-                "tag_barcode": target_barcode,
-                "detected_barcode": detected_barcode if found and detected_barcode else "",
-                "yolo_class_id": detected_yolo_id,
-                "confidence": 0.99 if found else 0.0
+            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정
+            data = getattr(self, 'latest_ai_data', None) or {
+                "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
             }
 
+            # 요구하신 형식대로 self.last_detection 구성
+            self.last_detection = {
+                "tag_barcode": target_barcode,         # 원래 있어야 할 바코드
+                "detected_barcode": data["detected_barcode"], # 실제로 인식된 바코드
+                "yolo_class_id": data["class_id"],     # 물체 클래스 번호
+                "confidence": data["confidence"]       # 신뢰도
+            }
+
+            # DB에 최종 리포트
             if target_barcode not in self.reported_tags:
-                success, msg = self.db.report_detection(
-                    tag_barcode=target_barcode,
+                self.db.report_detection(
+                    tag_barcode=self.last_detection["tag_barcode"],
                     patrol_id=self.current_patrol_id or 0,
-                    waypoint_id=waypoint_id,
+                    waypoint_id=self.shelves[shelf_name].get('waypoint_id', 1),
                     x=self.current_x,
                     y=self.current_y,
-                    detected_barcode=self.last_detection["detected_barcode"] if self.last_detection["detected_barcode"] else None,
-                    yolo_class_id=detected_yolo_id,
-                    confidence=0.99 if found else 0.0
+                    detected_barcode=self.last_detection["detected_barcode"],
+                    yolo_class_id=self.last_detection["yolo_class_id"],
+                    confidence=self.last_detection["confidence"]
                 )
-                if success:
-                    self.get_logger().info(f'Reported to DB (Found: {found}): {target_barcode}')
-                    self.reported_tags.add(target_barcode)
-                else:
-                    self.get_logger().warn(f'Failed to report DB: {msg}')
+                self.reported_tags.add(target_barcode)
+                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data['status']}")
 
-            # 다음 목적으로 이동
+            # 다음 위치로 이동
+            self.latest_ai_data = None # 데이터 초기화
             self.proceed_to_next_shelf()
 
     def reset_pose_to_origin(self):
