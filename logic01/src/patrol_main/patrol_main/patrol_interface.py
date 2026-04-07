@@ -317,9 +317,9 @@ class PatrolInterface:
     def get_recent_patrol_time(self):
         """최근 순찰 상태 및 시간 정보를 가져옵니다. (DB 로그 시간 기준 + ROS 실시간 상태 덮어쓰기)"""
         res = {}
-        history = self.db.get_patrol_history()
-
+        
         # 1. DB에서 가장 최근에 있었던 순찰의 시간 정보를 기본으로 가져옴
+        history = self.db.get_patrol_history()
         if history and len(history) > 0:
             latest = history[0]
             db_start_time = latest.get('start_time') or 'No Data'
@@ -332,7 +332,16 @@ class PatrolInterface:
                 "robot_y": latest.get('last_odom_y', 0.0)
             }
 
-        # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
+        # 2. [추가] 서버의 실시간 상태(robot_status 테이블) 정보를 가져와 현재 좌표 및 배터리 최신화
+        rt_status = self.db.get_robot_status()
+        if rt_status:
+            res["robot_x"] = rt_status.get("odom_x", res.get("robot_x", 0.0))
+            res["robot_y"] = rt_status.get("odom_y", res.get("robot_y", 0.0))
+            res["battery"] = rt_status.get("battery", 0.0)
+            if rt_status.get("status") == "online":
+                self.last_status_received_time = time.time()
+
+        # 3. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
         if self.latest_status:
             topic_status = self.latest_status.get("status")
 
@@ -345,6 +354,10 @@ class PatrolInterface:
                 topic_start_time = self.latest_status.get("start_time")
                 if topic_start_time and topic_start_time != 'No Data':
                     res["start_time"] = topic_start_time
+                
+                # 토픽에 포함된 실시간 좌표도 반영
+                res["robot_x"] = self.latest_status.get("current_x", res.get("robot_x", 0.0))
+                res["robot_y"] = self.latest_status.get("current_y", res.get("robot_y", 0.0))
 
             if res.get("status") == "patrolling" and "current_shelf" in self.latest_status:
                 res["current_shelf"] = self.latest_status["current_shelf"]

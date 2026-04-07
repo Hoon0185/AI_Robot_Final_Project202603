@@ -140,6 +140,16 @@ class InventoryDB:
         except Exception:
             return False
 
+    def get_robot_status(self):
+        """서버로부터 로봇의 실시간 상태(심박수, 현재좌표, 배터리 등)를 가져옵니다."""
+        try:
+            res = requests.get(f"{self.base_url}/status", timeout=2.0)
+            if res.status_code == 200:
+                return res.json()
+        except Exception:
+            pass
+        return None
+
     def start_patrol_session(self):
         """서버에 순찰 시작 세션을 생성하고 patrol_id를 반환합니다."""
         try:
@@ -211,7 +221,7 @@ class InventoryDB:
             "status": str(status)
         }
         try:
-            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=0.5)
+            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=2.0)
             if res.status_code == 200:
                 return True
         except Exception:
@@ -256,7 +266,7 @@ class InventoryDB:
         """서버로 로봇의 현재 배터리 잔량 전송"""
         try:
             payload = {"percentage": float(percentage)}
-            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=0.5)
+            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=2.0)
             return res.status_code == 200
         except Exception:
             return False

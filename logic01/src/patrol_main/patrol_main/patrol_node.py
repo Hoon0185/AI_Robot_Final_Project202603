@@ -13,6 +13,7 @@ import yaml
 import os
 import time
 import json
+import math
 from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 from .inventory_db import InventoryDB
@@ -405,6 +406,11 @@ class PatrolNode(Node):
     def battery_callback(self, msg):
         """로봇의 배터리 상태를 수신하여 저장 (0.0~1.0 또는 0.0~100.0 대응)"""
         val = float(msg.percentage)
+        
+        # NaN 또는 Inf 값이 들어오면 무시 (통신 초기화 전 등 방어 로직)
+        if math.isnan(val) or math.isinf(val):
+            return
+
         # 1.0 이하면 표준 규격(0.0~1.0)으로 보고 100을 곱함, 그 이상이면 이미 퍼센트(0~100)임
         self.current_battery = val * 100.0 if val <= 1.0 else val
 
