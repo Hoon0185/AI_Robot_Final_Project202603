@@ -128,14 +128,43 @@ def search_product_db(product_name):
             cursor.close()
             conn.close()
 
+def get_camera():
+    """Attempts to find a working camera source (RTSP or local index)."""
+    RTSP_URL = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/stream1")
+    
+    # 1. Try RTSP first (Common in robot environments)
+    print(f"Attempting to connect to RTSP camera: {RTSP_URL}")
+    cap = cv2.VideoCapture(RTSP_URL)
+    if cap.isOpened():
+        ret, _ = cap.read()
+        if ret:
+            print("Successfully connected to RTSP camera.")
+            return cap
+        cap.release()
+
+    # 2. Try local camera indices as fallback
+    print("RTSP camera failed. Trying local camera indices [0, 1, 2]...")
+    for index in [0, 1, 2]:
+        cap = cv2.VideoCapture(index)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret:
+                print(f"Connected to local camera at index {index}")
+                return cap
+            cap.release()
+    
+    return None
+
 def main():
     print("\n" + "★"*40)
     print("  GILBOT VISION ASSISTANT (WHAT IS THIS?)")
     print("★"*40)
     
-    cap = cv2.VideoCapture(0) # Default to first camera
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
+    cap = get_camera()
+    if not cap:
+        print("\n[오류] 사용할 수 있는 카메라 장치를 찾을 수 없습니다.")
+        print("- RTSP 주소가 맞는지 확인해 주세요.")
+        print("- 카메라 하드웨어 연결 상태를 확인해 주세요.")
         return
 
     window_name = "Gilbot Vision - [Space] to Analyze, [q] to Quit"
