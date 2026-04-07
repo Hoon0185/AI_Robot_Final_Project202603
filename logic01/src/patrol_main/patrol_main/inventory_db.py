@@ -7,7 +7,7 @@ from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 
 class InventoryDB:
-    def __init__(self, base_url="http://16.184.56.119"):
+    def __init__(self, base_url="http://16.184.56.119:8000"):
         self.base_url = base_url
         try:
             pkg_dir = get_package_share_directory('patrol_main')

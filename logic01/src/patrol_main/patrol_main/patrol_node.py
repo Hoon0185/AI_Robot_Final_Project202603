@@ -340,7 +340,7 @@ class PatrolNode(Node):
 
     def battery_callback(self, msg):
         """로봇의 배터리 상태(0~100)를 수신하여 저장"""
-        self.current_battery = float(msg.percentage)
+        self.current_battery = float(msg.percentage) * 100.0
 
     def report_battery_to_server(self):
         """서버의 /api/robot/battery 엔드포인트로 배터리 상태 보고"""
@@ -442,6 +442,7 @@ class PatrolNode(Node):
         """서버에서 순찰 설정을 가져와 각 노드 파라미터에 실시간 반영"""
         config = self.db.get_patrol_config()
         if not config:
+            # self.get_logger().warn("[DB] Failed to fetch patrol configuration from server.")
             return
 
         # 1. 장애물 대기 시간 (avoidance_wait_time) 동기화
@@ -457,6 +458,11 @@ class PatrolNode(Node):
                 self.last_avoidance_wait = int(new_wait)
             else:
                 self.get_logger().warn('Obstacle node service not available. Sync deferred.')
+
+        # 2. 순찰 간격 및 기타 정보 로그 (디버깅용)
+        # interval_hour = config.get('interval_hour', 0)
+        # interval_minute = config.get('interval_minute', 0)
+        # self.get_logger().info(f"[DB] Remote Config Synced: Avoidance={new_wait}s, Interval={interval_hour}h {interval_minute}m", once=True)
 
 def main(args=None):
     rclpy.init(args=args)
