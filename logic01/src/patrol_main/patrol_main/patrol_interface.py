@@ -311,7 +311,9 @@ class PatrolInterface:
                 "status": latest.get('status', 'Completed'),
                 "start_time": db_start_time,
                 "end_time": latest.get('end_time', '-'),
-                "error_found": latest.get('error_found', 0)
+                "error_found": latest.get('error_found', 0),
+                "robot_x": latest.get('last_odom_x', 0.0),
+                "robot_y": latest.get('last_odom_y', 0.0)
             }
 
         # 2. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
