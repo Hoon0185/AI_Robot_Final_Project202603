@@ -100,9 +100,9 @@ def get_product_from_audio(audio_path):
     prompt = """당신은 친절한 안내 로봇 '길봇'입니다. 사용자의 요청을 듣고 다음 3가지를 추출해주세요.
     1. 원문(STT): 들리는 그대로의 문장
     2. 상품명: 명시적인 상품 이름 (없으면 None)
-    3. 답변 메시지: 로봇이 사용자에게 할 친절한 대답. 
-       - 상품 위치를 묻는다면 데이터베이스 검색 결과가 들어갈 자리를 '[LOCATION_RESULT]'라고 표시해줘.
-       - 일상 대화(산책, 인사 등)라면 그에 맞는 친절한 대답을 생성해줘.
+    3. 답변 메시지: 
+       - 상품 위치 문의 시: "고객님 상품은 [LOCATION_RESULT]에 있습니다." (이 형식 필수)
+       - 기타 대화(인사 등): 한 문장 이내의 아주 짧은 답변 (예: "네, 안녕하세요.", "준비되었습니다.")
 
     응답 형식:
     원문: <전체 문장>
@@ -134,7 +134,7 @@ def get_product_from_audio(audio_path):
     return recognized_text, product_name, bot_response
 
 def search_product_location(product_name):
-    """Searches the database for the product's location."""
+    """Searches the database for the product's location and stock status."""
     if not product_name or product_name.lower() == "none":
         return None
 
@@ -143,7 +143,7 @@ def search_product_location(product_name):
         cursor = conn.cursor(dictionary=True)
 
         query = """
-        SELECT pm.product_name, w.waypoint_name
+        SELECT pm.product_name, pm.current_inventory_qty, w.waypoint_name
         FROM product_master pm
         LEFT JOIN waypoint_product_plan wpp ON pm.product_id = wpp.product_id
         LEFT JOIN waypoint w ON wpp.waypoint_id = w.waypoint_id
@@ -154,13 +154,17 @@ def search_product_location(product_name):
         result = cursor.fetchone()
 
         if result:
-            location = result['waypoint_name'] if result['waypoint_name'] else "위치 정보 미등록"
-            return f"'{result['product_name']}' 상품은 {location} 구역에 마련되어 있습니다."
+            return {
+                'name': result['product_name'],
+                'location': result['waypoint_name'],
+                'stock': result['current_inventory_qty'] if result['current_inventory_qty'] is not None else 0
+            }
         else:
-            return f"'{product_name}' 상품의 위치 정보를 찾을 수 없습니다."
+            return None
 
-    except Exception:
-        return "데이터베이스 조회 중 오류가 발생했습니다."
+    except Exception as e:
+        print(f"❌ DB Error: {e}")
+        return None
     finally:
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
@@ -187,10 +191,13 @@ def main():
             print(f"나: \"{recognized_text}\"")
 
             if "[LOCATION_RESULT]" in bot_response:
-                location_info = search_product_location(product_name)
-                if not location_info:
-                    location_info = f"'{product_name}' 상품이 무엇인지 잘 모르겠어요."
-                bot_response = bot_response.replace("[LOCATION_RESULT]", location_info)
+                res = search_product_location(product_name)
+                if not res or res['stock'] <= 0:
+                    bot_response = f"죄송합니다. 현재 {product_name} 상품은 재고가 없습니다."
+                elif not res['location']:
+                    bot_response = f"상품이 진열되어 있지 않습니다. 카운터에 문의하세요."
+                else:
+                    bot_response = bot_response.replace("[LOCATION_RESULT]", res['location'])
 
             print(f"길봇: \"{bot_response}\"")
             speak_result(bot_response)
