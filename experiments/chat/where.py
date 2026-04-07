@@ -3,7 +3,7 @@ import time
 import subprocess
 import wave
 from google import genai
-from gtts import gTTS
+import edge_tts, asyncio
 import mysql.connector
 from dotenv import load_dotenv
 
