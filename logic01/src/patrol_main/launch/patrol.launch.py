@@ -76,7 +76,16 @@ def generate_launch_description():
                 output='screen'
             ),
 
-            # (6) RFID 로컬라이제이션 보정 노드 (선택 사항)
+            # (6) 장애물 회피 및 관리 노드 (추가됨)
+            Node(
+                package='patrol_main',
+                executable='obstacle_node',
+                name='obstacle_node',
+                parameters=[{'use_sim_time': use_sim_time}],
+                output='screen'
+            ),
+
+            # (7) RFID 로컬라이제이션 보정 노드 (선택 사항)
             Node(
                 package='patrol_main',
                 executable='rfid_localization_node',
