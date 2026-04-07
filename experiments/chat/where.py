@@ -103,6 +103,10 @@ def get_product_from_audio(audio_path):
     3. 답변 메시지: 
        - 상품 위치 문의 시: "고객님 상품은 [LOCATION_RESULT]에 있습니다." (이 형식 필수)
        - 기타 대화(인사 등): 한 문장 이내의 아주 짧은 답변 (예: "네, 안녕하세요.", "준비되었습니다.")
+    
+    ⚠️ 주의사항: 
+    - 답변 메시지에 직접적인 구체적인 숫자, 진열대 번호, 구역 명칭을 절대로 기입하지 마십시오. 
+    - 위치 정보는 오직 [LOCATION_RESULT] 태그로만 표현해야 합니다. 상상해서 정보를 지어내지 마십시오.
 
     응답 형식:
     원문: <전체 문장>
@@ -190,14 +194,20 @@ def main():
             recognized_text, product_name, bot_response = get_product_from_audio(audio_file)
             print(f"나: \"{recognized_text}\"")
 
-            if "[LOCATION_RESULT]" in bot_response:
+            # Final check to prevent hallucinations: If there's a product, force DB check
+            if product_name and product_name.lower() != "none":
                 res = search_product_location(product_name)
                 if not res or res['stock'] <= 0:
                     bot_response = f"죄송합니다. 현재 {product_name} 상품은 재고가 없습니다."
                 elif not res['location']:
-                    bot_response = f"상품이 진열되어 있지 않습니다. 카운터에 문의하세요."
+                    bot_response = f"상품이 진열되어 있지 않습니다. 재고가 있으니 카운터에 문의하세요."
                 else:
-                    bot_response = bot_response.replace("[LOCATION_RESULT]", res['location'])
+                    # STRICT OVERRIDE: Ignore Gemini's bot_response, use our verified template
+                    bot_response = f"고객님 상품은 {res['location']}에 있습니다."
+            
+            # Additional safety: If Gemini hallucinated a location without product_name
+            elif "[LOCATION_RESULT]" in bot_response:
+                bot_response = "죄송합니다. 요청하신 상품의 위치를 찾을 수 없습니다."
 
             print(f"길봇: \"{bot_response}\"")
             speak_result(bot_response)
