@@ -336,16 +336,33 @@ class RobotControlPanel(QWidget):
 
     def _init_timers(self):
         self.timer = QTimer(); self.timer.timeout.connect(self.update_frame)
-        self.cap = cv2.VideoCapture(0); self.timer.start(30)
+        USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
+        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        self.cap = cv2.VideoCapture(self.rtsp_url); self.timer.start(30)
 
     def update_frame(self):
         if hasattr(self, 'cap') and self.cap.isOpened():
             ret, frame = self.cap.read()
             if ret:
-                frame = cv2.flip(frame, 1); rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                qt_img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1]*3, QImage.Format.Format_RGB888)
-                self.cam_label.setPixmap(QPixmap.fromImage(qt_img).scaled(self.cam_label.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, ch = rgb.shape
+                bytes_per_line = ch * w
 
+                qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+
+                # 라벨 크기에 맞춰 부드럽게 스케일링
+                pixmap = QPixmap.fromImage(qt_img).scaled(
+                    self.cam_label.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio, # 왜곡 방지를 위해 KeepAspectRatio 권장
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.cam_label.setPixmap(pixmap)
+            else:
+                # 연결은 되어있으나 프레임을 못 가져오는 경우 (재연결 로직 필요할 수 있음)
+                self.cap.release()
+                self.cap = cv2.VideoCapture(self.rtsp_url)
+                pass
     def open_map(self):
         self.map_overlay.show()
         self.center_popup(self.map_popup_box)
