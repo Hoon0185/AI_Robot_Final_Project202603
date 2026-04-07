@@ -67,7 +67,8 @@ python3 main.py
 
 ---
 
-## 3. 통합 실행 (Total Launch - 간편 모드)
+## 3. 통합 실행 (Total Launch - 가장 권장됨)
+- **`total_patrol.launch.py`**는 `RewrittenYaml` 기능을 통해 설정 파일 내의 경로를 실행 시점에 자동으로 보정합니다. (다른 환경에서도 수정 없이 작동)
 ```bash
 # 한 번에 실행 (네트워크 안정 시 추천)
 ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
@@ -76,7 +77,8 @@ ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
 ---
 
 ## 4. 기능 확인 및 트러블슈팅
-*   **서버 동기화**: `patrol_node` 실행 시 최초 한 번 서버 설정을 가져오면 주기적 Polling을 중단하고 이벤트 기반(순찰 시작 전/RECONFIG 수신 시)으로 동작합니다.
+*   **10초 고정 현상**: 상위 폴더(`..`)에 `build/install`이 중복 존재하면 구버전이 실행될 수 있습니다. `rm -rf ../build ../install` 등으로 정리 후 `source install/setup.bash`를 수행하세요.
+*   **서버 동기화**: `patrol_node` 실행 시 최초 한 번 서버 설정을 즉시 가져오며, 주기적 Polling 없이 이벤트 기반으로 동작합니다.
 *   **미니맵 마커**: 로봇이 움직이는데 미니맵 마커가 고정되어 있다면 백엔드 서버(8000번 포트)의 `/patrol/list` 응답을 확인하세요.
 *   **코스트맵 정화**: 로봇이 막혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
     ```bash
