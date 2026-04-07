@@ -298,6 +298,7 @@ class PoseUpdate(BaseModel):
     odom_x: float
     odom_y: float
 
+
 @router.post("/robot/pose")
 async def update_robot_pose(pose: PoseUpdate):
     conn = get_db_connection()
@@ -321,6 +322,26 @@ async def update_robot_pose(pose: PoseUpdate):
                 last_y = %s
             WHERE id = 1
         """, (pose.odom_x, pose.odom_y))
+        conn.commit()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+@router.post("/robot/battery")
+async def update_robot_battery(battery: BatteryUpdate):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor()
+        # 로봇 상태 테이블의 배터리 수치 업데이트
+        cursor.execute("""
+            UPDATE robot_status 
+            SET battery_level = %s 
+            WHERE id = 1
+        """, (battery.percentage,))
         conn.commit()
         return {"status": "success"}
     except Exception as e:
@@ -353,7 +374,6 @@ async def get_status():
             mode_cmd_row = cursor.fetchone()
             mode_cmd = str(mode_cmd_row['command_type']).upper().strip() if mode_cmd_row else "NONE"
             mode_cmd_id = mode_cmd_row['command_id'] if mode_cmd_row else 0
-
             # --- 하트비트 기반 온라인/오프라인 판정 및 데이터 추출 ---
             # TIMESTAMPDIFF를 사용하여 DB서버 시각 기준으로 판정함으로써 노트북과의 시차 문제 해결
             cursor.execute("""
@@ -363,10 +383,12 @@ async def get_status():
                 FROM robot_status WHERE id = 1
             """)
             hb_row = cursor.fetchone()
+            res_battery = 0.0
             if hb_row:
                 res_x = round(hb_row['last_x'] or 0.0, 2)
                 res_y = round(hb_row['last_y'] or 0.0, 2)
-                current_robot_battery = hb_row['battery_level'] or 85.0
+                # 배터리 정보 처리 (소수점 1자리 반올림, 없을 경우 85.0 기본값)
+                current_robot_battery = round(hb_row['battery_level'] or 85.0, 1)
                 
                 # 시차 판정 (DB 서버 기준)
                 if hb_row['diff_sec'] is not None and hb_row['diff_sec'] <= 7:

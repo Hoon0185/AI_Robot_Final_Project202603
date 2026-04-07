@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const alertBanner = document.getElementById('alert-banner');
     const alertText = document.getElementById('alert-text');
     const batteryValue = document.getElementById('battery-value');
+    const batteryIcon = document.getElementById('battery-icon');
 
     const btnTogglePause = document.getElementById('btn-toggle-pause');
 
@@ -50,10 +51,21 @@ document.addEventListener('DOMContentLoaded', () => {
             posX.innerText = data.odom_x.toFixed(1);
             posY.innerText = data.odom_y.toFixed(1);
 
-            // Update Battery (Real-time from Server)
-            if (data.battery !== undefined) {
-                batteryValue.innerText = Math.round(data.battery);
+            // Update Battery (Advanced UI)
+            const bat = data.battery !== undefined ? data.battery : 0;
+            batteryValue.innerText = Math.round(bat);
+            
+            // Battery Icon Update
+            batteryIcon.className = 'fas'; // Base class
+            if (bat >= 90) batteryIcon.classList.add('fa-battery-full');
+            else if (bat >= 60) batteryIcon.classList.add('fa-battery-three-quarters');
+            else if (bat >= 40) batteryIcon.classList.add('fa-battery-half');
+            else if (bat >= 15) batteryIcon.classList.add('fa-battery-quarter');
+            else {
+                batteryIcon.classList.add('fa-battery-empty');
+                batteryIcon.style.color = '#ff4d4d'; // Red alert for low battery
             }
+            if (bat >= 15) batteryIcon.style.color = ''; // Reset color if not empty
 
             // Update Mode & Toggle Button UI (English Only)
             const koStatus = data.robot_status;
