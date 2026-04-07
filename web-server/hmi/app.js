@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Configuration & Discovery
-    const API_BASE = window.location.origin;
+    const API_BASE = window.location.origin + "/api";
     console.log("HMI initialized. API Base:", API_BASE);
 
     // 2. Elements Mapping
@@ -51,8 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
             posX.innerText = data.odom_x.toFixed(1);
             posY.innerText = data.odom_y.toFixed(1);
 
-            // Update Battery (Advanced UI)
-            const bat = data.battery !== undefined ? data.battery : 0;
+            // Update Battery
+            const bat = data.battery || 0;
             batteryValue.innerText = Math.round(bat);
             
             // Battery Icon Update

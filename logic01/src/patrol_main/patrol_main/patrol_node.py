@@ -6,6 +6,8 @@ from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import String, Bool
 from sensor_msgs.msg import BatteryState
 from action_msgs.msg import GoalStatus
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 from protect_product_msgs.msg import DetectionArray # AI 인식 메시지 추가
 import yaml
 import os
@@ -70,6 +72,11 @@ class PatrolNode(Node):
         self.battery_sub = self.create_subscription(
             BatteryState, '/battery_state', self.battery_callback, 10)
         self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
+        
+        # 10. 원격 설정 동기화 (장애물 대기 시간 등)
+        self.param_client = self.create_client(SetParameters, 'obstacle_node/set_parameters')
+        self.config_sync_timer = self.create_timer(15.0, self.sync_remote_config)
+        self.last_avoidance_wait = 10 # 초기값
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
@@ -430,6 +437,26 @@ class PatrolNode(Node):
 
         self.initial_pose_pub.publish(msg)
         self.get_logger().info('Published Initial Pose to (0,0)')
+
+    def sync_remote_config(self):
+        """서버에서 순찰 설정을 가져와 각 노드 파라미터에 실시간 반영"""
+        config = self.db.get_patrol_config()
+        if not config:
+            return
+
+        # 1. 장애물 대기 시간 (avoidance_wait_time) 동기화
+        new_wait = config.get('avoidance_wait_time')
+        if new_wait is not None and int(new_wait) != self.last_avoidance_wait:
+            self.get_logger().info(f'[DB] New Avoidance Wait Time detected: {new_wait}s (Syncing to obstacle_node...)')
+            
+            if self.param_client.wait_for_service(timeout_sec=1.0):
+                req = SetParameters.Request()
+                val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=int(new_wait))
+                req.parameters = [Parameter(name='obstacle_wait_time', value=val)]
+                self.param_client.call_async(req)
+                self.last_avoidance_wait = int(new_wait)
+            else:
+                self.get_logger().warn('Obstacle node service not available. Sync deferred.')
 
 def main(args=None):
     rclpy.init(args=args)
