@@ -50,12 +50,12 @@ class InventoryDB:
   def get_patrol_config(self):
       """서버에서 현재 순찰 설정 조회 차단"""
       # === 수정: 설정 없음(None)을 즉시 반환합니다 ===
-      return None
+      return False
 
   def update_patrol_config(self, avoidance_wait=10, start="09:00", end="22:00", hour=0, minute=0):
       """서버로 새로운 순찰 설정 전송 차단"""
       # === 수정: 전송 실패(False)로 처리하거나 True로 속입니다 ===
-      return True
+      return False
 
   def get_latest_command(self):
       """서버 대시보드에서 보낸 최신 원격 명령 조회 차단"""
@@ -82,7 +82,7 @@ class InventoryDB:
   def get_active_patrol_plan(self):
       """서버의 순찰 계획 및 시퀀스 가져오기 차단"""
       # === 수정: None을 반환하여 로컬 순찰 노드가 하드코딩된 기본 좌표를 쓰게 유도합니다 ===
-      return None
+      return False
 
   def report_robot_pose(self, x, y, status="IDLE"):
       """로봇 좌표 전송 차단"""
