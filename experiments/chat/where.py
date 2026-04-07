@@ -203,7 +203,7 @@ def main():
                     bot_response = f"상품이 진열되어 있지 않습니다. 재고가 있으니 카운터에 문의하세요."
                 else:
                     # STRICT OVERRIDE: Ignore Gemini's bot_response, use our verified template
-                    bot_response = f"고객님 상품은 {res['location']}에 있습니다."
+                    bot_response = f"고객님! 상품 {res['name']}은(는) {res['location']}에 있습니다."
             
             # Additional safety: If Gemini hallucinated a location without product_name
             elif "[LOCATION_RESULT]" in bot_response:
