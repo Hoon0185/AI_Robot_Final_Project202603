@@ -52,23 +52,28 @@ def record_audio(filename="query.wav", duration=5):
     return filename
 
 def speak_result(text):
-    """Converts text to speech and plays it through the LOCAL speaker."""
+    """Converts text to speech (FEMALE voice) and plays it through the LOCAL speaker."""
     if not text:
         return
         
-    print(f"Generating TTS: {text}")
+    print(f"Generating FEMALE TTS: {text}")
     temp_mp3 = "response.mp3"
     temp_wav = "response.wav"
+    VOICE = "ko-KR-SunHiNeural"
     
     try:
-        tts = gTTS(text=text, lang='ko')
-        tts.save(temp_mp3)
+        # Create TTS asynchronously using edge-tts
+        async def _generate():
+            communicate = edge_tts.Communicate(text, VOICE)
+            await communicate.save(temp_mp3)
+        
+        asyncio.run(_generate())
         
         # Convert to WAV for local players
         subprocess.run(["ffmpeg", "-y", "-i", temp_mp3, "-ar", "44100", temp_wav], 
                        check=True, capture_output=True)
         
-        print("🔊 Playing via local speaker...")
+        print("🔊 Playing via local speaker (Female Voice)...")
         # PulseAudio first, fall back to ALSA
         if subprocess.run(["which", "paplay"], capture_output=True).returncode == 0:
             subprocess.run(["paplay", temp_wav], check=True)
