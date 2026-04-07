@@ -64,4 +64,4 @@ Gilbot은 PC의 관리 UI에서 직접 터틀봇3의 부저를 제어할 수 있
 
 ---
 
- 더 자세한 관리 시스템 구동 방식은 **SJH_backup/SYSTEM_MANAGEMENT_GUIDE.md**를 함께 참고하세요.
+ 더 자세한 관리 시스템 구동 방식은 **../../SJH_backup/SYSTEM_MANAGEMENT_GUIDE.md**를 함께 참고하세요.

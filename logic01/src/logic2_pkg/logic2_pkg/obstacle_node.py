@@ -5,27 +5,14 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from nav2_msgs.srv import ClearEntireCostmap
-import requests
 import math
 
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
 
-    # ---- [LOGIC_02 기반 통합] 웹 DB로부터 초기 설정값 수신 ----
+    # 초기값 설정 (PatrolNode에 의해 업데이트됨)
     default_wait_time = 10
-    try:
-        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=2.0)
-        if response.status_code == 200:
-            config = response.json()
-            raw_val = config.get('avoidance_wait_time', 10)
-            default_wait_time = int(raw_val)
-            self.get_logger().info(f'[DB] 초기 설정 수신 성공: {default_wait_time}s')
-        else:
-            self.get_logger().warn(f'[DB] 초기 설정 수신 실패 (HTTP {response.status_code}), 기본값 10s 사용')
-    except Exception as e:
-        self.get_logger().error(f'[DB] 초기 설정 서버 연결 실패: {e}, 기본값 10s 사용')
-
     self.declare_parameter('obstacle_wait_time', default_wait_time)
 
     qos_profile_scan = QoSProfile(
@@ -60,7 +47,6 @@ class ObstacleNode(Node):
     timer_pub = 0.05
     self.timer_second = int(1/timer_pub)
     self.timer = self.create_timer(timer_pub, self.timer_callback)
-    self.sync_timer = self.create_timer(5.0, self.sync_config_from_db)
 
     # ---- 초기 변수 설정 ----
     self.is_blocked = False
@@ -154,26 +140,6 @@ class ObstacleNode(Node):
         self.stop_robot()
         self.recovery_counter = self.timer_second
         self.get_logger().info('전체 우회 시퀀스 완료. 순찰을 재개합니다.')
-
-  def sync_config_from_db(self):
-    try:
-        response = requests.get("http://16.184.56.119/api/patrol/config", timeout=3.0)
-        if response.status_code == 200:
-            config = response.json()
-            raw_val = config.get('avoidance_wait_time')
-            if raw_val is not None:
-                new_wait_time = int(raw_val)
-                if new_wait_time != self.wait_time_s:
-                    import rclpy.parameter
-                    new_param = rclpy.parameter.Parameter(
-                        'obstacle_wait_time',
-                        rclpy.parameter.Parameter.Type.INTEGER,
-                        new_wait_time
-                    )
-                    self.set_parameters([new_param])
-                    self.get_logger().info(f'[DB] 실시간 설정 업데이트: {self.wait_time_s}s -> {new_wait_time}s')
-    except Exception:
-        self.get_logger().warn(f'[DB] 서버 통격 지연 (확인 중...)', once=True)
 
   def call_clear_costmap(self):
     if not self.clear_costmap_client.service_is_ready():

@@ -1,6 +1,6 @@
 # 순찰 로봇 시스템 작동 확인 가이드 (Patrol Operation Guide)
 
-이 문서는 순찰 로봇의 안정적인 가동을 위해 권장되는 **단계별 분리 실행** 절차를 설명합니다. 관리 UI에서 맵 패널(Minimap)과 부저 기능이 통합된 최신 버전 기준입니다.
+이 문서는 순찰 로봇의 안정적인 가동을 위해 권장되는 **단계별 분리 실행** 절차를 설명합니다. 관리 UI에서 맵 패널(Minimap) 서버 동기화와 실시간 설정 반영(`RECONFIG`) 기능이 통합된 최신 버전 기준입니다.
 
 ---
 
@@ -13,7 +13,7 @@
 
 ## 1. 사전 준비 사항
 *   **ROS 2 Humble** 및 필수 의존성 설치
-*   **FastAPI 백엔드** 및 **DB** 가동 완결
+*   **FastAPI 백엔드** 및 **DB** 가동 완료 (PC DB 포트 **8000** 직접 연결 확인)
 *   터틀봇3와 PC 간의 **시간 동기화** (`chrony`) 완료
 
 ---
@@ -30,13 +30,15 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
   cmd_vel:=cmd_vel_nav
 ```
 
-### [Step 1] 순찰 및 스케줄링 실행 (PC)
+### [Step 1] 순찰 및 장애물 회피 실행 (PC)
+- `logic2_pkg`의 장애물 회피 노드가 포함된 통합 순찰 런치를 실행합니다.
 ```bash
 source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
 
 ### [Step 2] AI 인식 시스템 실행 (PC)
+- `protect_product` 패키지를 통해 YOLO 기반 상품 인식을 수행합니다.
 ```bash
 # 실제 카메라 사용 시
 ros2 launch protect_product ai_detection.launch.py
@@ -51,14 +53,15 @@ cd ~/rfid
 python3 standalone_rfid_buzzer.py
 ```
 > [!TIP]
-> 이제 부저 기능이 통합되어 UI에서 소리를 낼 수 있습니다.
+> 부저 기능이 통합되어 UI의 '부저' 버튼 클릭 시 즉시 3회 비프음이 발생합니다.
 
 ### [Step 4] 통합 관리용 UI 실행 (PC)
 ```bash
 # 로컬 저장소 상단에서 실행
 python3 main.py
 ```
-- **주요 기능**: 실시간 위치 모니터링(Minimap), 부저 비프음 전송, 순찰 간격 설정 등 가능.
+- **실시간 좌표 연동**: UI 미니맵의 로봇 마커는 서버에 기록되는 `last_odom_x/y` 좌표와 실시간 동기화됩니다.
+- **실시간 설정 반영**: UI에서 장애물 대기 시간을 변경하고 [확인]을 누르면, 로봇이 즉시 `RECONFIG` 신호를 받아 설정을 갱신합니다.
 
 ---
 
@@ -71,8 +74,8 @@ ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
 ---
 
 ## 4. 기능 확인 및 트러블슈팅
-*   **RFID 보정**: 로봇이 태그 위를 지날 때 터미널에서 `Landmark Corrected!` 로그 확인.
-*   **부저 작동**: UI의 부저 버튼 클릭 시 로봇에서 **3회 비프음** 발생 확인.
+*   **서버 동기화**: `patrol_node` 실행 시 최초 한 번 서버 설정을 가져오면 주기적 Polling을 중단하고 이벤트 기반(순찰 시작 전/RECONFIG 수신 시)으로 동작합니다.
+*   **미니맵 마커**: 로봇이 움직이는데 미니맵 마커가 고정되어 있다면 백엔드 서버(8000번 포트)의 `/patrol/list` 응답을 확인하세요.
 *   **코스트맵 정화**: 로봇이 막혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
     ```bash
     ros2 service call /local_costmap/clear_entirely_local_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
@@ -80,4 +83,4 @@ ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
 
 ---
 
- 시스템 구성의 전체적인 흐름은 **SJH_backup/SYSTEM_MANAGEMENT_GUIDE.md**를 참고하세요.
+ 시스템 구성의 전체적인 흐름은 **docs/notion_records/** 내부의 문서를 참고하세요.

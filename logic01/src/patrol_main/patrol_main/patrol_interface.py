@@ -63,6 +63,7 @@ class PatrolInterface:
 
         # Remote Config Sync Loop (Interval, Start/End, etc.)
         self.remote_interval_min = None
+        self.remote_avoidance_wait = None
         self.config_sync_thread = threading.Thread(target=self._sync_remote_config, daemon=True)
         self.config_sync_thread.start()
 
@@ -147,6 +148,20 @@ class PatrolInterface:
                         if success:
                             self.remote_interval_min = new_interval
                             self.node.get_logger().info(f"[SYNC] Successfully updated /patrol_scheduler parameter.")
+                            # 로봇 노드에 설정 변경 신호 송출
+                            msg = String()
+                            msg.data = "RECONFIG"
+                            self.cmd_pub.publish(msg)
+
+                    # 2. 장애물 대기 시간 동기화 감지
+                    new_wait = config.get('avoidance_wait_time')
+                    if new_wait is not None and new_wait != self.remote_avoidance_wait:
+                        self.node.get_logger().info(f"[SYNC] New avoidance wait time from DB: {new_wait}s")
+                        self.remote_avoidance_wait = new_wait
+                        # 로봇 노드에 설정 변경 신호 송출 (이미 위에서 보냈을 수도 있음)
+                        msg = String()
+                        msg.data = "RECONFIG"
+                        self.cmd_pub.publish(msg)
 
             except Exception as e:
                 self.node.get_logger().error(f"[SYNC] Config sync error: {e}")

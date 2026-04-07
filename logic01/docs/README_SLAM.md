@@ -105,4 +105,4 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 
 ---
 
- 더 자세한 순찰 제어 및 RFID 보정 방법은 각각 **README_PATROL.md**와 **README_RFID.md**를 참고하세요.
+ 더 자세한 순찰 제어 및 RFID 보정 방법은 각각 **README_PATROL.md**와 **README_RFID.md**를 참고하세요. (전체 관리 흐름은 **../../SJH_backup/SYSTEM_MANAGEMENT_GUIDE.md** 참고)

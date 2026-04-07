@@ -74,8 +74,9 @@ class PatrolNode(Node):
         self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
         
         # 10. 원격 설정 동기화 (장애물 대기 시간 등)
-        self.param_client = self.create_client(SetParameters, 'obstacle_node/set_parameters')
-        self.config_sync_timer = self.create_timer(15.0, self.sync_remote_config)
+        # 초기 성공 시까지 15초 주기로 시도하고, 성공 시 타이머 중단
+        self.param_client = self.create_client(SetParameters, '/obstacle_node/set_parameters')
+        self.config_sync_timer = self.create_timer(15.0, self.initial_config_sync)
         self.last_avoidance_wait = 10 # 초기값
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
@@ -120,7 +121,12 @@ class PatrolNode(Node):
     def cmd_callback(self, msg):
         cmd = msg.data
         if cmd == 'START_PATROL' and not self.is_patrolling:
-            self.get_logger().info('Starting Patrol Sequence...')
+            self.get_logger().info('Starting Patrol Sequence (Updating config first...)')
+            
+            # --- [추가] 순찰 시작 전 최신 설정 강제 동기화 ---
+            self.sync_remote_config()
+            self.load_shelves()
+            
             # 서버에 순찰 시작 세션 등록 및 ID 저장
             self.current_patrol_id = self.db.start_patrol_session()
 
@@ -130,6 +136,10 @@ class PatrolNode(Node):
             self.reported_tags.clear() # 새로운 순찰 세션 시작 시 초기화
             self.publish_status('patrolling')
             self.send_next_goal()
+        elif cmd == 'RECONFIG':
+            self.get_logger().info('[REMOTE] Configuring node based on UI request...')
+            self.sync_remote_config()
+            self.load_shelves()
         elif cmd == 'RETURN_HOME':
             self.get_logger().info('Returning to Base...')
             # 서버에 순찰 종료 세션 등록 (진행 중이었다면)
@@ -412,6 +422,20 @@ class PatrolNode(Node):
             # 다음 목적으로 이동
             self.proceed_to_next_shelf()
 
+    def proceed_to_next_shelf(self):
+        """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""
+        if hasattr(self, '_delay_timer') and self._delay_timer:
+            self.destroy_timer(self._delay_timer)
+            self._delay_timer = None
+
+        if not self.is_patrolling:
+            self.get_logger().info('Patrol is no longer active. Stopping sequence.')
+            return
+
+        self.current_shelf_idx += 1
+        self.publish_status('patrolling')
+        self.send_next_goal()
+
     def reset_pose_to_origin(self):
         """로봇의 위치 추정치를 (0,0)으로 초기화합니다."""
         msg = PoseWithCovarianceStamped()
@@ -428,6 +452,39 @@ class PatrolNode(Node):
         msg.pose.pose.orientation.y = 0.0
         msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
+
+    def initial_config_sync(self):
+        """최초 구동 시 정보 획득을 시도하며, 성공 시 주기적 타이머를 중단합니다."""
+        success = self.sync_remote_config()
+        if success:
+            self.get_logger().info('Initial configuration synced successfully. Periodic timer stopped.')
+            self.config_sync_timer.cancel()
+
+    def sync_remote_config(self):
+        """서버에서 순찰 설정을 가져와 각 노드 파라미터에 실시간 반영"""
+        config = self.db.get_patrol_config()
+        if not config:
+            # self.get_logger().warn("[DB] Failed to fetch patrol configuration from server.")
+            return False
+
+        # 1. 장애물 대기 시간 (avoidance_wait_time) 동기화
+        new_wait = config.get('avoidance_wait_time')
+        if new_wait is not None:
+            new_wait_int = int(new_wait)
+            if new_wait_int != self.last_avoidance_wait:
+                self.get_logger().info(f'[DB] New Avoidance Wait Time detected: {new_wait_int}s (Syncing to obstacle_node...)')
+                
+                if self.param_client.wait_for_service(timeout_sec=1.0):
+                    req = SetParameters.Request()
+                    val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=new_wait_int)
+                    req.parameters = [Parameter(name='obstacle_wait_time', value=val)]
+                    self.param_client.call_async(req)
+                    self.last_avoidance_wait = new_wait_int
+                    self.get_logger().info(f'[SYNC] Obstacle wait time set to {new_wait_int}s')
+                else:
+                    self.get_logger().warn('/obstacle_node/set_parameters service not available. Check if obstacle_node is running.')
+        
+        return True
 
         # 공분산 초기화 (매우 낮은 값으로 설정하여 확신 부여)
         msg.pose.covariance = [0.0] * 36
@@ -456,8 +513,9 @@ class PatrolNode(Node):
                 req.parameters = [Parameter(name='obstacle_wait_time', value=val)]
                 self.param_client.call_async(req)
                 self.last_avoidance_wait = int(new_wait)
+                self.get_logger().info(f'[SYNC] Obstacle wait time set to {new_wait}s')
             else:
-                self.get_logger().warn('Obstacle node service not available. Sync deferred.')
+                self.get_logger().warn('/obstacle_node/set_parameters service not available. Check if obstacle_node is running.')
 
         # 2. 순찰 간격 및 기타 정보 로그 (디버깅용)
         # interval_hour = config.get('interval_hour', 0)
