@@ -339,7 +339,9 @@ class RobotControlPanel(QWidget):
         USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
         self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-        self.cap = cv2.VideoCapture(self.rtsp_url); self.timer.start(30)
+        self.cap = cv2.VideoCapture(self.rtsp_url);
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.timer.start(30)
 
     def update_frame(self):
         if hasattr(self, 'cap') and self.cap.isOpened():
