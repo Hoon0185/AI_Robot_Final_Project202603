@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const alertText = document.getElementById('alert-text');
     const batteryValue = document.getElementById('battery-value');
     const batteryIcon = document.getElementById('battery-icon');
+    const btnStart = document.getElementById('btn-start');
+    const btnReturn = document.getElementById('btn-return');
 
     const btnTogglePause = document.getElementById('btn-toggle-pause');
 
@@ -81,6 +83,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnTogglePause.innerHTML = '<i class="fas fa-stop"></i> STOP';
                 btnTogglePause.className = 'btn btn-danger';
                 btnTogglePause.onclick = () => sendCommand('/patrol/stop');
+            }
+
+            // [추가] START 및 RETURN 버튼 상태 제어로직
+            if (enStatus === "ON PATROL" || enStatus === "PATROLLING") {
+                btnStart.disabled = true;
+                btnReturn.disabled = false;
+            } else if (koStatus === "휴식중" || koStatus === "완료" || enStatus === "IDLE" || enStatus === "FINISHED") {
+                btnStart.disabled = false;
+                btnReturn.disabled = true;
+            } else if (koStatus.includes("정지") || enStatus.includes("STOP")) {
+                // 비상정지 시에는 둘 다 비활성화 (Resume 누르기 전까지)
+                btnStart.disabled = true;
+                btnReturn.disabled = false; // 복귀는 허용할 수도 있음 (사용자 정책에 따라)
             }
 
         } catch (error) {

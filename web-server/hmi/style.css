@@ -171,6 +171,14 @@ header {
     text-transform: uppercase;
 }
 
+.btn:disabled {
+    opacity: 0.4;
+    filter: grayscale(0.7);
+    cursor: not-allowed;
+    pointer-events: none;
+    box-shadow: none;
+}
+
 .btn i {
     font-size: 40px;
 }
