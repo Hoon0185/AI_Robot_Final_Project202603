@@ -370,9 +370,10 @@ class PatrolNode(Node):
 
     def report_pose_to_server(self):
         """정해진 주기마다 서버로 현재 위치 및 상태 보고 (Non-blocking Thread 방식)"""
-        # 위치 정보를 한 번도 받지 못했다면 보고하지 않음 (0,0 보고 방지)
+        # 위치 정보가 아직 없더라도 프로세스 생존 신호를 위해 보고를 수행합니다.
+        # (비활성 상태일 경우 0.0, 0.0 으로 보고됨)
         if not self.pose_received:
-            return
+             self.get_logger().warn('Waiting for AMCL pose, reporting heartbeat only...')
 
         # 상태 결정 로직
         status = "IDLE"

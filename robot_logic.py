@@ -175,12 +175,25 @@ class RobotLogicHandler:
         if not self.ros_interface: return
         status = self.ros_interface.get_recent_patrol_time()
         if status:
+            # 1. 마지막 순찰 시간 및 상태 표시 (상세 정보 포함)
             time_info = status.get('start_time', 'No Data')
             s_type = status.get('status', 'IDLE')
-            display_text = f"{time_info} ({s_type})"
+
+            if s_type == 'patrolling':
+                shelf = status.get('current_shelf', 'Moving...')
+                progress = status.get('progress', '')
+                display_text = f"{time_info} (순찰 중: {shelf} {progress})"
+            else:
+                display_text = f"{time_info} ({s_type})"
+
+            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
             if not self.ros_interface.is_robot_online():
                 display_text += " [OFFLINE]"
+
             self.ui.set_last_patrol_time(display_text)
+
+            # 2. 미니맵 위치 실시간 업데이트 호출
+            self.update_minimap_pose()
 
     def _load_initial_data(self):
         """앱 시작 시 초기 데이터를 DB에서 가져와 UI 및 ROS에 세팅"""
@@ -219,29 +232,9 @@ class RobotLogicHandler:
             self.ui.patrol_row['slider'].setValue(60)
 
 
-        if not self.ros_interface: return
 
-        status = self.ros_interface.get_recent_patrol_time()
-        if status:
-            # 마지막 순찰 시간 및 상태 표시
-            time_info = status.get('start_time', 'No Data')
-            s_type = status.get('status', 'IDLE')
-
-            if s_type == 'patrolling':
-                shelf = status.get('current_shelf', 'Moving...')
-                progress = status.get('progress', '')
-                display_text = f"{time_info} (순찰 중: {shelf} {progress})"
-            else:
-                display_text = f"{time_info} ({s_type})"
-
-            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
-            if not self.ros_interface.is_robot_online():
-                display_text += " [OFFLINE]"
-
-            self.ui.set_last_patrol_time(display_text)
-
-            # --- 미니맵 위치 실시간 업데이트 호출 추가 ---
-            self.update_minimap_pose()
+        # 초기 상태 반영
+        self.sync_ros_status()
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 

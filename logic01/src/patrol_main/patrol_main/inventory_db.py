@@ -121,7 +121,7 @@ class InventoryDB:
     def get_latest_command(self):
         """서버 대시보드에서 보낸 최신 원격 명령을 가져옵니다. (id 포함)"""
         try:
-            res = requests.get(f"{self.base_url}/robot/command/latest", timeout=1.0)
+            res = requests.get(f"{self.base_url}/robot/command/latest", timeout=2.0)
             if res.status_code == 200:
                 data = res.json()
                 # command_type 또는 command 필드 추출
@@ -221,7 +221,7 @@ class InventoryDB:
             "status": str(status)
         }
         try:
-            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=1.0)
+            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=2.0)
             if res.status_code == 200:
                 return True
         except Exception:
@@ -266,7 +266,7 @@ class InventoryDB:
         """서버로 로봇의 현재 배터리 잔량 전송"""
         try:
             payload = {"percentage": float(percentage)}
-            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=1.0)
+            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=2.0)
             return res.status_code == 200
         except Exception:
             return False

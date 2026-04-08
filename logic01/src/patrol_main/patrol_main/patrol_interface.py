@@ -71,6 +71,12 @@ class PatrolInterface:
         self.config_sync_thread = threading.Thread(target=self._sync_remote_config, daemon=True)
         self.config_sync_thread.start()
 
+        # [Optimized] Background Status Polling (History & Real-time Status)
+        self.cached_history = []
+        self.cached_robot_status = None
+        self.status_poll_thread = threading.Thread(target=self._poll_status_loop, daemon=True)
+        self.status_poll_thread.start()
+
     def _poll_remote_commands(self):
         """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""
         import time
@@ -170,6 +176,26 @@ class PatrolInterface:
 
             # 10초마다 확인
             time.sleep(10.0)
+
+    def _poll_status_loop(self):
+        """서버로부터 순찰 이력 및 실시간 로봇 상태를 백그라운드에서 주기적으로 가져옵니다."""
+        import time
+        while rclpy.ok():
+            try:
+                # 1. 순찰 이력 가져오기
+                history = self.db.get_patrol_history()
+                if history is not None:
+                    self.cached_history = history
+
+                # 2. 실시간 로봇 상태(/status) 가져오기
+                rt_status = self.db.get_robot_status()
+                if rt_status:
+                    self.cached_robot_status = rt_status
+            except Exception as e:
+                self.node.get_logger().error(f"[STATUS] Background polling error: {e}")
+            
+            # 2초마다 갱신 (네트워크 부하 및 실시간성 사이의 균형)
+            time.sleep(2.0)
 
     def _set_node_param(self, client, name, value):
         """파라미터 설정용 헴퍼 함수 추가"""
@@ -326,13 +352,12 @@ class PatrolInterface:
         return True, "Manual patrol trigger sent via topic"
 
     def get_recent_patrol_time(self):
-        """최근 순찰 상태 및 시간 정보를 가져옵니다. (DB 로그 시간 기준 + ROS 실시간 상태 덮어쓰기)"""
+        """최근 순찰 상태 및 시간 정보를 가져옵니다. (백그라운드에서 캐시된 데이터 즉시 반환)"""
         res = {}
         
-        # 1. DB에서 가장 최근에 있었던 순찰의 시간 정보를 기본으로 가져옴
-        history = self.db.get_patrol_history()
-        if history and len(history) > 0:
-            latest = history[0]
+        # 1. 캐시된 DB 이력에서 가장 최근 순찰 정보 추출
+        if self.cached_history and len(self.cached_history) > 0:
+            latest = self.cached_history[0]
             db_start_time = latest.get('start_time') or 'No Data'
             res = {
                 "status": latest.get('status', 'Completed'),
@@ -343,30 +368,29 @@ class PatrolInterface:
                 "robot_y": latest.get('last_odom_y', 0.0)
             }
 
-        # 2. [추가] 서버의 실시간 상태(robot_status 테이블) 정보를 가져와 현재 좌표 및 배터리 최신화
-        rt_status = self.db.get_robot_status()
+        # 2. [최적화] 캐시된 서버 실시간 상태(robot_status 테이블) 반영
+        rt_status = self.cached_robot_status
         if rt_status:
             res["robot_x"] = rt_status.get("odom_x", res.get("robot_x", 0.0))
             res["robot_y"] = rt_status.get("odom_y", res.get("robot_y", 0.0))
             res["battery"] = rt_status.get("battery", 0.0)
-            if rt_status.get("status") == "online":
+            # 서버로부터 유효한 좌표/배터리 등 데이터가 왔다면 통신 성공으로 간주하고 시간 최신화
+            # (서버의 status가 'offline'이더라도 데이터가 신선하면 온라인으로 판정하기 위함)
+            if rt_status.get("odom_x") is not None or rt_status.get("battery") is not None:
+                import time
                 self.last_status_received_time = time.time()
 
-        # 3. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 상태(status)와 세부 정보를 최신으로 덮어씀
+        # 3. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 최우선으로 덮어씀
         if self.latest_status:
             topic_status = self.latest_status.get("status")
 
-            # 토픽 상태가 유의미할 때만(순찰 중이거나 에러 등) DB 정보를 덮어씀
-            # 'idle'인 경우엔 DB에 기록된 마지막 'Completed' 등의 기록을 보여주는 것이 더 정확함
             if topic_status and topic_status not in ["idle", "IDLE"]:
                 res["status"] = topic_status
 
-                # 토픽에 시간 정보가 있다면 DB 정보보다 우선 (진행 중인 세션 표시용)
                 topic_start_time = self.latest_status.get("start_time")
                 if topic_start_time and topic_start_time != 'No Data':
                     res["start_time"] = topic_start_time
                 
-                # 토픽에 포함된 실시간 좌표도 반영
                 res["robot_x"] = self.latest_status.get("current_x", res.get("robot_x", 0.0))
                 res["robot_y"] = self.latest_status.get("current_y", res.get("robot_y", 0.0))
 
@@ -377,10 +401,10 @@ class PatrolInterface:
         return res if res else None
 
     def is_robot_online(self):
-        """최근 5초 이내에 상태 메시지 혹은 하트비트를 수신했는지 확인합니다."""
+        """최근 10초 이내에 상태 메시지 혹은 하트비트를 수신했는지 확인합니다. (임계값 완화)"""
         now = time.time()
-        status_online = (now - self.last_status_received_time) < 5.0 if self.last_status_received_time > 0 else False
-        heartbeat_online = (now - self.last_robot_heartbeat_time) < 5.0 if self.last_robot_heartbeat_time > 0 else False
+        status_online = (now - self.last_status_received_time) < 10.0 if self.last_status_received_time > 0 else False
+        heartbeat_online = (now - self.last_robot_heartbeat_time) < 10.0 if self.last_robot_heartbeat_time > 0 else False
 
         return status_online or heartbeat_online
 
