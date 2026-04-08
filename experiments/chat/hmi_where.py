@@ -32,28 +32,35 @@ RTSP_URL_IN = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/str
 # --- Audio/TTS Logic ---
 def record_audio(filename="query_hmi.wav", duration=5):
     """Records audio from RTSP camera for the specified duration."""
-    print(f"Recording from RTSP for {duration} seconds...")
+    # Internal logging to stderr to keep stdout clean for the API
+    import sys
+    sys.stderr.write(f"Recording from RTSP for {duration} seconds...\n")
+    
     command = [
         "ffmpeg", "-y",
+        "-stimeout", "3000000",   # 3 seconds connection timeout
         "-rtsp_transport", "tcp",
+        "-analyzeduration", "0",  # Faster startup
+        "-probesize", "32",       # Faster startup
         "-i", RTSP_URL_IN,
-        "-t", str(duration),
+        "-t", str(duration),      # Strict 5 seconds
         "-acodec", "pcm_s16le",
         "-ar", "44100",
         "-ac", "1",
         filename
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error during recording: {e.stderr.decode()}")
+        subprocess.run(command, check=True, capture_output=True, timeout=12)
+    except Exception as e:
+        sys.stderr.write(f"Error during recording: {e}\n")
         return None
     return filename
 
 def speak_result(text):
     """Converts text to speech and plays it through the LOCAL PC speaker."""
     if not text: return
-    print(f"Bot: {text}")
+    import sys
+    sys.stderr.write(f"Bot: {text}\n")
     temp_mp3 = "response_hmi.mp3"
     temp_wav = "response_hmi.wav"
     VOICE = "ko-KR-SunHiNeural"
@@ -63,13 +70,13 @@ def speak_result(text):
             await communicate.save(temp_mp3)
         asyncio.run(_generate())
         subprocess.run(["ffmpeg", "-y", "-i", temp_mp3, "-ar", "44100", temp_wav], 
-                       check=True, capture_output=True)
+                       check=True, capture_output=True, timeout=5)
         if subprocess.run(["which", "paplay"], capture_output=True).returncode == 0:
-            subprocess.run(["paplay", temp_wav], check=True)
+            subprocess.run(["paplay", temp_wav], check=True, timeout=10)
         else:
-            subprocess.run(["aplay", temp_wav], check=True)
+            subprocess.run(["aplay", temp_wav], check=True, timeout=10)
     except Exception as e:
-        print(f"Audio error: {e}")
+        sys.stderr.write(f"Audio error: {e}\n")
     finally:
         for f in [temp_mp3, temp_wav]:
             if os.path.exists(f): os.remove(f)
@@ -120,12 +127,13 @@ def search_product_location(product_name):
             cursor.close(); conn.close()
 
 def run_hmi_where():
+    import sys
     audio_file = "query_hmi.wav"
     record_audio(audio_file)
-    if not os.path.exists(audio_file): return "녹음 실패"
+    if not os.path.exists(audio_file): return "녹음에 실패했습니다. 카메라 연결을 확인해주세요."
 
     rec_text, prod_name, bot_resp = get_product_from_audio(audio_file)
-    print(f"User: {rec_text}")
+    sys.stderr.write(f"User: {rec_text}\n")
 
     res = search_product_location(prod_name)
     if res:

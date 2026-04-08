@@ -165,7 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (responseArea && data.response) {
                 responseArea.innerText = data.response;
             } else if (responseArea && !endpoint.includes('patrol')) {
-                responseArea.innerText = "COMMAND EXECUTED";
+                // 패트롤 관련 명령이 아닌데 응답이 없는 경우에만 에러 표시 (또는 비움)
+                responseArea.innerText = ""; 
             }
             
             if (options.cleanup) options.cleanup();

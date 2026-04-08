@@ -24,7 +24,8 @@ RTSP_URL = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/stream
 def speak_result(text):
     """Converts text to speech and plays it through the LOCAL PC speaker."""
     if not text: return
-    print(f"Bot: {text}")
+    import sys
+    sys.stderr.write(f"Bot: {text}\n")
     temp_mp3 = "response_what.mp3"
     temp_wav = "response_what.wav"
     VOICE = "ko-KR-SunHiNeural"
@@ -34,22 +35,23 @@ def speak_result(text):
             await communicate.save(temp_mp3)
         asyncio.run(_generate())
         subprocess.run(["ffmpeg", "-y", "-i", temp_mp3, "-ar", "44100", temp_wav], 
-                       check=True, capture_output=True)
+                       check=True, capture_output=True, timeout=5)
         if subprocess.run(["which", "paplay"], capture_output=True).returncode == 0:
-            subprocess.run(["paplay", temp_wav], check=True)
+            subprocess.run(["paplay", temp_wav], check=True, timeout=10)
         else:
-            subprocess.run(["aplay", temp_wav], check=True)
+            subprocess.run(["aplay", temp_wav], check=True, timeout=10)
     except Exception as e:
-        print(f"Audio error: {e}")
+        sys.stderr.write(f"Audio error: {e}\n")
     finally:
         for f in [temp_mp3, temp_wav]:
             if os.path.exists(f): os.remove(f)
 
 def capture_frame(filename="capture_hmi.jpg"):
     """Tries multiple sources to capture a single frame."""
+    import sys
     sources = [RTSP_URL, 0, 1, 2, 3]
     for src in sources:
-        print(f"Attempting source: {src}")
+        sys.stderr.write(f"Attempting source: {src}\n")
         cap = cv2.VideoCapture(src)
         if cap.isOpened():
             # Skip frames to clear buffer if it's RTSP
@@ -59,7 +61,7 @@ def capture_frame(filename="capture_hmi.jpg"):
             cap.release()
             if ret:
                 cv2.imwrite(filename, frame)
-                print(f"Successfully captured to {filename}")
+                sys.stderr.write(f"Successfully captured to {filename}\n")
                 return filename
     return None
 
@@ -84,7 +86,8 @@ def analyze_image(image_path):
                 bot_response = line.split("대답:")[1].strip()
         return bot_response
     except Exception as e:
-        print(f"Analysis Error: {e}")
+        import sys
+        sys.stderr.write(f"Analysis Error: {e}\n")
         return "죄송합니다. 분석 중에 오류가 발생했습니다."
 
 def run_hmi_what():
