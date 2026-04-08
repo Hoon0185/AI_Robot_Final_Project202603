@@ -70,6 +70,7 @@ class PatrolNode(Node):
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False
         self.ai_wait_start_time = None
+        self.ai_wait_timeout = 8.0 # 기본 대기 시간 (서버 설정 로드 전)
         self.is_paused = False # 일시정지 상태 플래그
 
         # 9. 실시간 배터리 상태 모니터링 (서버 보고)
@@ -92,6 +93,13 @@ class PatrolNode(Node):
                 
                 # [추가] DB에서 가져온 최신 좌표를 로컬 YAML 파일에 동기화(저장)
                 self.save_shelves_to_yaml()
+
+                # [추가] 서버에서 순찰 설정(대기 시간 등) 로드
+                config = self.db.get_patrol_config()
+                if config:
+                    self.ai_wait_timeout = float(config.get('avoidance_wait_time', 8.0))
+                    self.get_logger().info(f"[DB] 서버 순찰 설정 로드 성공. AI 대기시간: {self.ai_wait_timeout}초")
+
                 return
         except Exception as e:
             self.get_logger().warn(f"Failed to fetch patrol plan from DB: {e}. Falling back to YAML.")
@@ -466,8 +474,8 @@ class PatrolNode(Node):
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # 결과를 받았거나 8초가 지났을 때
-        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > 8.0:
+        # 결과를 받았거나 서버 설정 시간이 지났을 때
+        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
             self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
 

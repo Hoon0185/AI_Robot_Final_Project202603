@@ -374,7 +374,7 @@ class ObstacleNode(Node):
       else: # 이미 우회 시작한 상태에서는 5초 동안 제자리 회전으로 장애물 피하기
         elapsed = (self.get_clock().now() - self.detour_start_time).nanoseconds / 1e9
 
-        if elapsed < 5.0:
+        if elapsed < self.current_wait_time:
           twist_msg = Twist()
           twist_msg.linear.x = 0.0
           twist_msg.angular.z = self.detour_direction # 분석한 방향으로 회전
