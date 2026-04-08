@@ -18,14 +18,22 @@ except ImportError:
         # 디버그 모드를 위해 임포트 실패 시 pass 처리 (is_debug에서 걸러짐)
         PatrolInterface = None
 
+try:
+    import rclpy
+except ImportError:
+    rclpy = None
+
 class RobotLogicHandler:
     def __init__(self, ui_instance, debug_mode=False):
         self.ui = ui_instance
         self.is_debug = debug_mode # 디버그 모드 상태 저장
-
+        self.cam_node = None
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
+        self.rclpy = rclpy
+        self._prepare_paths() #경로 설정 (로직 핸들러 생성 시점에 수행)
         if not self.is_debug:
+            self._initialize_ros_nodes()
             try:
                 if PatrolInterface:
                     self.ros_interface = PatrolInterface()
@@ -45,7 +53,7 @@ class RobotLogicHandler:
         from PyQt6.QtCore import QTimer
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.sync_ros_status)
-        self.status_timer.start(1000) # 1초마다 동기화
+        self.status_timer.start(50) # 1초마다 동기화
 
     def _log(self, message):
         """터미널 출력(print)과 UI 콘솔(append_log)에 동시에 메시지를 남깁니다."""
@@ -75,6 +83,89 @@ class RobotLogicHandler:
         # DB 및 알림 갱신 요청
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
+
+    def _prepare_paths(self):
+        """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 구조: logic01/logic01/src/protect_product/protect_product/camera.py
+        # 'protect_product' 패키지를 포함하는 상위 폴더인 'src' 레벨을 경로에 넣어야 함
+        ai_src_base = os.path.join(current_dir, 'logic01', 'logic01', 'src', 'protect_product')
+
+        if ai_src_base not in sys.path:
+            sys.path.append(ai_src_base)
+
+        # PatrolInterface 경로 (logic01/src/patrol_main 대응)
+        patrol_path = os.path.join(current_dir, 'logic01', 'src', 'patrol_main')
+        if patrol_path not in sys.path:
+            sys.path.append(patrol_path)
+
+    def _initialize_ros_nodes(self):
+        """실제 모듈을 임포트하고 노드 객체를 생성합니다."""
+        import rclpy
+        global IntegratedPCNode
+
+        if self.rclpy is None:
+            try:
+                import rclpy
+                self.rclpy = rclpy
+            except:
+                self._log("❌ rclpy 임포트 불가")
+                return
+
+        if not self.rclpy.ok():
+            self.rclpy.init()
+
+        # [A] AI 노드 임포트 및 생성
+        try:
+            from protect_product.camera import IntegratedPCNode
+            self._log("✅ [SYSTEM] AI 인식 모듈 로드 성공")
+        except ImportError as e:
+            # 구조가 다를 경우를 대비한 2차 시도
+            try:
+                from camera import IntegratedPCNode
+                self._log("✅ [SYSTEM] AI 모듈 로드 성공 (직접 참조)")
+            except:
+                self._log(f"❌ [SYSTEM] AI 모듈 임포트 최종 실패: {e}")
+                IntegratedPCNode = None
+
+        try:
+            if IntegratedPCNode:
+                self.cam_node = IntegratedPCNode()
+                self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
+
+            # [B] 기존 팀원들의 인터페이스 노드 생성
+            from patrol_main.patrol_interface import PatrolInterface
+            if PatrolInterface:
+                self.ros_interface = PatrolInterface()
+                self._log("🚀 [SYSTEM] 주행 인터페이스 연결 완료")
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 노드 생성 중 오류 발생: {e}")
+
+    def sync_ros_status(self):
+        """ROS 노드를 1스텝씩 실행하고 UI를 갱신합니다."""
+        if self.is_debug:
+            self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
+            return
+
+        # rclpy.spin_once를 통해 노드들의 콜백(카메라 추론 등)을 실제로 실행
+        if rclpy.ok():
+            if self.cam_node:
+                rclpy.spin_once(self.cam_node, timeout_sec=0)
+
+            if self.ros_interface and hasattr(self.ros_interface, 'get_name'):
+                rclpy.spin_once(self.ros_interface, timeout_sec=0)
+
+        # UI 갱신 로직 (주행 상태 표시)
+        if not self.ros_interface: return
+        status = self.ros_interface.get_recent_patrol_time()
+        if status:
+            time_info = status.get('start_time', 'No Data')
+            s_type = status.get('status', 'IDLE')
+            display_text = f"{time_info} ({s_type})"
+            if not self.ros_interface.is_robot_online():
+                display_text += " [OFFLINE]"
+            self.ui.set_last_patrol_time(display_text)
 
     def _load_initial_data(self):
         """앱 시작 시 초기 데이터를 DB에서 가져와 UI 및 ROS에 세팅"""
@@ -107,33 +198,7 @@ class RobotLogicHandler:
             self.ui.obstacle_row['slider'].setValue(10)
             self.ui.patrol_row['slider'].setValue(60)
 
-    def sync_ros_status(self):
-        """ROS에서 넘어온 최신 상태 또는 DB 로그를 UI에 반영합니다."""
-        if self.is_debug:
-            # 디버그 모드 가상 상태 표시
-            self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
-            return
 
-        if not self.ros_interface: return
-
-        status = self.ros_interface.get_recent_patrol_time()
-        if status:
-            # 마지막 순찰 시간 및 상태 표시
-            time_info = status.get('start_time', 'No Data')
-            s_type = status.get('status', 'IDLE')
-
-            if s_type == 'patrolling':
-                shelf = status.get('current_shelf', 'Moving...')
-                progress = status.get('progress', '')
-                display_text = f"{time_info} (순찰 중: {shelf} {progress})"
-            else:
-                display_text = f"{time_info} ({s_type})"
-
-            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
-            if not self.ros_interface.is_robot_online():
-                display_text += " [OFFLINE]"
-
-            self.ui.set_last_patrol_time(display_text)
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 

@@ -25,7 +25,7 @@ class Verifier:
             print(f"❌ Database Connection Error: {e}")
             self.conn = None
 
-    def verifY(self, qrs, items):
+    def verify(self, qrs, items):
         if not qrs:
             return None
 
