@@ -53,8 +53,8 @@ bt_navigator:
     robot_base_frame: base_footprint
     transform_tolerance: 2.0
     filter_duration: 0.3
-    default_nav_to_pose_bt_xml: "replace_at_runtime"
-    default_nav_through_poses_bt_xml: "replace_at_runtime"
+    default_nav_to_pose_bt_xml: "/home/penguin/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/navigate_to_pose_w_replanning_and_recovery.xml"
+    default_nav_through_poses_bt_xml: "/home/penguin/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/navigate_to_pose_w_replanning_and_recovery.xml"
     always_reload_bt_xml: false
     goal_blackboard_id: goal
     goals_blackboard_id: goals
