@@ -76,15 +76,6 @@ class PatrolNode(Node):
         self.battery_sub = self.create_subscription(
             BatteryState, '/battery_state', self.battery_callback, 10)
         self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
-        
-        # 10. 원격 설정 동기화 (장애물 대기 시간 등)
-        # 초기 성공 시까지 15초 주기로 시도하고, 성공 시 타이머 중단
-        self.param_client = self.create_client(SetParameters, '/obstacle_node/set_parameters')
-        self.config_sync_timer = self.create_timer(15.0, self.initial_config_sync)
-        self.last_avoidance_wait = None # 초기값을 None으로 하여 서버 설정이 10초여도 첫 동기화를 보장함
-
-        # --- [추가] 실행 즉시 최신 설정 강제 동기화 ---
-        self.sync_remote_config()
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
@@ -117,8 +108,8 @@ class PatrolNode(Node):
         self.shelf_list = list(self.shelves.keys())
 
     def pause_callback(self, msg):
+        """장애물 감지 시 순찰 노드가 하는 역할"""
         if msg.data and self.is_patrolling:
-            # 장애물이 감지되었을 때의 처리
             if not self.is_paused:
                 self.get_logger().warn('장애물 감지로 인해 현재 목적지 주행을 전면 취소하고 대기합니다.')
                 self.is_paused = True
@@ -172,11 +163,10 @@ class PatrolNode(Node):
         cmd = msg.data
         if cmd == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence (Updating config first...)')
-            
+
             # --- [추가] 순찰 시작 전 최신 설정 강제 동기화 ---
-            self.sync_remote_config()
             self.load_shelves()
-            
+
             # 서버에 순찰 시작 세션 등록 및 ID 저장
             self.current_patrol_id = self.db.start_patrol_session()
 
@@ -188,7 +178,6 @@ class PatrolNode(Node):
             self.send_next_goal()
         elif cmd == 'RECONFIG':
             self.get_logger().info('[REMOTE] Configuring node based on UI request...')
-            self.sync_remote_config()
             self.load_shelves()
         elif cmd == 'RETURN_HOME':
             self.get_logger().info('Returning to Base...')
@@ -206,7 +195,6 @@ class PatrolNode(Node):
         """현재 진행 중인 Nav2 액션 목표를 취소합니다."""
         if self._goal_handle is not None:
             self.get_logger().info('Cancelling current navigation goal...')
-            self._goal_handle.cancel_goal_async()
             self._goal_handle = None
         else:
             self.get_logger().info('No active navigation goal to cancel.')
@@ -393,7 +381,7 @@ class PatrolNode(Node):
 
         # 메인 스레드 블로킹 방지를 위해 별도 스레드에서 DB 보고 수행
         threading.Thread(
-            target=self.db.report_robot_pose, 
+            target=self.db.report_robot_pose,
             args=(self.current_x, self.current_y, status),
             daemon=True
         ).start()
@@ -417,7 +405,7 @@ class PatrolNode(Node):
     def battery_callback(self, msg):
         """로봇의 배터리 상태를 수신하여 저장 (0.0~1.0 또는 0.0~100.0 대응)"""
         val = float(msg.percentage)
-        
+
         # NaN 또는 Inf 값이 들어오면 무시 (통신 초기화 전 등 방어 로직)
         if math.isnan(val) or math.isinf(val):
             return
@@ -431,7 +419,7 @@ class PatrolNode(Node):
             success = self.db.report_battery(self.current_battery)
             if not success:
                 self.get_logger().warn("Failed to report battery status to server.")
-        
+
         threading.Thread(target=run_report, daemon=True).start()
 
     def check_ai_result_and_proceed(self):
@@ -513,39 +501,6 @@ class PatrolNode(Node):
         msg.pose.pose.orientation.y = 0.0
         msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
-
-    def initial_config_sync(self):
-        """최초 구동 시 정보 획득을 시도하며, 성공 시 주기적 타이머를 중단합니다."""
-        success = self.sync_remote_config()
-        if success:
-            self.get_logger().info('Initial configuration synced successfully. Periodic timer stopped.')
-            self.config_sync_timer.cancel()
-
-    def sync_remote_config(self):
-        """서버에서 순찰 설정을 가져와 각 노드 파라미터에 실시간 반영"""
-        config = self.db.get_patrol_config()
-        if not config:
-            return False
-
-        # 1. 장애물 대기 시간 (avoidance_wait_time) 동기화
-        new_wait = config.get('avoidance_wait_time')
-        if new_wait is not None:
-            new_wait_int = int(new_wait)
-            if new_wait_int != self.last_avoidance_wait:
-                self.get_logger().info(f'[DB] New Avoidance Wait Time detected: {new_wait_int}s (Syncing to obstacle_node...)')
-                
-                # obstacle_node의 파라미터명은 'current_wait_time'입니다.
-                if self.param_client.wait_for_service(timeout_sec=1.0):
-                    req = SetParameters.Request()
-                    val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=new_wait_int)
-                    req.parameters = [Parameter(name='current_wait_time', value=val)]
-                    self.param_client.call_async(req)
-                    self.last_avoidance_wait = new_wait_int
-                    self.get_logger().info(f'[SYNC] Obstacle wait time set to {new_wait_int}s')
-                else:
-                    self.get_logger().warn('/obstacle_node/set_parameters service not available. Check if obstacle_node is running.')
-        
-        return True
 
 
 def main(args=None):

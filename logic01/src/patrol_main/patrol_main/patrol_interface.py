@@ -19,10 +19,10 @@ class PatrolInterface:
         # Database & Server Sync
         self.db = InventoryDB(base_url="http://16.184.56.119:8000")#16.184.56.119
 
-
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
         self.param_client = self.node.create_client(SetParameters, '/patrol_scheduler/set_parameters')
+        self.obs_param_client = self.node.create_client(SetParameters, '/obstacle_node/set_parameters')
 
         # Publishers (Manual Control)
         # LOGIC_02의 twist_mux 우선순위에 따라 /cmd_vel_teleop 사용
@@ -40,6 +40,7 @@ class PatrolInterface:
 
         self.last_status_received_time = 0.0
         self.last_robot_heartbeat_time = 0.0
+        self.last_command_execution_times = {}
 
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
@@ -157,19 +158,28 @@ class PatrolInterface:
 
                     # 2. 장애물 대기 시간 동기화 감지
                     new_wait = config.get('avoidance_wait_time')
-                    if new_wait is not None and new_wait != self.remote_avoidance_wait:
-                        self.node.get_logger().info(f"[SYNC] New avoidance wait time from DB: {new_wait}s")
-                        self.remote_avoidance_wait = new_wait
-                        # 로봇 노드에 설정 변경 신호 송출 (이미 위에서 보냈을 수도 있음)
-                        msg = String()
-                        msg.data = "RECONFIG"
-                        self.cmd_pub.publish(msg)
-
+                    if new_wait is not None:
+                        new_wait_int = int(new_wait)
+                        # 서버 값이 마지막으로 기록된 값과 다를 때만 전송 (무한 루프 방지)
+                        if new_wait_int != getattr(self, 'remote_avoidance_wait', None):
+                            self._set_node_param(self.obs_param_client, 'current_wait_time', new_wait_int)
+                            self.remote_avoidance_wait = new_wait_int
+                            self.node.get_logger().info(f"[SYNC] Obstacle wait time synced to {new_wait_int}s")
             except Exception as e:
                 self.node.get_logger().error(f"[SYNC] Config sync error: {e}")
 
             # 10초마다 확인
             time.sleep(10.0)
+
+    def _set_node_param(self, client, name, value):
+        """파라미터 설정용 헴퍼 함수 추가"""
+        if not client.wait_for_service(timeout_sec=1.0):
+            return False
+        req = SetParameters.Request()
+        val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=int(value))
+        req.parameters = [Parameter(name=name, value=val)]
+        client.call_async(req)
+        return True
 
     def _status_cb(self, msg):
         try:
