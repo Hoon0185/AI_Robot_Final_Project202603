@@ -60,21 +60,27 @@ def get_all_products():
 
 def identify_product_from_image(image_data):
     if not client: return "None", "API Key Error"
+    # Reverting to a more descriptive, proven prompt
     prompt = """
-    이미지에서 상품을 찾아 DB 검색용 명칭을 추출하세요.
-    - [PRODUCT_NAME]: 상품 고유 이름 (과자/음료 등 카테고리 단어는 제외)
-    - [BOT_RESPONSE]: 고객 안내문 (조사 빼고 간결하게)
+    이미지에서 가장 잘 보이는 상품을 분석하여 다음 형식으로 정보를 추출하세요.
+    반드시 [PRODUCT_NAME]과 [BOT_RESPONSE] 태그를 포함해야 합니다.
+    - [PRODUCT_NAME]: 상품의 고유 명칭 (예: '포스틱', '참붕어빵'). '과자', '음료' 같은 분류형 수식어는 제외할 것.
+    - [BOT_RESPONSE]: 고객을 위한 정중한 안내 멘트.
+    내용을 찾을 수 없다면 [PRODUCT_NAME]: None 이라고 답변하세요.
     """
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=[prompt, genai.types.Part.from_bytes(data=image_data, mime_type="image/jpeg")]
         )
         res_text = response.text.strip()
+        print(f"DEBUG: Gemini raw response:\n{res_text}") # Visibility check
+        
         p_name = "None"; b_resp = "확인 불가"
         for line in res_text.split('\n'):
-            if "[PRODUCT_NAME]:" in line: p_name = line.split(":", 1)[1].strip()
-            if "[BOT_RESPONSE]:" in line: b_resp = line.split(":", 1)[1].strip()
+            clean_line = line.replace('*', '').replace('_', '').strip()
+            if "[PRODUCT_NAME]:" in clean_line: p_name = clean_line.split(":", 1)[1].strip()
+            if "[BOT_RESPONSE]:" in clean_line: b_resp = clean_line.split(":", 1)[1].strip()
         return p_name, b_resp
     except Exception as e:
         print(f"Gemini Error: {e}")
@@ -85,7 +91,7 @@ def resolve_fuzzy_product(detected_name, products):
     inventory_str = ", ".join([p['product_name'] for p in products])
     prompt = f"인식: '{detected_name}'. 실제 목록: [{inventory_str}]. 가장 비슷한 이름 하나만 적고 확신도(%)를 적어. 형식: [MATCH]:이름, [CONFIDENCE]:숫자"
     try:
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         res_text = response.text.strip()
         m_name = detected_name; conf = 0
         for line in res_text.split(','):

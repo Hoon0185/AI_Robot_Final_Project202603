@@ -114,7 +114,7 @@ def get_product_from_audio(audio_path):
     답변: <로봇의 대답>"""
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-1.5-flash",
         contents=[
             prompt,
             genai.types.Part.from_bytes(data=audio_data, mime_type="audio/wav")
@@ -209,7 +209,7 @@ def resolve_fuzzy_product(recognized_text, products):
     """
     
     try:
-        response = client.models.generate_content(model="gemini-2.1-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         res_text = response.text.strip()
         match_name = "None"; confidence = 0
         for line in res_text.split('\n'):
