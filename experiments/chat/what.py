@@ -197,7 +197,11 @@ def main():
                     else:
                         final_msg = f"고객님! {db_res['product_name']}. {aisle} 매대에 있습니다."
                 else:
-                    final_msg = f"고객님! {prod_key}. 상품을 찾을 수 없어요."
+                    # Handle 'None' or identification failure gracefully
+                    if prod_key and prod_key.lower() != "none" and prod_key != "Unknown":
+                        final_msg = f"고객님! {prod_key}은(는) 매장 데이터에 없습니다."
+                    else:
+                        final_msg = "죄송합니다. 상품 정보를 정확히 확인할 수 없습니다."
 
                 print(f"결과: {final_msg}")
                 draw_text_overlay(frame, final_msg)

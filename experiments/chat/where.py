@@ -270,8 +270,13 @@ def main():
                     raw_loc = res['location']
                     aisle = raw_loc.split('-')[1] if '-' in raw_loc else raw_loc
                     bot_response = f"고객님! {res['name']}. {aisle} 매대에 있습니다."
-            elif not res and "[LOCATION_RESULT]" in bot_response:
-                bot_response = "죄송합니다. 요청하신 상품의 위치를 찾을 수 없습니다."
+            elif product_name and product_name.lower() != "none":
+                # Match failed for a named product
+                bot_response = f"고객님! {product_name}은(는) 현재 매장 데이터에 등록되어 있지 않습니다."
+            else:
+                # Completely unknown or "None"
+                if "[LOCATION_RESULT]" in bot_response or "None" in bot_response:
+                    bot_response = "죄송합니다. 상품 정보를 정확히 확인할 수 없습니다."
 
             print(f"길봇: \"{bot_response}\"")
             speak_result(bot_response)
