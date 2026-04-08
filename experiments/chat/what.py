@@ -115,10 +115,25 @@ def draw_text_overlay(frame, text):
     cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
     cv2.putText(frame, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
 
+def get_camera():
+    RTSP_URL = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/stream1")
+    # Probing sequence: RTSP -> USB Index 0, 1, 2...
+    for source in [RTSP_URL, 0, 1, 2, 3]:
+        print(f"🔍 Probing Camera Source: {source}...")
+        cap = cv2.VideoCapture(source)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret: 
+                print(f"✅ Camera Found: {source}")
+                return cap
+            cap.release()
+    return None
+
 def main():
     print("\n" + "★"*40 + "\nGILBOT VISION (DEBUG MODE)\n" + "★"*40)
-    cap = cv2.VideoCapture(os.getenv("RTSP_URL", 0))
-    if not cap.isOpened(): print("Cam Error"); return
+    cap = get_camera()
+    if not cap:
+        print("❌ Cam Error: 모든 소스를 시도했지만 카메라를 찾을 수 없습니다."); return
     
     window_name = "Gilbot"
     img_file = "capture.jpg"
