@@ -46,7 +46,7 @@ class ObstacleNode(Node):
 
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
-    self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
+    # self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
     self.pause_pub = self.create_publisher(Bool, '/pause_patrol', 10) # 순찰 노드에 일시정지를 요청
     self.obstacle_status_pub = self.create_publisher(Bool, '/obstacle_detected_status', 10) # 행동트리에서 장애물 감지 여부 파악 위한 토픽
     self.pub_ui_log = self.create_publisher(String, 'obstacle_ui_log', 10)
@@ -347,20 +347,16 @@ class ObstacleNode(Node):
             self.detour_direction = -0.7 # 우회전 (음수)
             self.get_logger().info('라이다 분석 결과: 우측 공간이 넓어 우회전으로 우회합니다.')
 
-          # 가짜벽 생성
-          self.fake_scan = copy.deepcopy(self.latest_scan_msg)
-          self.fake_scan.ranges = [float('inf')] * len(self.fake_scan.ranges)
-
-          # 360도 라이다 데이터 중 전방 40도 구역 설정
-          num_ranges = len(self.fake_scan.ranges)
-          idx_15 = int(num_ranges * (20 / 360))
-          idx_345 = int(num_ranges * (340 / 360))
-
-          for i in range(num_ranges):
-            if i < idx_15 or i > idx_345:
-              self.fake_scan.ranges[i] = 0.6 # 60cm에 가짜 벽 생성
-
-          self.virtual_obstacle_pub.publish(self.fake_scan)
+          # [주석 처리] 가짜벽 생성 및 발행 (필요 시 해제)
+          # self.fake_scan = copy.deepcopy(self.latest_scan_msg)
+          # self.fake_scan.ranges = [float('inf')] * len(self.fake_scan.ranges)
+          # num_ranges = len(self.fake_scan.ranges)
+          # idx_15 = int(num_ranges * (20 / 360))
+          # idx_345 = int(num_ranges * (340 / 360))
+          # for i in range(num_ranges):
+          #   if i < idx_15 or i > idx_345:
+          #     self.fake_scan.ranges[i] = 0.6 # 60cm에 가짜 벽 생성
+          # self.virtual_obstacle_pub.publish(self.fake_scan)
 
           pause_msg = Bool()
           pause_msg.data = False
@@ -381,8 +377,9 @@ class ObstacleNode(Node):
           twist_msg.angular.z = self.detour_direction # 분석한 방향으로 회전
           self.cmd_vel_pub.publish(twist_msg)
 
-          if self.fake_scan is not None: # 우회 시작 후에도 가짜 벽 유지 (실제 장애물과의 충돌 방지)
-            self.virtual_obstacle_pub.publish(self.fake_scan) # 교체 발행으로 가짜 벽 지속
+          # [주석 처리] 우회 시작 후에도 가짜 벽 유지 (필요 시 해제)
+          # if self.fake_scan is not None:
+          #   self.virtual_obstacle_pub.publish(self.fake_scan)
         else:
           self.is_detouring = False
           self.is_new_path_generated = False
