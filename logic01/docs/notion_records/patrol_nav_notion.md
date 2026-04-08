@@ -27,15 +27,17 @@
 
 ```python
 def get_result_callback(self, future):
-    """내비게이션 결과 수신 및 성공 여부 판단"""
-    result = future.result()
-    if result.status == GoalStatus.STATUS_SUCCEEDED:
-        self.get_logger().info(f'[{self.current_shelf_name}] 도착 완료.')
-        self.wait_at_shelf() # 도착 후 비차단형 대기 실행
+    """내비게이션 결과 수신 및 상태별 시퀀스 제어"""
+    status = future.result().status
+    if status == GoalStatus.STATUS_SUCCEEDED:
+        self.get_logger().info(f'[{self.current_shelf_name}] 도착 완료. AI 검증 후 다음 지점으로.')
+        self.proceed_to_next_shelf()
+    elif status == GoalStatus.STATUS_ABORTED or status == GoalStatus.STATUS_CANCELED:
+        # 장애물 우회 등으로 인한 중단 시, 순찰 종료 없이 대기 또는 재시도
+        self.get_logger().warn('주행이 중단되었으나 순찰 상태를 유지합니다.')
     else:
-        # 장애물 등으로 인한 주행 실패 시에도 복구(skip) 로직 수행
-        self.get_logger().warn('이동 실패. 다음 목표로 진행합니다.')
-        self.send_next_goal()
+        self.is_patrolling = False
+        self.get_logger().error('회복 불가능한 주행 실패로 순찰을 중단합니다.')
 ```
 
 ### **2. ROS2 표준 YAML 구조 (shelf_coords.yaml)**
@@ -44,9 +46,14 @@ def get_result_callback(self, future):
 /**:
   ros__parameters:
     shelves:
-      shelf_1: {x: 0.5, y: 0.0, yaw: 0.0}
-      shelf_2: {x: 1.2, y: -0.5, yaw: 1.57}
-      # ... (중합 구조를 통한 표준 파라미터 호환성 확보)
+      TAG-A1-001: 
+        tag_barcode: '8801043036436'
+        waypoint_id: 2
+        x: -0.5233, y: -0.2373, yaw: 0.0
+      TAG-A1-002: 
+        tag_barcode: '8801111611312'
+        waypoint_id: 3
+        x: 0.4778, y: -0.1872, yaw: 0.0
 ```
 
 ---
@@ -56,18 +63,12 @@ def get_result_callback(self, future):
 <aside>
 💡 **v1.0 개발 노트 및 트러블슈팅 :**
 
-1. **내비게이션 논리적 버그**:
-    - 문제: 장애물 등으로 주행 실패 시에도 무조건 "도착"으로 간주하고 정지 시간을 가지는 현상.
-    - 해결: `GoalStatus.STATUS_SUCCEEDED` 상태값만 필터링하도록 로직 강화.
-2. **Nav2 서버 연결 안정성**:
-    - 문제: 서버 준비 전 목표 전송 시 노드 멈춤 현상 발생.
-    - 해결: `wait_for_server()` 방어 코드를 추가하여 연결 확인 후 주행 명령 전송.
-3. **네임스페이스(TB3_2) 환경 정합성**:
-    - 문제: 프레임 이름 하드코딩으로 인한 데이터 단절 발생.
-    - 해결: 명령어 실행 시 `__ns:=/TB3_2` 옵션 및 전용 런칭 파일 작성 필수 적용.
-4. **Humble 버전 플러그인 로딩 에러**:
-    - 문제: Nav2 파라미터 내 플러그인 구분자(`::`) 불일치로 인한 크래시.
-    - 해결: 구분자를 `/`로 전면 수정하여 로딩 실패 해결.
+5. **주행 중단 대응 결함**:
+    - 문제: 장애물 회피를 위한 자발적 취소(CANCELED) 시에도 전체 순찰이 중단되는 현상.
+    - 해결: `STATUS_CANCELED` 및 `ABORTED` 상태를 예외 처리하여 순찰 시퀀스를 보존함.
+6. **좌표 및 태그 명칭 불일치**:
+    - 문제: DB와 로컬 YAML 간의 이름(shelf_1 vs TAG-A1-001) 불일치로 인한 혼동.
+    - 해결: DB의 표준 명칭으로 YAML 키를 통일하고 AMCL 실측 좌표를 반영함.
 </aside>
 
 ---

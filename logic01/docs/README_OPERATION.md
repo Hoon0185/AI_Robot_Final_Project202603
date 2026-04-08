@@ -32,9 +32,9 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 
 ### [Step 1] 순찰 및 장애물 회피 실행 (PC)
 - `patrol_main` 패키지로 통합된 장애물 회피 노드가 포함된 통합 순찰 런치를 실행합니다.
+- **중요**: 소스 코드를 수정했다면 반드시 빌드 후 실행해야 합니다.
 ```bash
-source install/setup.bash
-colcon build --packages-select patrol_main protect_product_msgs protect_product
+colcon build --symlink-install --packages-select patrol_main
 source install/setup.bash
 ros2 launch patrol_main patrol.launch.py
 ```
@@ -78,11 +78,10 @@ ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
 
 ---
 
-## 4. 기능 확인 및 트러블슈팅
-*   **10초 고정 현상**: 상위 폴더(`..`)에 `build/install`이 중복 존재하면 구버전이 실행될 수 있습니다. `rm -rf ../build ../install` 등으로 정리 후 `source install/setup.bash`를 수행하세요.
-*   **서버 동기화**: `patrol_node` 실행 시 최초 한 번 서버 설정을 즉시 가져오며, 주기적 Polling 없이 이벤트 기반으로 동작합니다.
-*   **미니맵 마커**: 로봇이 움직이는데 미니맵 마커가 고정되어 있다면 백엔드 서버(8000번 포트)의 `/patrol/list` 응답을 확인하세요.
-*   **코스트맵 정화**: 로봇이 막혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
+*   **빌드 누락 주의**: 코드를 수정했는데도 예전 에러 로그가 계속 뜬다면, `colcon build --symlink-install` 명령어가 빠지지 않았는지 확인하세요.
+*   **순찰 중단 로그 추적**: 순찰이 갑자기 멈춘다면 터미널 로그에서 **`[상태 변경] ...`**으로 시작하는 메시지를 찾으세요. 시스템이 순찰을 종료한 구체적인 원인(긴급 정지, 복귀 명령, 주행 실패 등)을 즉시 알 수 있습니다.
+*   **Aborted(6) 발생 시**: 장애물 회피 중 Preemption에 의해 Aborted가 발생해도 현재의 로봇은 순찰을 종료하지 않고 대기 후 재주행하도록 설계되어 있습니다.
+*   **코스트맵 정화**: 로봇이 주변 장애물을 실제보다 크게 인식하여 갇혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
     ```bash
     ros2 service call /local_costmap/clear_entirely_local_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
     ```

@@ -57,23 +57,25 @@ def parameter_callback(self, params):
     return SetParametersResult(successful=True)
 ```
 
-### **2. Patrol Main Node (순차 방문 로직)**
+### **2. Patrol Main Node (주행 제어 및 결과 처리)**
 
 ```python
 def get_result_callback(self, future):
-    """내비게이션 결과 수신 및 바코드 판독 데이터 서버 전송"""
+    """내비게이션 결과 수신 및 주행 중단 상황 방어 로직"""
     self._goal_handle = None
     status = future.result().status
+
     if status == GoalStatus.STATUS_SUCCEEDED:
-        # 바코드 판독 시퀀스 실행 및 DB 리포팅
-        tag_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
-        detected = self.simulate_barcode_scan() 
-        self.db.report_detection(tag_barcode, detected, 0.98)
-        
-        self.get_logger().info(f'[{shelf_name}] 도착 및 판독 완료.')
-        self.proceed_to_next_shelf() # 비차단형 타이머 기반 이동
+        # 정상 도착 시 AI 검증 시퀀스 시작
+        self.get_logger().info(f'[{shelf_name}] 도착 완료. AI 검증 대기 중...')
+        self.start_ai_verification() 
+    elif status == GoalStatus.STATUS_ABORTED or status == GoalStatus.STATUS_CANCELED:
+        # 장애물 우회 등으로 인한 중단 시 순찰을 끄지 않고 유지
+        self.get_logger().warn(f'Navigation interrupted (code: {status}). Maintaining patrol state.')
     else:
-        self.send_next_goal()
+        # 복구 불가능한 에러 시에만 종료
+        self.is_patrolling = False
+        self.get_logger().error(f'Navigation failed. Stopping patrol.')
 ```
 
 ### **3. Manual Trigger Service Interface**
@@ -97,8 +99,11 @@ def manual_trigger_callback(self, request, response):
 /**:
   ros__parameters:
     shelves:
-      shelf_1: {x: 0.5, y: 0.0, yaw: 0.0}
-      # ... (중합 구조를 통한 표준 파라미터 호환성 확보)
+      TAG-A1-001: 
+        tag_barcode: '8801043036436'
+        waypoint_id: 2
+        x: -0.5233, y: -0.2373, yaw: 0.0
+      # ... (중합 구조를 통한 표준 파라미터 및 DB 메타데이터 통합 관리)
 ```
 
 ---
@@ -200,13 +205,21 @@ def manual_trigger_callback(self, request, response):
 * 문제: 타이머 콜백 내에서 지속적인 `get_parameter` 호출로 인한 부하 및 데드락 위험.
 * 해결: 전용 `update_config` 함수를 통한 **이벤트 기반(On Set Parameter)** 업데이트 로직 고도화.
 
-**17. PatrolInterface 초기화 오류 (AttributeError):**
-* 문제: `last_command_execution_times` 속성 미초기화로 인한 런타임 에러.
-* 해결: 생성자(`__init__`) 내 초기화 코드 추가 및 상태 저장소(`processed_ids`) 위치 최적화.
-
 **18. BT Navigator 경로 치환 실패 (replace_at_runtime):**
 * 문제: `RewrittenYaml`이 런타임에 XML 경로를 제대로 찾지 못하는 환경적 결함.
 * 해결: `total_patrol.launch.py` 내부에 Python 기반의 **YAML 사전 처리(Pre-processing)** 로직을 도입하여 경로 치환의 신뢰성을 100% 확보.
+
+**19. 주행 중단(Status 5/6) 시 순찰 강제 종료:**
+* 문제: 장애물 회피를 위한 주행 취소 발생 시 순찰 시퀀스가 완전히 멈춤.
+* 해결: `get_result_callback` 로직을 개선하여 `ABORTED` 및 `CANCELED` 상태에서 순찰 플래그(`is_patrolling`)를 유지하도록 방어 코드 구축.
+
+**20. 대기 시간 파라미터 하드코딩:**
+* 문제: 장애물 및 AI 대기 시간이 코드에 고정되어 있어 실시간 조정 불가.
+* 해결: 원격 서버(Web DB)의 설정값과 실시간 동기화하여 대시보드에서 즉시 제어 가능하게 함.
+
+**21. 선반 이름 및 좌표 일관성 결여:**
+* 문제: `shelf_1` 등 임시 이름을 사용하여 실제 환경 태그와의 매칭이 어려움.
+* 해결: `TAG-A1-001` 등 표준 명칭을 키값으로 사용하고 실측 좌표 및 바코드를 YAML에 통합.
 </aside>
 </aside>
 
