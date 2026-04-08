@@ -7,6 +7,9 @@ from typing import List, Optional
 from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
+import cv2
+import subprocess
+from fastapi.responses import StreamingResponse
 
 # 환경 변수 로드 (.env 파일이 있으면 읽어옴)
 load_dotenv()
@@ -1164,6 +1167,53 @@ async def clear_robot_alert():
     current_robot_alert["active"] = False
     current_robot_alert["timestamp"] = None
     return {"status": "success"}
+
+# --- HMI Video Feed (MJPEG) ---
+RTSP_URL = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/stream1")
+
+def gen_frames():
+    # RTSP 스트림에서 프레임을 읽어와 MJPEG 형식으로 변환하여 전송
+    cap = cv2.VideoCapture(RTSP_URL)
+    while True:
+        success, frame = cap.read()
+        if not success:
+            # 실패 시 재연결 시도
+            cap.release()
+            time.sleep(1)
+            cap = cv2.VideoCapture(RTSP_URL)
+            continue
+        
+        # 프레임 크기 조정 (부하 감소 및 HMI 최적화)
+        frame = cv2.resize(frame, (640, 480))
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+@app.get("/video_feed")
+async def video_feed():
+    return StreamingResponse(gen_frames(), 
+                            media_type='multipart/x-mixed-replace; boundary=frame')
+
+# --- HMI Chat Trigger Endpoints ---
+@router.post("/hmi/where")
+async def hmi_where():
+    try:
+        # 서브프로세스로 실행하여 독립적인 오디오/API 처리 보장
+        script_path = os.path.join(os.path.dirname(__file__), "../experiments/chat/hmi_where.py")
+        result = subprocess.run(["python3", script_path], capture_output=True, text=True, check=True)
+        return {"status": "success", "response": result.stdout.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/hmi/what")
+async def hmi_what():
+    try:
+        script_path = os.path.join(os.path.dirname(__file__), "../experiments/chat/hmi_what.py")
+        result = subprocess.run(["python3", script_path], capture_output=True, text=True, check=True)
+        return {"status": "success", "response": result.stdout.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # API 라우터 최종 등록
 app.include_router(router)

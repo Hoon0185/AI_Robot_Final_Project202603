@@ -149,26 +149,45 @@ header {
 .controls {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    flex-grow: 1;
+    gap: 15px; /* 더 넓게 */
+    margin-top: auto; 
+    transition: opacity 0.3s;
 }
 
-.btn {
-    border: none;
-    border-radius: 16px;
-    color: white;
-    font-weight: 600;
-    cursor: pointer;
+/* Video Mode Logic */
+.video-mode .stats-grid,
+.video-mode .alert-banner,
+.video-mode .controls {
+    display: none;
+}
+
+.video-mode {
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 20px;
+}
+
+.btn {
+    border: none;
+    border-radius: 16px; /* 더 둥글고 크게 */
+    color: white;
+    font-weight: 800; /* 더 강조 */
+    cursor: pointer;
+    display: flex;
+    flex-direction: row; 
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
     transition: all 0.2s;
-    font-size: 32px;
-    padding: 40px 20px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    font-size: 22px; /* 훨씬 크게 */
+    padding: 22px 15px; /* 상하 패딩 대폭 증가 */
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
     text-transform: uppercase;
+}
+
+.btn-ai-small {
+    /* 특수 스타일 필요 시 사용 */
 }
 
 .btn:disabled {
@@ -180,7 +199,66 @@ header {
 }
 
 .btn i {
-    font-size: 40px;
+    font-size: 28px;
+}
+
+/* Video Feed Styling */
+.video-container {
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 10px;
+    flex-grow: 1;
+    min-height: 150px;
+    display: none; /* Hidden by default */
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.video-mode .video-container {
+    display: flex;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.video-container img {
+    width: 400px; /* 고정 너비 */
+    height: auto;
+    max-width: 100%;
+    object-fit: contain;
+    cursor: pointer;
+}
+
+.video-container img:active {
+    opacity: 0.8;
+}
+
+.video-loader {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: var(--primary);
+}
+
+.video-label {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
 }
 
 .btn:active { transform: scale(0.95); }
@@ -192,13 +270,31 @@ header {
 
 footer {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column; /* 세로 배치 */
+    align-items: flex-start;
+    gap: 4px;
     font-size: 12px;
     color: var(--text-muted);
-    margin-top: 15px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    padding-top: 10px;
+    margin-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 12px;
+}
+
+.ai-response {
+    color: #4cd964; /* 가독성 좋은 녹색 계열 */
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.5;
+    word-break: break-all; /* 영역 넘침 방지 */
+    overflow-wrap: break-word;
+    max-width: 100%;
+    margin-top: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 12px;
+    border-radius: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: all 0.3s;
 }
 
 #current-time {
