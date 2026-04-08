@@ -88,6 +88,9 @@ class PatrolNode(Node):
                 self.shelves = db_plan
                 self.shelf_list = list(self.shelves.keys())
                 self.get_logger().info(f"Successfully loaded {len(self.shelves)} planned waypoints in sequence from Remote DB.")
+                
+                # [추가] DB에서 가져온 최신 좌표를 로컬 YAML 파일에 동기화(저장)
+                self.save_shelves_to_yaml()
                 return
         except Exception as e:
             self.get_logger().warn(f"Failed to fetch patrol plan from DB: {e}. Falling back to YAML.")
@@ -106,6 +109,30 @@ class PatrolNode(Node):
             else:
                 self.shelves = config.get('shelves', {})
         self.shelf_list = list(self.shelves.keys())
+
+    def save_shelves_to_yaml(self):
+        """현재 메모리에 있는 선반 좌표를 shelf_coords.yaml 파일에 저장합니다."""
+        try:
+            # 저장 경로 설정: 소스 코드 위치 우선 탐색
+            pkg_dir = get_package_share_directory('patrol_main')
+            yaml_path = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
+            
+            # ROS 2 파라미터 표준 형식으로 데이터 구조화
+            yaml_data = {
+                '/**': {
+                    'ros__parameters': {
+                        'shelves': self.shelves
+                    }
+                }
+            }
+            
+            with open(yaml_path, 'w') as f:
+                yaml.dump(yaml_data, f, default_flow_style=False)
+            
+            self.get_logger().info(f"Successfully synchronized webDB coordinates to {yaml_path}")
+            
+        except Exception as e:
+            self.get_logger().error(f"Failed to save shelves to YAML: {e}")
 
     def pause_callback(self, msg):
         """장애물 감지 시 순찰 노드가 하는 역할"""
