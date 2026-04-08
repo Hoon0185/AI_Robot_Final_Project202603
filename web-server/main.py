@@ -107,24 +107,17 @@ class WaypointUpdate(BaseModel):
 
 # 데이터베이스 연결 함수
 def get_db_connection():
-    db_mode = os.getenv("DB_MODE", "local").lower()
+    # 이제 항상 원격(remote) DB를 사용합니다.
+    db_mode = os.getenv("DB_MODE", "remote").lower()
     
-    if db_mode == "remote":
-        config = {
-            "host": os.getenv("REMOTE_DB_HOST", "16.184.56.119"),
-            "port": int(os.getenv("REMOTE_DB_PORT", 3306)),
-            "user": os.getenv("REMOTE_DB_USER", "gilbot"),
-            "password": os.getenv("REMOTE_DB_PASSWORD", "robot123"),
-            "database": os.getenv("REMOTE_DB_NAME", "gilbot")
-        }
-    else:  # default to local
-        config = {
-            "host": os.getenv("LOCAL_DB_HOST", "localhost"),
-            "port": int(os.getenv("LOCAL_DB_PORT", 3306)),
-            "user": os.getenv("LOCAL_DB_USER", "gilbot"),
-            "password": os.getenv("LOCAL_DB_PASSWORD", "robot123"),
-            "database": os.getenv("LOCAL_DB_NAME", "gilbot")
-        }
+    # 원격 DB 설정 (기본값)
+    config = {
+        "host": os.getenv("REMOTE_DB_HOST", "16.184.56.119"),
+        "port": int(os.getenv("REMOTE_DB_PORT", 3306)),
+        "user": os.getenv("REMOTE_DB_USER", "gilbot"),
+        "password": os.getenv("REMOTE_DB_PASSWORD", "robot123"),
+        "database": os.getenv("REMOTE_DB_NAME", "gilbot")
+    }
         
     try:
         connection = mysql.connector.connect(
@@ -138,7 +131,7 @@ def get_db_connection():
 
 @router.get("/")
 async def root():
-    db_mode = os.getenv("DB_MODE", "local").lower()
+    db_mode = os.getenv("DB_MODE", "remote").lower()
     return {
         "message": "Welcome to Gilbot API Server",
         "docs": "/docs",
@@ -275,7 +268,7 @@ async def get_status():
             res_cmd = str(actual_latest['command_type']).strip() if actual_latest else "None"
 
             # 디버깅용 로그 출력
-            db_mode = os.getenv("DB_MODE", "local").lower()
+            db_mode = os.getenv("DB_MODE", "remote").lower()
             print(f"[{datetime.now().strftime('%H:%M:%S')}] STATUS CHECK: mode_cmd={mode_cmd}(ID:{mode_cmd_id}), patrol_status={p_status}, db_mode={db_mode}")
 
         except Exception as e:
@@ -285,7 +278,7 @@ async def get_status():
             conn.close()
 
     # 실제 접속된 DB 호스트 확인 (환경 변수 또는 기본값)
-    db_mode = os.getenv("DB_MODE", "local").lower()
+    db_mode = os.getenv("DB_MODE", "remote").lower()
     actual_db_host = os.getenv(f"{db_mode.upper()}_DB_HOST", "localhost")
 
     return {
