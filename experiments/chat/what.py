@@ -110,10 +110,20 @@ def search_product_db(product_name):
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT * FROM product_master WHERE product_name LIKE %s OR product_name LIKE %s;"
+        # Bringing back the full JOIN query to get location
+        query = """
+            SELECT pm.*, w.waypoint_name 
+            FROM product_master pm 
+            LEFT JOIN waypoint_product_plan wpp ON pm.product_id = wpp.product_id 
+            LEFT JOIN waypoint w ON wpp.waypoint_id = w.waypoint_id 
+            WHERE pm.product_name LIKE %s OR pm.product_name LIKE %s
+            LIMIT 1;
+        """
         cursor.execute(query, (f"%{product_name}%", f"{product_name[:2]}%"))
         return cursor.fetchone()
-    except: return None
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return None
     finally:
         if 'conn' in locals() and conn.is_connected():
             cursor.close(); conn.close()
