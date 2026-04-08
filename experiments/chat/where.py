@@ -173,6 +173,53 @@ def search_product_location(product_name):
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
             conn.close()
+def get_all_products():
+    """Fetches all product names and their categories from the database."""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT product_name, category FROM product_master;")
+        return cursor.fetchall()
+    except:
+        return []
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close(); conn.close()
+
+def resolve_fuzzy_product(recognized_text, products):
+    """Uses Gemini to match an ambiguous user input to the actual inventory."""
+    if not client or not products:
+        return None, 0
+        
+    inventory_str = "\n".join([f"- {p['product_name']} ({p['category']})" for p in products])
+    
+    prompt = f"""
+    사용자의 전체 발화: "{recognized_text}"
+    우리 매장의 실제 재고 목록 (상품명 및 카테고리):
+    {inventory_str}
+    
+    [미션]
+    사용자의 말에는 상품명 오인식(STT 에러)이나 카테고리 힌트(예: 과자, 음료 등)가 섞여 있을 수 있습니다.
+    목록 중에서 사용자가 실제로 찾으려고 했을 가능성이 가장 높은 상품을 하나만 골라주세요.
+    
+    [응답 서식]
+    - [MATCH]: 상품명 (정확히 목록에 있는 이름으로, 없으면 None)
+    - [CONFIDENCE]: 확신도 % (0~100 숫자만)
+    - [REASON]: 판단 근거 (예: "과자 카테고리와 발음의 유사성으로 보아 '포스틱'일 확률 높음")
+    """
+    
+    try:
+        response = client.models.generate_content(model="gemini-2.1-flash", contents=prompt)
+        res_text = response.text.strip()
+        match_name = "None"; confidence = 0
+        for line in res_text.split('\n'):
+            if "[MATCH]:" in line: match_name = line.split(":", 1)[1].strip()
+            if "[CONFIDENCE]:" in line:
+                try: confidence = int("".join(filter(str.isdigit, line)))
+                except: confidence = 0
+        return match_name, confidence
+    except:
+        return None, 0
 
 def main():
     print("\n" + "★"*30)
@@ -194,23 +241,36 @@ def main():
             recognized_text, product_name, bot_response = get_product_from_audio(audio_file)
             print(f"나: \"{recognized_text}\"")
 
-            # Final check to prevent hallucinations: If there's a product, force DB check
-            if product_name and product_name.lower() != "none":
-                res = search_product_location(product_name)
-                if not res or res['stock'] <= 0:
-                    bot_response = f"고객님! {product_name}. 현재 품절입니다."
+            # --- [시맨틱 검색 레이어 시작] ---
+            # 1단계: 직접 매칭 시도
+            res = search_product_location(product_name)
+            
+            # 2단계: 실패 시 지능형 재분석 시도 (Fuzzy Matching)
+            if not res and recognized_text != "인식 실패":
+                print("🔍 직접 매칭 실패. 지능형 문맥 분석(Fuzzy Match)을 시작합니다...")
+                all_products = get_all_products()
+                suggested_name, confidence = resolve_fuzzy_product(recognized_text, all_products)
+                
+                if suggested_name and suggested_name.lower() != "none" and confidence > 0:
+                    if confidence >= 90:
+                        print(f"✅ 높은 확신도({confidence}%): '{suggested_name}'(으)로 최종 결정")
+                        res = search_product_location(suggested_name)
+                    else:
+                        print(f"🤔 낮은 확신도({confidence}%): '{suggested_name}' 제안 모드")
+                        bot_response = f"고객님! 혹시 {suggested_name} 말씀이신가요? 매장에 그 상품이 있습니다."
+            # --- [시맨틱 검색 레이어 끝] ---
+
+            # Final check and Guide Generation
+            if res:
+                if res['stock'] <= 0:
+                    bot_response = f"고객님! {res['name']}. 현재 품절입니다."
                 elif not res['location']:
                     bot_response = f"상품이 진열되어 있지 않습니다. 재고가 있으니 카운터에 문의하세요."
                 else:
-                    # Parse location (e.g., TAG-A1-001 -> A1)
                     raw_loc = res['location']
                     aisle = raw_loc.split('-')[1] if '-' in raw_loc else raw_loc
-                    # STRICT OVERRIDE: Ignore Gemini's bot_response, use our verified template
-                    # Add a period after the product name for a natural pause in TTS
                     bot_response = f"고객님! {res['name']}. {aisle} 매대에 있습니다."
-            
-            # Additional safety: If Gemini hallucinated a location without product_name
-            elif "[LOCATION_RESULT]" in bot_response:
+            elif not res and "[LOCATION_RESULT]" in bot_response:
                 bot_response = "죄송합니다. 요청하신 상품의 위치를 찾을 수 없습니다."
 
             print(f"길봇: \"{bot_response}\"")

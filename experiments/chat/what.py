@@ -62,7 +62,7 @@ def identify_product_from_image(image_data):
     """
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.1-flash",
             contents=[prompt, genai.types.Part.from_bytes(data=image_data, mime_type="image/jpeg")]
         )
         res_text = response.text.strip()
@@ -73,6 +73,46 @@ def identify_product_from_image(image_data):
         return product_name, bot_response
     except Exception as e:
         return None, f"Gemini Error: {e}"
+
+def get_all_products():
+    """Fetches all product names and their categories from the database."""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT product_name, category FROM product_master;")
+        return cursor.fetchall()
+    except: return []
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close(); conn.close()
+
+def resolve_fuzzy_product(detected_name, products):
+    """Refines the detected name using actual inventory context."""
+    if not client or not products: return None, 0
+    inventory_str = "\n".join([f"- {p['product_name']} ({p['category']})" for p in products])
+    prompt = f"""
+    시각 인식 결과: "{detected_name}"
+    실제 재고 목록:
+    {inventory_str}
+    
+    인식된 이름이 실제 DB 이름과 미세하게 다를 수 있습니다(예: '포테이토칩' -> '포테토칩').
+    가장 일치하는 실제 상품명을 골라주세요.
+    
+    [응답]
+    - [MATCH]: 정확한 상품명 (목록에 없으면 None)
+    - [CONFIDENCE]: 확신도 %
+    """
+    try:
+        response = client.models.generate_content(model="gemini-2.1-flash", contents=prompt)
+        res_text = response.text.strip()
+        match_name = detected_name; confidence = 0
+        for line in res_text.split('\n'):
+            if "[MATCH]:" in line: match_name = line.split(":", 1)[1].strip()
+            if "[CONFIDENCE]:" in line:
+                try: confidence = int("".join(filter(str.isdigit, line)))
+                except: confidence = 0
+        return match_name, confidence
+    except: return detected_name, 0
 
 def search_product_db(product_name):
     if not product_name or product_name.lower() == "none": return None
@@ -107,7 +147,7 @@ def get_camera():
 
 def main():
     print("\n" + "★"*40)
-    print("  GILBOT NEXTION VISION ASSISTANT (CAMERA FLIPPED)")
+    print("  GILBOT NEXTION VISION (INTELLIGENT MODE)")
     print("★"*40)
     
     cap = get_camera()
@@ -118,18 +158,14 @@ def main():
     img_file = "capture.jpg"
 
     while True:
-        # STEP 1: HIDDEN 
-        print("\n[대기 중] 눈앞의 사물을 확인하려면 [Enter]를 누르세요. (종료: q)")
+        print("\n[대기 중] [Enter]를 누르세요. (종료: q)")
         key_input = input(">> ")
         if key_input.lower() == 'q': break
 
-        # STEP 2: PREVIEW 
         print("카메라를 켭니다. [Space]를 눌러 분석하세요.")
         while True:
             ret, frame = cap.read()
             if not ret: break
-            
-            # Flip 180 deg for upside-down camera mount
             frame = cv2.flip(frame, -1)
             frame = cv2.resize(frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
             cv2.imshow(window_name, frame)
@@ -142,44 +178,43 @@ def main():
                 cv2.waitKey(1)
                 
                 with open(img_file, "rb") as f: image_data = f.read()
-                prod_key, bot_text = identify_product_from_image(image_data)
+                prod_key_raw, bot_text = identify_product_from_image(image_data)
                 
-                # FACT CHECK with DB
+                # Semantic Refinement
+                all_prods = get_all_products()
+                prod_key, confidence = resolve_fuzzy_product(prod_key_raw, all_prods)
+                if confidence >= 90: prod_key = prod_key
+                else: prod_key = prod_key_raw # Fallback or Suggest
+
+                # DB Context Guide
                 db_res = search_product_db(prod_key)
                 if db_res:
                     raw_loc = db_res['waypoint_name'] if db_res['waypoint_name'] else "미진열"
                     aisle = raw_loc.split('-')[1] if '-' in raw_loc else raw_loc
                     stock = db_res['current_inventory_qty']
-                    
                     if stock <= 0:
                         final_msg = f"고객님! {db_res['product_name']}. 현재 품절입니다."
                     else:
                         final_msg = f"고객님! {db_res['product_name']}. {aisle} 매대에 있습니다."
                 else:
-                    # Clean up Gemini's response (remove 은/는 if present)
-                    clean_bot = bot_text.replace("은(는) ", " ").replace("은 ", " ").replace("는 ", " ")
-                    final_msg = clean_bot if prod_key != "None" else "상품을 찾을 수 없습니다."
+                    final_msg = f"고객님! {prod_key}. 상품을 찾을 수 없어요."
 
-                # STEP 3: RESULT 
                 print(f"결과: {final_msg}")
                 draw_text_overlay(frame, final_msg)
                 cv2.imshow(window_name, frame)
                 speak_result(final_msg)
                 
-                print("안내를 마치려면 [Space]를 누르세요.")
+                print("[Space]를 눌러 창을 닫으세요.")
                 while True:
                     key_inner = cv2.waitKey(1) & 0xFF
                     if key_inner == ord(' '): break
                     if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1: break
-                
                 cv2.destroyAllWindows()
                 break 
 
             elif key == ord('q') or key == 27:
                 cv2.destroyAllWindows()
-                cap.release()
-                return
-
+                cap.release(); return
     cap.release()
     cv2.destroyAllWindows()
 
