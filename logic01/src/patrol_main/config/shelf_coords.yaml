@@ -2,18 +2,26 @@
   ros__parameters:
     shelves:
       TAG-A1-001:
-        x: 0.4778
-        y: -0.1872
-        yaw: -0.1499
-      TAG-A1-002:
+        tag_barcode: '8801043036436'
+        waypoint_id: 2
         x: -0.5233
         y: -0.2373
-        yaw: 0.0842
+        yaw: 0.0
+      TAG-A1-002:
+        tag_barcode: '8801111611312'
+        waypoint_id: 3
+        x: 0.4778
+        y: -0.1872
+        yaw: 0.0
       TAG-B1-001:
+        tag_barcode: '8801117784409'
+        waypoint_id: 4
         x: -1.0757
         y: 1.6363
-        yaw: 3.0595
+        yaw: 0.0
       TAG-B1-002:
+        tag_barcode: '8801117165802'
+        waypoint_id: 5
         x: 0.1601
         y: 1.7781
-        yaw: -3.0558
+        yaw: 0.0

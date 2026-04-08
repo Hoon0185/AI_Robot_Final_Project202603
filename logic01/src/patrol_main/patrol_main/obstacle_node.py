@@ -374,7 +374,25 @@ class ObstacleNode(Node):
       else: # 이미 우회 시작한 상태에서는 5초 동안 제자리 회전으로 장애물 피하기
         elapsed = (self.get_clock().now() - self.detour_start_time).nanoseconds / 1e9
 
-        if elapsed < self.current_wait_time:
+        if elapsed < 0.5:
+          # [추가] 우회 중 정면에 장애물이 사라졌는지 체크 (조기 종료 로직)
+          if self.latest_scan_msg is not None:
+            num_ranges = len(self.latest_scan_msg.ranges)
+            idx_15 = int(num_ranges * (15 / 360))
+            idx_345 = int(num_ranges * (345 / 360))
+            front_area = self.latest_scan_msg.ranges[0:idx_15] + self.latest_scan_msg.ranges[idx_345:num_ranges]
+            valid_front = [r for r in front_area if 0.1 < r < 3.0]
+
+            # 정면 1.0m 이내에 아무것도 없으면 조기 종료 (최소 1초는 회전 후 판단)
+            if elapsed > 1.0 and (not valid_front or min(valid_front) > 1.0):
+              self.get_logger().info('우회 중 정면 경로가 확보되어 조기에 회전을 멈추고 주행을 재개합니다.')
+              self.is_detouring = False
+              self.is_started_moving = False
+              self.fake_scan = None
+              self.stop_robot()
+              self.call_clear_costmap_service()
+              return
+
           twist_msg = Twist()
           twist_msg.linear.x = 0.0
           twist_msg.angular.z = self.detour_direction # 분석한 방향으로 회전
