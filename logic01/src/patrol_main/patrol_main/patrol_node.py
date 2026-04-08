@@ -347,6 +347,12 @@ class PatrolNode(Node):
 
             # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
             self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
+        elif status == GoalStatus.STATUS_ABORTED:
+            # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 순찰을 완전히 끄지 않고 로그만 출력
+            self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting for next action or result.')
+            # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
+            if not self.is_paused:
+                 self.publish_status('nav_alert')
         else:
             self.get_logger().error(f'Navigation FAILED with status code: {status}. Stopping patrol for safety.')
             self.is_patrolling = False
