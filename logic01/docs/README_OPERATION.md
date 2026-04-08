@@ -68,7 +68,9 @@ python3 main.py
 ---
 
 ## 3. 통합 실행 (Total Launch - 가장 권장됨)
-- **`total_patrol.launch.py`**는 `RewrittenYaml` 기능을 통해 설정 파일 내의 경로를 실행 시점에 자동으로 보정합니다. (다른 환경에서도 수정 없이 작동)
+- **`total_patrol.launch.py`**는 Python 기반의 **가변 경로 자동 치환 로직**을 통해 설정 파일 내의 `replace_at_runtime` 표시자를 실행 시점에 로컬 환경의 절대 경로로 강제 수정합니다. 
+- 환경에 구애받지 않고 모든 노드(Nav2, Patrol, AI 등)를 한 번에 안정적으로 실행할 수 있는 최선의 방법입니다.
+
 ```bash
 # 한 번에 실행 (네트워크 안정 시 추천)
 ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false

@@ -1,4 +1,6 @@
 import os
+import yaml
+import tempfile
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node, SetRemap
@@ -13,10 +15,9 @@ def generate_launch_description():
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 
     # Configuration file paths
-    # patrol_main 패키지의 twist_mux 설정 사용
     twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
-    nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml') # 우리 패키지의 파라미터 사용
-    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_01.yaml') # 실제 지도 이름으로 수정
+    nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml')
+    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_01.yaml')
 
     # Launch arguments
     map_frame = LaunchConfiguration('map_frame', default='map')
@@ -24,18 +25,36 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     use_ai_sim = LaunchConfiguration('use_ai_sim', default='false')
 
-    # Dynamic path for BT XML (Portability Fix)
+    # 1. Behavior Tree XML 경로 강제 보정 (Python 기반 하드 치환)
+    # [중요] RewrittenYaml이 런타임에 XML 경로(문자열)를 제대로 찾지 못하는 문제를 해결하기 위해
+    # 런치 실행 시점에 파일을 직접 읽어 문자열 검색/교체를 수행합니다.
     bt_xml_file = os.path.join(pkg_dir, 'config', 'navigate_to_pose_w_replanning_and_recovery.xml')
+    
+    with open(nav2_params_file, 'r') as f:
+        params_data = yaml.safe_load(f)
+    
+    # bt_navigator 섹션 강제 업데이트
+    if 'bt_navigator' in params_data:
+        ros_params = params_data['bt_navigator'].get('ros__parameters', {})
+        if ros_params:
+            ros_params['default_nav_to_pose_bt_xml'] = bt_xml_file
+            ros_params['default_nav_through_poses_bt_xml'] = bt_xml_file
+            params_data['bt_navigator']['ros__parameters'] = ros_params
 
-    # Parameters to rewrite at runtime
+    # 수정한 파라미터를 임시 파일에 저장 (이 파일은 로봇 프로세스가 가동되는 동안 유지됨)
+    temp_params = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+    yaml.dump(params_data, temp_params)
+    modified_params_path = temp_params.name
+    temp_params.close()
+
+    # 2. 파라미터 재작성 (런타임 LaunchConfiguration 대응)
+    # use_sim_time 같은 실행 인자들을 다시 한 번 입힙니다.
     param_substitutions = {
-        'default_nav_to_pose_bt_xml': bt_xml_file,
-        'default_nav_through_poses_bt_xml': bt_xml_file
+        'use_sim_time': use_sim_time
     }
 
-    # Create RewrittenYaml
     configured_params = RewrittenYaml(
-        source_file=nav2_params_file,
+        source_file=modified_params_path,
         root_key='',
         param_rewrites=param_substitutions,
         convert_types=True

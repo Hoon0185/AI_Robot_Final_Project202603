@@ -80,7 +80,10 @@ ros2 run nav2_map_server map_saver_cli -f ~/my_store_map_01
 
 ### B. 내비게이션 실행 (기본 모드)
 **주의**: SLAM을 종료(`Ctrl+C`)한 후 실행해야 프레임 충돌이 없습니다.
+단독 실행보다 **`total_patrol.launch.py`**를 통한 실행이 경로 자동 치환 로직 덕분에 훨씬 안정적이며 권장됩니다.
+
 ```bash
+# 수동 실행 시 (경로 확인 필수)
 ros2 launch turtlebot3_navigation2 navigation2.launch.py \
   use_sim_time:=false \
   autostart:=true \

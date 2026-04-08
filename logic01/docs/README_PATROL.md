@@ -40,8 +40,11 @@ ros2 launch patrol_main patrol.launch.py
 
 ---
 
-## 5. 파이썬 API 사용 가이드 (PatrolInterface)
+### 5. 파이썬 API 사용 가이드 (PatrolInterface)
 UI 파트에서 복잡한 ROS 2 명령어 없이 파이썬 함수 호출만으로 시스템을 제어할 수 있도록 `PatrolInterface` 클래스를 제공합니다.
+
+- **안정성 개선**: `last_command_execution_times` 및 `processed_ids` 초기화 로직이 강화되어, 원격 명령 폴링 시 발생하던 `AttributeError`가 해결되었습니다.
+- **상태 관리**: 명령 실행 이력이 내부적으로 안전하게 관리되어 중복 실행을 방지합니다.
 
 ```python
 from patrol_main.patrol_interface import PatrolInterface
@@ -66,7 +69,7 @@ patrol.shutdown()
 ---
 
 ## 6. 특징 및 권장 설정
-- **이식성 강화 (`RewrittenYaml`)**: `total_patrol.launch.py`를 통해 어떤 컴퓨터 환경에서도 경로 수정 없이 즉시 가동 가능합니다.
+- **강력한 경로 치환 (Python Pre-processing)**: `total_patrol.launch.py`는 이제 `RewrittenYaml`에만 의존하지 않고, Python의 `yaml` 라이브러리를 사용해 실행 시점에 경로를 직접 치환합니다. 이를 통해 어떤 환경에서도 `bt_navigator` 등의 경로 오류 없이 즉시 가동 가능합니다.
 - **네임스페이스 지원**: 모든 서비스 경로를 절대 경로(예: `/obstacle_node/set_parameters`)로 사용하여 확장성을 높였습니다.
 - **장애 대응**: 서버 연결이 일시적으로 끊겨도 로봇은 **가장 최근에 성공적으로 가져온 설정**을 유지하여 작동합니다.
 

@@ -59,6 +59,8 @@ class PatrolInterface:
             self.node.get_logger().error(f"Failed to fetch initial command ID: {e}")
 
         self.last_cmd_name = None
+        self.processed_ids = set()
+        self.last_command_execution_times = {}
         self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
         self.poll_thread.start()
 
@@ -71,7 +73,6 @@ class PatrolInterface:
     def _poll_remote_commands(self):
         """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""
         import time
-        self.processed_ids = set() # 이미 처리한 중복 ID 방어용
         while rclpy.ok():
             try:
                 data = self.db.get_latest_command()

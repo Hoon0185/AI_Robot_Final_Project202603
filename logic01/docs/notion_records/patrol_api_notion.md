@@ -124,7 +124,10 @@ def set_patrol_mode(self, mode):
 5. **세션 종료 누락 방지**:
     * 문제: 순찰이 비정상 종료되거나 수동 중단될 때 서버 세션이 '진행 중'으로 남는 현상.
     * 해결: `patrol_node`의 중지 로직 및 `PatrolInterface`의 복귀 명령 시 `finish_patrol_session()`을 명시적으로 호출하도록 수정.
-6. **원격 명령 추적성 강화**:
-    * 문제: 서버에서 보낸 명령이 로봇에서 중복 실행되거나 실행 여부를 알 수 없음.
-    * 해결: `command_id` 기반의 **실행 체크 및 완료 보고(`complete_command`)** 로직을 API 스레드에 내장.
+7. **PatrolInterface 초기화 오류 (AttributeError)**:
+    * 문제: `last_command_execution_times` 속성이 생성자에서 초기화되지 않아 원격 명령 폴링 시 노드 크래시 발생.
+    * 해결: `__init__` 함수에 해당 딕셔너리 명시적 초기화 추가 및 `processed_ids` 상태 관리 로직 강화.
+8. **BT Navigator 경로 치환 실패 (replace_at_runtime)**:
+    * 문제: `RewrittenYaml`이 중첩된 YAML 구조 내의 Behavior Tree XML 경로(문자열)를 안정적으로 치환하지 못함.
+    * 해결: `total_patrol.launch.py`에서 Python `yaml` 라이브러리를 사용하여 런치 시점에 파일을 직접 읽어 경로를 강제 치환하고 임시 파일을 생성하는 방식으로 고도화.
 </aside>

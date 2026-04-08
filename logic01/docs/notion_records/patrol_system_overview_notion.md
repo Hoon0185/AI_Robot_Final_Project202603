@@ -199,6 +199,15 @@ def manual_trigger_callback(self, request, response):
 **13. 동적 업데이트 발생 시 성능 및 데드락:**
 * 문제: 타이머 콜백 내에서 지속적인 `get_parameter` 호출로 인한 부하 및 데드락 위험.
 * 해결: 전용 `update_config` 함수를 통한 **이벤트 기반(On Set Parameter)** 업데이트 로직 고도화.
+
+**17. PatrolInterface 초기화 오류 (AttributeError):**
+* 문제: `last_command_execution_times` 속성 미초기화로 인한 런타임 에러.
+* 해결: 생성자(`__init__`) 내 초기화 코드 추가 및 상태 저장소(`processed_ids`) 위치 최적화.
+
+**18. BT Navigator 경로 치환 실패 (replace_at_runtime):**
+* 문제: `RewrittenYaml`이 런타임에 XML 경로를 제대로 찾지 못하는 환경적 결함.
+* 해결: `total_patrol.launch.py` 내부에 Python 기반의 **YAML 사전 처리(Pre-processing)** 로직을 도입하여 경로 치환의 신뢰성을 100% 확보.
+</aside>
 </aside>
 
 ---
