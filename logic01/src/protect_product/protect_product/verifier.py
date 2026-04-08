@@ -1,137 +1,99 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
-from protect_product_msgs.msg import DetectionArray
-from cv_bridge import CvBridge
-import cv2
-import sqlite3
-import message_filters
-from rclpy.qos import QoSProfile, ReliabilityPolicy
-from ament_index_python.packages import get_package_share_directory
-import os
+import mysql.connector
+from mysql.connector import Error
 
-class VerifierNode(Node):
+class Verifier:
     def __init__(self):
-        super().__init__('verifier_node')
-        self.bridge = CvBridge()
+        # 1. DB 설정 정보 (직접 입력하거나 환경변수에서 로드)
+        self.db_config = {
+            'host': '16.184.56.119',
+            'user': 'gilbot',
+            'password': 'robot123',
+            'database': 'gilbot',
+            'port': 3306  # 기본 포트
+        }
+        self.conn = None
+        self._connect_db()
 
-        # 1. DB 연결 (동적 경로 사용)
-        pkg_dir = get_package_share_directory('protect_product')
-        db_path = os.path.join(pkg_dir, 'models', 'product.db')
-        
-        # 소스 경로 대비
-        if not os.path.exists(db_path):
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            db_path = os.path.join(current_dir, '..', 'models', 'product.db')
-            
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        self.detector = cv2.QRCodeDetector()
+    def _connect_db(self):
+        """데이터베이스 재연결 로직"""
+        try:
+            if self.conn:
+                self.conn.close()
+            self.conn = mysql.connector.connect(**self.db_config)
+            print("✅ Remote MySQL Database connected")
+        except Error as e:
+            print(f"❌ Database Connection Error: {e}")
+            self.conn = None
 
-        # 2. QoS 설정 (터틀봇 환경)
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            depth=10
-        )
+    def verify(self, qrs, items):
+        if not qrs:
+            return None
 
-        # 3. 메시지 필터 설정 (이미지와 좌표 동기화)
-        # 각 토픽을 구독하는 서브스크라이버 생성
-        self.img_sub = message_filters.Subscriber(
-            self, CompressedImage, '/image_raw/compressed', qos_profile=qos_profile)
-        self.det_sub = message_filters.Subscriber(
-            self, DetectionArray, '/det_objs')
+        # 연결 상태 확인 및 재연결
+        if not self.conn or not self.conn.is_connected():
+            self._connect_db()
+            if not self.conn: return None
 
-        # 두 메시지의 시간차를 고려하여 동기화 (슬롭 0.1초 설정)
-        self.ts = message_filters.ApproximateTimeSynchronizer(
-            [self.img_sub, self.det_sub], queue_size=10, slop=0.1, allow_headerless=True)
-        self.ts.registerCallback(self.sync_callback)
+        # 가장 큰 QR(기준점) 찾기 로직 (기존과 동일)
+        best_qr = max(qrs, key=lambda x: (x['bbox'][2]-x['bbox'][0])*(x['bbox'][3]-x['bbox'][1]))
+        q_cx = (best_qr['bbox'][0] + best_qr['bbox'][2]) / 2
+        detected_barcode = best_qr['text']
 
-        # 4. 검증 결과 이미지 및 데이터 발행
-        self.publisher = self.create_publisher(
-            CompressedImage, '/verif_img/compressed', qos_profile)
-        self.data_publisher = self.create_publisher(
-            DetectionArray, '/verified_objs', 10)
+        # 2. MySQL 실행
+        cursor = self.conn.cursor()
+        try: # (파라미터 문법 변경: ? -> %s)
+            query = "SELECT product_name, yolo_class_id FROM product_master WHERE barcode = %s"
+            cursor.execute(query, (detected_barcode,))
+            row = cursor.fetchone()
+        except Error as e:
+            print(f"Query Error: {e}")
+            row = None
+        finally:
+            cursor.close()
 
-        self.get_logger().info('Verifier 노드 가동: QR 인식 및 DB 대조를 시작합니다.')
+        # 결과 상태 변수 초기화
+        status = '결품'
+        item_name = "물품 확인중..."
+        bbox = [0, 0, 0, 0]
+        confidence = 0.0  # 신뢰도 변수
+        detected_yolo_id = -1 # 클래스 ID
 
-    def sync_callback(self, img_msg, det_msg):
-        # 압축 이미지 복원
-        frame = self.bridge.compressed_imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        detected_codes = []
+        # 가장 가까운 YOLO 물품 매칭 (기존 로직 유지)
+        matched_item = None
+        min_dist = 9999
+        for item in items:
+            p_cx = (item['bbox'][0] + item['bbox'][2]) / 2
+            dist = abs(p_cx - q_cx)
+            if dist < min_dist and dist < 250:
+                min_dist = dist
+                matched_item = item
 
-        # 검출된 모든 객체 루프 (DetectionArray 메시지 구조 사용)
-        for i in range(len(det_msg.class_ids)):
-            x1, y1, x2, y2 = det_msg.x1[i], det_msg.y1[i], det_msg.x2[i], det_msg.y2[i]
-            class_name = det_msg.class_names[i]
-            cls_id = det_msg.class_ids[i] + 1  # DB ID 매칭을 위해 +1
+        # 3. 검증 작업 실행
+        if row:
+            db_product_name, db_yolo_id = row # 튜플 언패킹
 
-            # ROI 추출 (물체 하단 50% 영역에서 QR 탐색)
-            roi_h_start = y2
-            roi_h_end = y2 + int((y2 - y1) * 0.5)
-            roi = frame[roi_h_start:roi_h_end, x1:x2]
+            if matched_item:
+                bbox = matched_item['bbox']
+                current_yolo_id = matched_item['id']
 
-            if roi.size == 0:
-                continue
+                # YOLO ID 비교
+                if int(current_yolo_id) == int(db_yolo_id): # 타입 일치 확인
+                    status = '정상'
+                else:
+                    status = '오배열'
+                item_name = db_product_name
+            else:
+                status = '결품'
+                item_name = db_product_name
+        else:
+            status = '오배열'
+            item_name = "미등록 바코드"
 
-            # QR 코드 인식
-            data, bbox, _ = self.detector.detectAndDecode(roi)
-
-            status_text = "Checking..."
-            color = (255, 255, 0) # Cyan (대기)
-
-            if data:
-                self.get_logger().info(f"QR 발견: {data}")
-                detected_codes.append(data)
-
-                # DB 조회 및 비교
-                self.cursor.execute("SELECT * FROM products WHERE product_id=?", (cls_id,))
-                row = self.cursor.fetchone()
-
-                if row:
-                    product_id_from_db = str(row[0])
-                    if product_id_from_db == data:
-                        status_text = f"[OK] {class_name}"
-                        color = (0, 255, 0) # Green
-                        self.get_logger().info(f"{class_name}: 일치 확인")
-                    else:
-                        status_text = f"[ERR] {class_name} Mismatch"
-                        color = (0, 0, 255) # Red
-                        self.get_logger().warn(f"{class_name}: 불일치 발생!")
-
-            # 시각화: BBox 및 상태 텍스트 그리기
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, status_text, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-        # 최종 가공된 이미지를 전송
-        res_msg = self.bridge.cv2_to_compressed_imgmsg(frame, dst_format='jpg')
-        self.publisher.publish(res_msg)
-
-        # 검증 데이터 발행 (PatrolNode 등에서 수집 가능)
-        v_msg = DetectionArray()
-        v_msg.x1 = det_msg.x1
-        v_msg.y1 = det_msg.y1
-        v_msg.x2 = det_msg.x2
-        v_msg.y2 = det_msg.y2
-        v_msg.class_ids = det_msg.class_ids
-        v_msg.class_names = det_msg.class_names
-        v_msg.barcodes = detected_codes # 인식된 바코드들 (순서 불일치 가능성 대비 필요하나 현재는 단순 리스트)
-        self.data_publisher.publish(v_msg)
-
-    def __del__(self):
-        if hasattr(self, 'conn'):
-            self.conn.close()
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = VerifierNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
+        return {
+            'item_name': item_name,
+            'status': status,
+            'barcode': detected_barcode,
+            'bbox': bbox,
+            'confidence': float(confidence),
+            'yolo_id': int(detected_yolo_id)
+        }
