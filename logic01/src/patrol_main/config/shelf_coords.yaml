@@ -1,19 +1,19 @@
 /**:
   ros__parameters:
     shelves:
-      shelf_1:
+      TAG-A1-001:
         x: 0.4778
         y: -0.1872
         yaw: -0.1499
-      shelf_2:
+      TAG-A1-002:
         x: -0.5233
         y: -0.2373
         yaw: 0.0842
-      shelf_3:
+      TAG-B1-001:
         x: -1.0757
         y: 1.6363
         yaw: 3.0595
-      shelf_4:
+      TAG-B1-002:
         x: 0.1601
         y: 1.7781
         yaw: -3.0558
