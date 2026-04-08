@@ -58,29 +58,32 @@ def get_all_products():
         if 'conn' in locals() and conn.is_connected():
             cursor.close(); conn.close()
 
+import re
+
 def identify_product_from_image(image_data):
     if not client: return "None", "API Key Error"
-    # Reverting to a more descriptive, proven prompt
     prompt = """
     이미지에서 가장 잘 보이는 상품을 분석하여 다음 형식으로 정보를 추출하세요.
-    반드시 [PRODUCT_NAME]과 [BOT_RESPONSE] 태그를 포함해야 합니다.
-    - [PRODUCT_NAME]: 상품의 고유 명칭 (예: '포스틱', '참붕어빵'). '과자', '음료' 같은 분류형 수식어는 제외할 것.
+    - [PRODUCT_NAME]: 상품의 고유 명칭 (예: '포스틱', '참붕어빵').
     - [BOT_RESPONSE]: 고객을 위한 정중한 안내 멘트.
     내용을 찾을 수 없다면 [PRODUCT_NAME]: None 이라고 답변하세요.
     """
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             contents=[prompt, genai.types.Part.from_bytes(data=image_data, mime_type="image/jpeg")]
         )
         res_text = response.text.strip()
-        print(f"DEBUG: Gemini raw response:\n{res_text}") # Visibility check
+        print(f"DEBUG: Gemini raw response:\n{res_text}")
         
+        # Robust extraction using regex
         p_name = "None"; b_resp = "확인 불가"
-        for line in res_text.split('\n'):
-            clean_line = line.replace('*', '').replace('_', '').strip()
-            if "[PRODUCT_NAME]:" in clean_line: p_name = clean_line.split(":", 1)[1].strip()
-            if "[BOT_RESPONSE]:" in clean_line: b_resp = clean_line.split(":", 1)[1].strip()
+        name_match = re.search(r"\[PRODUCT_NAME\]\s*:\s*(.*)", res_text, re.IGNORECASE)
+        resp_match = re.search(r"\[BOT_RESPONSE\]\s*:\s*(.*)", res_text, re.IGNORECASE)
+        
+        if name_match: p_name = name_match.group(1).replace('*', '').replace('_', '').strip()
+        if resp_match: b_resp = resp_match.group(1).strip()
+        
         return p_name, b_resp
     except Exception as e:
         print(f"Gemini Error: {e}")
@@ -91,7 +94,7 @@ def resolve_fuzzy_product(detected_name, products):
     inventory_str = ", ".join([p['product_name'] for p in products])
     prompt = f"인식: '{detected_name}'. 실제 목록: [{inventory_str}]. 가장 비슷한 이름 하나만 적고 확신도(%)를 적어. 형식: [MATCH]:이름, [CONFIDENCE]:숫자"
     try:
-        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
         res_text = response.text.strip()
         m_name = detected_name; conf = 0
         for line in res_text.split(','):
