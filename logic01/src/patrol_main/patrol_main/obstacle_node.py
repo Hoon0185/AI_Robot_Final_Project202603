@@ -6,10 +6,9 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from nav2_msgs.srv import ClearEntireCostmap # 유령 장애물 방지
 from nav_msgs.msg import Path # 경로 수신용 메시지
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 import copy # 라이다 메시지 복사용
 from .inventory_db import InventoryDB
-from rclpy.parameter import Parameter
 
 class ObstacleNode(Node):
   def __init__(self):
@@ -50,6 +49,7 @@ class ObstacleNode(Node):
     self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
     self.pause_pub = self.create_publisher(Bool, '/pause_patrol', 10) # 순찰 노드에 일시정지를 요청
     self.obstacle_status_pub = self.create_publisher(Bool, '/obstacle_detected_status', 10) # 행동트리에서 장애물 감지 여부 파악 위한 토픽
+    self.pub_ui_log = self.create_publisher(String, 'obstacle_ui_log', 10)
 
     # ---- 서비스 클라이언트 ----
     self.clear_costmap_client = self.create_client(
@@ -124,6 +124,9 @@ class ObstacleNode(Node):
       if valid_ranges and min(valid_ranges) < self.safe_distance: # 0.50m보다 가까우면 멈춤 유지
           if not self.is_front_danger:
             self.get_logger().warn(f'[수동] 전방 충돌 위험! 전진을 차단합니다. 거리: {min(valid_ranges):.2f}m')
+          log_msg = String()
+          log_msg.data = f'[LOGIC] 전방 충돌 위험! 수동 전진을 차단합니다. 거리: {min(valid_ranges):.2f}m'
+          self.pub_ui_log.publish(log_msg)
           self.is_front_danger = True
           final_msg.linear.x = 0.0 # 속도 삭제
 
@@ -140,6 +143,9 @@ class ObstacleNode(Node):
       if valid_rear and min(valid_rear) < self.safe_distance: # 0.50m보다 가까우면 멈춤 유지
         if not self.is_front_danger:
           self.get_logger().warn(f'[수동] 후방 충돌 위험! 후진을 차단합니다. 거리: {min(valid_rear):.2f}m')
+        log_msg = String()
+        log_msg.data = f'[LOGIC] 후방 충돌 위험! 수동 후진을 차단합니다. 거리: {min(valid_rear):.2f}m'
+        self.pub_ui_log.publish(log_msg)
         self.is_front_danger = True
         final_msg.linear.x = 0.0  # 후진 명령 묵살
 

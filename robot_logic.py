@@ -1,5 +1,6 @@
 import sys
 import os
+from std_msgs.msg import String
 
 # ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +38,7 @@ class RobotLogicHandler:
                     raise ImportError("PatrolInterface module not found.")
                 if ObstacleInterface:
                     self.obstacle_manager = ObstacleInterface()
+                    self.sub_obstacle_ui = self.ros_interface.node.create_subscription( String, 'obstacle_ui_log', self._obstacle_ui_callback, 10)
                 else:
                     raise ImportError("ObstacleInterface module not found.")
             except Exception as e:
@@ -47,7 +49,7 @@ class RobotLogicHandler:
 
         self._setup_connections()
         self.current_patrol_min = 60
-        self.current_obstacle_sec = 10
+        self.current_obstacle_sec = 5
         self._load_initial_data()
 
         # UI 업데이트용 타이머 (ROS 상태 반영)
@@ -61,6 +63,10 @@ class RobotLogicHandler:
         print(message)
         if hasattr(self.ui, 'append_log'):
             self.ui.append_log(message)
+
+    def _obstacle_ui_callback(self, msg):
+        """장애물 노드에서 보낸 문장(msg.data)를 UI로 바로 토스합니다."""
+        self._log(msg.data)
 
     def _setup_connections(self):
         """

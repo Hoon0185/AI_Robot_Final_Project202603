@@ -108,8 +108,8 @@ class PatrolNode(Node):
         self.shelf_list = list(self.shelves.keys())
 
     def pause_callback(self, msg):
+        """장애물 감지 시 순찰 노드가 하는 역할"""
         if msg.data and self.is_patrolling:
-            # 장애물이 감지되었을 때의 처리
             if not self.is_paused:
                 self.get_logger().warn('장애물 감지로 인해 현재 목적지 주행을 전면 취소하고 대기합니다.')
                 self.is_paused = True

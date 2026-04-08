@@ -19,7 +19,6 @@ class PatrolInterface:
         # Database & Server Sync
         self.db = InventoryDB(base_url="http://16.184.56.119:8000")#16.184.56.119
 
-
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
         self.param_client = self.node.create_client(SetParameters, '/patrol_scheduler/set_parameters')
@@ -41,6 +40,7 @@ class PatrolInterface:
 
         self.last_status_received_time = 0.0
         self.last_robot_heartbeat_time = 0.0
+        self.last_command_execution_times = {}
 
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
