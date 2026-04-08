@@ -191,7 +191,7 @@ class PatrolNode(Node):
             self.get_logger().error('!!! EMERGENCY STOP RECEIVED !!!')
             # 서버에 순찰 종료/중단 세션 등록
             self.db.finish_patrol_session()
-
+            self.get_logger().info('[상태 변경] 긴급 정지(EMERGENCY) 수신으로 순찰을 종료합니다.')
             self.is_patrolling = False
             self.cancel_nav()
 
@@ -219,7 +219,7 @@ class PatrolNode(Node):
             self.get_logger().info('Returning to Base...')
             # 서버에 순찰 종료 세션 등록 (진행 중이었다면)
             self.db.finish_patrol_session()
-
+            self.get_logger().info('[상태 변경] 복귀(RETURN_HOME) 명령으로 순찰을 종료합니다.')
             self.is_patrolling = False
             self.cancel_nav()
             self.go_to_origin()
@@ -258,7 +258,7 @@ class PatrolNode(Node):
             self.get_logger().info('Patrol Completed! Navigating back to HOME (0,0)...')
             # 서버에 순찰 종료 세션 등록
             self.db.finish_patrol_session()
-
+            self.get_logger().info('[상태 변경] 모든 선반 순찰이 완료되어 순찰을 종료합니다.')
             self.is_patrolling = False
             self.end_time = datetime.now()
             self.publish_status('completed')
@@ -292,7 +292,7 @@ class PatrolNode(Node):
     def goal_response_callback(self, future):
         self._goal_handle = future.result()
         if not self._goal_handle.accepted:
-            self.get_logger().error('Goal rejected')
+            self.get_logger().error('[상태 변경] Nav2 서버가 목표를 거절하여 순찰을 중단합니다.')
             self.is_patrolling = False
             return
         self._get_result_future = self._goal_handle.get_result_async()
@@ -361,8 +361,11 @@ class PatrolNode(Node):
             # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
             if not self.is_paused:
                  self.publish_status('nav_alert')
+        elif status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().warn(f'Navigation was CANCELED (code: {status}). Waiting for next action.')
+            # 취소 시에는 순찰을 완전히 끄지 않고 유지합니다. (장애물 회피 등에서 발생 가능)
         else:
-            self.get_logger().error(f'Navigation FAILED with status code: {status}. Stopping patrol for safety.')
+            self.get_logger().error(f'[상태 변경] Navigation FAILED (code: {status}). 안전을 위해 순찰을 중단합니다.')
             self.is_patrolling = False
             self.publish_status('error')
 
