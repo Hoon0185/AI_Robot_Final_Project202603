@@ -47,7 +47,14 @@ class RobotControlPanel(QWidget):
 
     def initUI(self):
         self.setWindowTitle("Robot Management System")
-        self.setGeometry(100, 100, 1200, 850)
+        fixed_width = 1300
+        fixed_height = 850
+        self.setFixedSize(fixed_width, fixed_height)
+
+        self.setWindowFlags(self.windowFlags() |
+                            Qt.WindowType.CustomizeWindowHint |
+                            Qt.WindowType.WindowMinimizeButtonHint |
+                            Qt.WindowType.WindowCloseButtonHint)
         self.setStyleSheet(self.main_qss)
         self.container_layout = QGridLayout(self)
         self.container_layout.setContentsMargins(0, 0, 0, 0)
@@ -73,10 +80,11 @@ class RobotControlPanel(QWidget):
         self.cam_label = QLabel("캠 영상 송출")
         self.cam_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cam_label.setStyleSheet("background-color: #2C2C2C; color: white; border-radius: 15px; font-size: 18px; font-weight: bold;")
-        self.cam_label.setMinimumHeight(450)
+        self.cam_label.setFixedSize(640, 450)
         left_container.addWidget(self.cam_label, stretch=3)
 
         logs_frame = QFrame()
+        logs_frame.setFixedHeight(60)
         logs_frame.setStyleSheet("background-color: white; border-radius: 10px; border: 1px solid #D1D9E6;")
         logs_layout = QHBoxLayout(logs_frame)
         logs_layout.addWidget(QLabel("  🗓  마지막 순찰 시간  "))
@@ -339,12 +347,13 @@ class RobotControlPanel(QWidget):
         USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
         self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-        self.cap = cv2.VideoCapture(self.rtsp_url); self.timer.start(30)
+        self.cap = cv2.VideoCapture(self.rtsp_url); self.timer.start(33)
 
     def update_frame(self):
         if hasattr(self, 'cap') and self.cap.isOpened():
             ret, frame = self.cap.read()
             if ret:
+                frame=cv2.flip(frame, -1)
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = rgb.shape
                 bytes_per_line = ch * w
