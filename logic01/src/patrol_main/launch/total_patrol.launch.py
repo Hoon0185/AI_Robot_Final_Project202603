@@ -17,7 +17,7 @@ def generate_launch_description():
     # Configuration file paths
     twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
     nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml')
-    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_01.yaml')
+    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_02.yaml')
 
     # Launch arguments
     map_frame = LaunchConfiguration('map_frame', default='map')

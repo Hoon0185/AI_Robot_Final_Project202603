@@ -25,7 +25,7 @@
 ros2 launch turtlebot3_navigation2 navigation2.launch.py \
   use_sim_time:=false \
   autostart:=true \
-  map:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/maps/my_store_map_01.yaml \
+  map:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/maps/my_store_map_02.yaml \
   params_file:=$HOME/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/patrol_main/config/nav2_params.yaml \
   cmd_vel:=cmd_vel_nav
 ```
