@@ -1,0 +1,7 @@
+image: my_store_map_02.pgm
+mode: trinary
+resolution: 0.05
+origin: [-0.415, 2.01, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
