@@ -17,22 +17,21 @@ class ObstacleNode(Node):
 
     self.db = InventoryDB(base_url="http://16.184.56.119:8000")
     # self.db = InventoryDB(base_url="http://16.")
-    db_wait_time = 5
+
+    db_wait_time = 5 # 기본값 변수
     try:
       config = self.db.get_patrol_config()
       if config:
         db_wait_time = int(config.get('avoidance_wait_time', 5))
-        self.get_logger().info(f"[DB] 초기 대기시간 로드 성공: {db_wait_time}초")
+        self.get_logger().info(f"[DB] 서버 대기시간 로드 성공: {db_wait_time}초")
       else:
-        self.get_logger().warn(f"[DB]서버 응답 없음: 기본 대기시간 {db_wait_time}초를 사용합니다.")
+        self.get_logger().warn(f"[DB] 서버 응답 없음: 기본값 {db_wait_time}초 사용")
     except Exception as e:
       self.get_logger().error(f"[DB] 서버 연결 실패: {e}")
 
     self.declare_parameter('current_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
 
-    current_param_val = self.get_parameter('current_wait_time').get_parameter_value().integer_value
-    if current_param_val != db_wait_time:
-      self.set_parameters([Parameter('current_wait_time', Parameter.Type.INTEGER, db_wait_time)])
+    self.get_parameter('current_wait_time').get_parameter_value().integer_value
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,

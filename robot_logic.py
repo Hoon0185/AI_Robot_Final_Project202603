@@ -91,17 +91,20 @@ class RobotLogicHandler:
         self.update_alarm_list()
 
         # 서버에서 초기 설정값 가져와서 ROS 및 UI 동기화
-        if self.obstacle_manager:
-            # 1. 장애물 대기 시간 (UI 값 설정)
-            self.current_obstacle_sec = self.obstacle_manager.current_wait_time
-            self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
-            self._log(f"[LOGIC] 인터페이스에서 가져온 장애물 대기시간 {self.current_obstacle_sec}초 세팅")
-
         if self.ros_interface:
             config = self.ros_interface.get_db_config()
             if config:
                 self._log(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
                 try:
+                    # 1. 장애물 대기 시간 (UI 값 설정)
+                    wait_time = config.get('avoidance_wait_time')
+                    if wait_time is not None:
+                        self.current_obstacle_sec = int(wait_time)
+                        self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
+                        if self.obstacle_manager:
+                            self.obstacle_manager.set_wait_time(self.current_obstacle_sec)
+                        self._log(f"[LOGIC] 서버 데이터로 장애물 대기시간 {self.current_obstacle_sec}초 동기화")
+
                     # 2. 순찰 간격 (UI 값 설정 및 ROS 파라미터 적용)
                     h = config.get('interval_hour', 0)
                     m = config.get('interval_minute', 0)
@@ -145,7 +148,7 @@ class RobotLogicHandler:
                 display_text += " [OFFLINE]"
 
             self.ui.set_last_patrol_time(display_text)
-            
+
             # --- 미니맵 위치 실시간 업데이트 호출 추가 ---
             self.update_minimap_pose()
 
@@ -266,7 +269,7 @@ class RobotLogicHandler:
 
         # 인터페이스로부터 최신 통합 상태 데이터 획득
         status = self.ros_interface.get_recent_patrol_time()
-        
+
         # 데이터가 있고 좌표 정보(robot_x, robot_y)가 포함되어 있다면 미니맵 갱신
         if status and 'robot_x' in status and 'robot_y' in status:
             curr_x = float(status.get('robot_x', 0.0))

@@ -27,37 +27,11 @@ class ObstacleInterface:
     # ---- DB 저장 실패 재시도 타이머 설정 (10초) ----
     self.retry_timer = self.node.create_timer(10.0, self.check_pending_data)
 
-    self.sync_initial_value() # DB 초기값 동기화
-
     # ---- 멀티 스레드 실행 설정 (비동기) ----
     self.executor = rclpy.executors.SingleThreadedExecutor()
     self.executor.add_node(self.node)
     self.spin_thread = threading.Thread(target=self.executor.spin, daemon=True)
     self.spin_thread.start()
-
-  def sync_initial_value(self):
-    """
-    초기 구동 시 DB 접속 시도 후 장애물 대기 시간 값을 가져오는 함수
-    """
-    try:
-      config = self.db.get_patrol_config()
-
-      if config:
-        db_value = config.get('avoidance_wait_time', self.current_wait_time) # DB에서 대기시간 추출, 없으면 기본값 5초 사용
-
-        self.current_wait_time = int(db_value)
-        self.node.get_logger().info(f"[API] 초기값 동기화 성공: {self.current_wait_time}초")
-        self.is_db_connected = True # DB 연결 성공 플래그 설정
-        return self.current_wait_time
-      else:
-        self.node.get_logger().warn(f"서버 응답 에러: 기본 대기시간 {self.current_wait_time}초를 사용합니다.")
-        self.is_db_connected = False # DB 연결 실패 플래그 설정
-        return self.current_wait_time # 서버 응답 실패 시 기본값 반환
-
-    except Exception as e:
-      self.node.get_logger().error(f"[API] 서버 연결 실패: {e}")
-      self.is_db_connected = False
-      return self.current_wait_time # DB 연결 실패 시 기본값 반환
 
 
   def update_db_and_sync(self, seconds:int):
