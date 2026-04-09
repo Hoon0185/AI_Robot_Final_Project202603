@@ -139,7 +139,7 @@ controller_server:
       vx_samples: 40 # 20 -> 40 샘플링 상향 (더 정교하게)
       vy_samples: 0
       vtheta_samples: 80 # 40 -> 80 샘플링 상향 (더 정교하게)
-      sim_time: 3.0 # 장애물 회피력 증가 (예측 시간) 2 -> 3초 변경
+      sim_time: 1.5 # 장애물 회피력 증가 (예측 시간) 2 -> 1.5초 (근거리 집중)
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
@@ -148,12 +148,12 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.5 # 장애물을 멀리 돌아가게 하는 성향(축소)
-      PathAlign.scale: 50.0 # 경로의 방향과 로봇의 정면을 맞추는 가중치 32 -> 50 변경
+      BaseObstacle.scale: 0.05 # 장애물을 멀리 돌아가게 하는 성향(장애물공포증) 0.5 -> 0.05
+      PathAlign.scale: 80.0 # 경로의 방향과 로봇의 정면을 맞추는 가중치(정면 방향 = 경로 방향 일치시키기) 32 -> 80 변경
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 18.0 # 목표 좌표로 돌진하려는 힘 24 -> 18 변경
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 50.0 # 경로를 유지하는 힘 32 -> 50 변경
+      PathDist.scale: 80.0 # 경로를 유지하는 힘 32 -> 80 변경
       GoalDist.scale: 18.0 # 목표좌표로 돌진하는 힘 24 -> 18 변경
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
@@ -176,19 +176,13 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
-        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
+        cost_scaling_factor: 5.0 # 벽 근처의 '위험도 기울기' 결정 15.0 -> 5.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: scan scan_virtual
+        observation_sources: scan
         scan:
           topic: /scan
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "LaserScan"
-        scan_virtual: #  가짜 벽 (장애물 회피용)
-          topic: scan_virtual
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -213,12 +207,6 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-        scan_virtual: # 가짜 벽
-          topic: scan_virtual
-          max_obstacle_height: 2.0
-          clearing: true
-          marking: true
-          data_type: "LaserScan"
       static_layer:
         map_subscribe_transient_local: true
       always_send_full_costmap: true
@@ -238,7 +226,7 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: scan scan_virtual
+        observation_sources: scan
         scan:
           topic: /scan
           max_obstacle_height: 2.0
@@ -276,7 +264,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
-        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
+        cost_scaling_factor: 5.0 # 벽 근처의 '위험도 기울기' 결정 15 -> 5
       always_send_full_costmap: true
 
 map_server:

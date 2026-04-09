@@ -49,7 +49,7 @@ class ObstacleNode(Node):
 
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
-    self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
+    # self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
     self.obstacle_status_pub = self.create_publisher(Bool, '/obstacle_detected_status', 10) # 행동트리에서 장애물 감지 여부 파악 위한 토픽
     self.pub_ui_log = self.create_publisher(String, 'obstacle_ui_log', 10)
 
@@ -81,7 +81,7 @@ class ObstacleNode(Node):
     self.clear_distance = self.safe_distance + 0.1 # 장애물 완전 제거 기준 (60cm)
     self.current_wait_time = db_wait_time # 대기시간
     self.latest_scan_msg = None # 최신 라이다 데이터 저장용
-    self.fake_scan = None # 가짜 벽 메시지 재사용을 위한 변수
+    # self.fake_scan = None # 가짜 벽 메시지 재사용을 위한 변수
 
     # 현재 로봇 속도 저장
     self.current_linear_velocity = 0.0 # 현재 x축 선속도
@@ -238,7 +238,6 @@ class ObstacleNode(Node):
           status_msg.data = True
           self.obstacle_status_pub.publish(status_msg)
 
-        self.publish_fake_scan(msg) # 가짜 벽 연속발행
       else:
         ## ---- 장애물이 사정거리 밖으로 사라졌을 때 ----
         if self.is_blocked:
