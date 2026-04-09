@@ -61,7 +61,7 @@ class RobotLogicHandler(QObject):
         self.cam_node = None
         self.stream_node = None # Master 스트리밍 노드
         self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
-        self.current_cam_mode = "ROS" # "ROS" 또는 "DIRECT"
+        self.current_cam_mode = "DIRECT"
         
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
@@ -199,25 +199,14 @@ class RobotLogicHandler(QObject):
             self._log(f"⚠️ [SYSTEM] 스트리밍 노드 생성 실패: {e}")
             self.stream_node = None
 
-        # [D] 노드 인스턴스화 및 구독 설정
-        try:
-            if IntegratedPCNode:
-                try:
                     self.cam_node = IntegratedPCNode()
                     self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
                 except Exception as ai_e:
                     self._log(f"⚠️ [SYSTEM] AI 노드 생성 실패: {ai_e}")
 
-            if self.ros_interface and hasattr(self.ros_interface, 'node'):
-                # 캠 지연 해결을 위한 ROS 이미지 구독
-                try:
-                    self.sub_image = self.ros_interface.node.create_subscription(
-                        CompressedImage, '/rtsp_image', self._image_callback, 10)
-                    self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
-                except Exception as sub_e:
-                    self._log(f"⚠️ [SYSTEM] 이미지 구독 설정 실패 (메시지 타입 오류 등): {sub_e}")
-                    self._log("💡 [SYSTEM] 비상 대책: RTSP 직접 연결 모드로 전환합니다.")
-                    self.ui.start_direct_rtsp(self.rtsp_url)
+            # [D] 카메라 직접 연결 시작 (사용자 요청: ROS 토픽 모드 제거)
+            self._log("💡 [SYSTEM] 카메라 직접 연결 모드로 시작합니다.")
+            self.ui.start_direct_rtsp(self.rtsp_url)
 
             # [E] 백그라운드 스레드 시작 (UI 프리징 방지)
             active_nodes = [self.cam_node, self.stream_node, self.ros_interface.node if self.ros_interface else None]
