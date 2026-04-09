@@ -378,8 +378,11 @@ class RobotControlPanel(QWidget):
         # 가져온 프레임이 있다면 UI에 출력
         if frame is not None:
             # 1. AI 노드의 그리기 함수 호출 (이미 그려진 상태라면 생략 가능)
-            if self.ai_node.last_result:
-                self.ai_node.draw_overlay(frame, self.ai_node.last_result)
+            # if self.ai_node.last_result:
+            #     self.ai_node.draw_overlay(frame, self.ai_node.last_result)
+            # 2. AI 노드의 결과를 화면에 덧씌우기 (할당 필수!)
+            if hasattr(self.ai_node, 'last_result') and self.ai_node.last_result:
+                frame = self.ai_node.draw_overlay(frame, self.ai_node.last_result)
             frame = cv2.flip(frame, -1)
 
             # 3. PyQt 형식으로 변환 BGR > RGB

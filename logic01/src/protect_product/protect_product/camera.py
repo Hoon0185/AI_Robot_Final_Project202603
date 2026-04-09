@@ -98,7 +98,7 @@ class IntegratedPCNode(Node):
 
             # Step 3: 검증기 실행 (두 결과값 비교)
             result = self.verifier_mod.verify(qrs, items)
-
+            self.last_result = result
             # 로그 제어 - 실시간 감지 기준으로 2초간 인식된 물품이 동일할 경우 로그 출력
             current_time = time.time()
             active_classes = [item.class_name for item in items]
@@ -116,7 +116,7 @@ class IntegratedPCNode(Node):
                 duration = current_time - self.detection_start_times[name]
 
                 if duration >= 2.0 and not self.already_logged[name]:
-                    self.get_logger().info(f"🚨 [확인] 탐지된 물품 : {name} (신뢰도: {item.score:.2f})")
+                    self.get_logger().info(f"🚨 [확인] 탐지된 물품 : {name} (신뢰도: {item.confidence:.2f})")
                     self.already_logged[name] = True # 한 번만 출력하도록 설정
 
             # 화면에서 사라진 물체는 메모리에서 삭제
@@ -129,7 +129,7 @@ class IntegratedPCNode(Node):
                         del self.already_logged[stored_name]
 
             if result:
-                frame = self.draw_overlay(frame, result)
+                self.latest_frame = self.draw_overlay(self.latest_frame, result)
                 msg = DetectionArray()
                 det = Detection()
 
@@ -154,24 +154,29 @@ class IntegratedPCNode(Node):
         if result is None:
             return frame
 
-        # 노란색 (BGR: Blue=0, Green=255, Red=255)
-        line_color = (0, 255, 255)
-        line_thickness = 2
+        # 색상 정의 (BGR 순서)
+        COLOR_QR = (255, 0, 255)      # 보라색 (QR 코드)
+        COLOR_PROD = (0, 255, 255)    # 노란색 (물품)
+        THICKNESS = 2
 
-        # verifier에서 넘겨준 물품의 영역 (x1, y1, x2, y2)
-        prod_bbox = result.get('prod_bbox', [0, 0, 0, 0])
+        # 1. QR 코드 박스 그리기 (qr_bbox)
+        qr_box = result.get('qr_bbox', [0, 0, 0, 0])
+        if any(qr_box):
+            qx1, qy1, qx2, qy2 = map(int, qr_box)
+            cv2.rectangle(frame, (qx1, qy1), (qx2, qy2), COLOR_QR, THICKNESS)
+            cv2.putText(frame, "QR Base", (qx1, qy1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_QR, 1)
 
-        # 영역 값이 유효한 경우에만 그림 (모두 0이 아닌 경우)
-        if any(prod_bbox):
-            x1, y1, x2, y2 = map(int, prod_bbox)
+        # 2. 탐지된 물품 박스 그리기 (prod_bbox)
+        prod_box = result.get('prod_bbox', [0, 0, 0, 0])
+        if any(prod_box):
+            px1, py1, px2, py2 = map(int, prod_box)
+            cv2.rectangle(frame, (px1, py1), (px2, py2), COLOR_PROD, THICKNESS)
 
-            # 물품 영역 사각형 그리기
-            cv2.rectangle(frame, (x1, y1), (x2, y2), line_color, line_thickness)
-
-            # (선택 사항) 가시성을 위해 물품 이름만 사각형 위에 작게 표시
-            label = f"{result['item_name']} ({result['status']})"
-            cv2.putText(frame, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, line_color, 2)
+            # 상태 및 이름 표시
+            label = f"{result['item_name']} [{result['status']}]"
+            cv2.putText(frame, label, (px1, py1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_PROD, 2)
 
         return frame
 def main():
