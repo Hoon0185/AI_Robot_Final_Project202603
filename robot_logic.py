@@ -59,6 +59,9 @@ class RobotLogicHandler(QObject):
         self.ui = ui_instance
         self.is_debug = debug_mode # 디버그 모드 상태 저장
         self.cam_node = None
+        self.stream_node = None # Master 스트리밍 노드
+        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
+        
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
         self.obstacle_manager = None
@@ -197,12 +200,22 @@ class RobotLogicHandler(QObject):
         # [D] 노드 인스턴스화 및 구독 설정
         try:
             if IntegratedPCNode:
-                self.cam_node = IntegratedPCNode()
-                self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
+                try:
+                    self.cam_node = IntegratedPCNode()
+                    self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
+                except Exception as ai_e:
+                    self._log(f"⚠️ [SYSTEM] AI 노드 생성 실패: {ai_e}")
 
-                self.sub_image = self.ros_interface.node.create_subscription(
-                    CompressedImage, '/rtsp_image', self._image_callback, 10)
-                self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
+            if self.ros_interface and hasattr(self.ros_interface, 'node'):
+                # 캠 지연 해결을 위한 ROS 이미지 구독
+                try:
+                    self.sub_image = self.ros_interface.node.create_subscription(
+                        CompressedImage, '/rtsp_image', self._image_callback, 10)
+                    self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
+                except Exception as sub_e:
+                    self._log(f"⚠️ [SYSTEM] 이미지 구독 설정 실패 (메시지 타입 오류 등): {sub_e}")
+                    self._log("💡 [SYSTEM] 비상 대책: RTSP 직접 연결 모드로 전환합니다.")
+                    self.ui.start_direct_rtsp(self.rtsp_url)
 
             # [E] 백그라운드 스레드 시작 (UI 프리징 방지)
             active_nodes = [self.cam_node, self.stream_node, self.ros_interface.node if self.ros_interface else None]
@@ -212,7 +225,7 @@ class RobotLogicHandler(QObject):
             self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (UI 프리징 해결)")
 
         except Exception as e:
-            self._log(f"⚠️ [SYSTEM] AI/이미지 구독 설정 중 오류: {e}")
+            self._log(f"⚠️ [SYSTEM] 통합 노드 조율 중 오류: {e}")
 
     def _image_callback(self, msg):
         """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
