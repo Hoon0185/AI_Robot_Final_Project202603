@@ -2,7 +2,7 @@ import sys
 import os
 from std_msgs.msg import String
 from sensor_msgs.msg import CompressedImage
-from PyQt6.QtCore import pyqtSignal, QObject
+from PyQt6.QtCore import pyqtSignal, QObject, QThread
 
 # ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +32,27 @@ except ImportError:
 class LogicSignals(QObject):
     rtspFrameReceived = pyqtSignal(bytes)
 
+class RosWorker(QThread):
+    """ROS 2 노드들을 백엔드에서 전용으로 스핀(Spin)시키는 스레드"""
+    def __init__(self, nodes):
+        super().__init__()
+        self.nodes = nodes
+        self.active = True
+
+    def run(self):
+        import rclpy
+        while self.active and rclpy.ok():
+            for node in self.nodes:
+                if node:
+                    # 각 노드의 콜백(타이머, 구독 등)을 0.01초씩 시도
+                    rclpy.spin_once(node, timeout_sec=0.01)
+            # CPU 점유율 과다 방지를 위한 미세한 휴식
+            self.msleep(1)
+
+    def stop(self):
+        self.active = False
+        self.wait()
+
 class RobotLogicHandler:
     def __init__(self, ui_instance, debug_mode=False):
         self.ui = ui_instance
@@ -48,6 +69,7 @@ class RobotLogicHandler:
             self._log("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
 
         self.signals = LogicSignals() # UI 이미지 전송용 시그널 객체
+        self.ros_thread = None
 
         self._setup_connections()
         self.current_patrol_min = 60
@@ -177,11 +199,16 @@ class RobotLogicHandler:
                 self.cam_node = IntegratedPCNode()
                 self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
 
-            if self.ros_interface and hasattr(self.ros_interface, 'node'):
-                # 캠 지연 해결을 위한 ROS 이미지 구독
                 self.sub_image = self.ros_interface.node.create_subscription(
                     CompressedImage, '/rtsp_image', self._image_callback, 10)
                 self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
+
+            # [E] 백그라운드 스레드 시작 (UI 프리징 방지)
+            active_nodes = [self.cam_node, self.stream_node, self.ros_interface.node if self.ros_interface else None]
+            self.ros_thread = RosWorker(active_nodes)
+            self.ros_thread.start()
+            self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (UI 프리징 해결)")
+
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] AI/이미지 구독 설정 중 오류: {e}")
 
@@ -190,21 +217,10 @@ class RobotLogicHandler:
         self.signals.rtspFrameReceived.emit(msg.data)
 
     def sync_ros_status(self):
-        """ROS 노드를 1스텝씩 실행하고 UI를 갱신합니다."""
+        """UI 상태(순찰 시간, 미니맵 등)만 주기적으로 갱신합니다. (스핀은 스레드에서 수행)"""
         if self.is_debug:
             self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
             return
-
-        # rclpy.spin_once를 통해 노드들의 콜백(카메라 추론 등)을 실제로 실행
-        if rclpy.ok():
-            if self.cam_node:
-                rclpy.spin_once(self.cam_node, timeout_sec=0)
-
-            if self.stream_node:
-                rclpy.spin_once(self.stream_node, timeout_sec=0)
-
-            if self.ros_interface and hasattr(self.ros_interface, 'get_name'):
-                rclpy.spin_once(self.ros_interface, timeout_sec=0)
 
         # UI 갱신 로직 (주행 상태 표시)
         if not self.ros_interface: return
