@@ -167,5 +167,13 @@ def generate_launch_description():
             name='integrated_pc_node',
             parameters=[{'use_sim_time': use_sim_time}],
             output='screen'
+        ),
+
+        # 10. IPCAM to ROS Bridge Node (RTSP Bridge)
+        Node(
+            package='protect_product',
+            executable='camera_node',
+            name='rtsp_bridge_node',
+            output='screen'
         )
     ])

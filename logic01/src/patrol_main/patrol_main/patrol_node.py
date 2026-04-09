@@ -550,22 +550,25 @@ class PatrolNode(Node):
                 "confidence": data["confidence"]       # 신뢰도
             }
 
-            # DB에 최종 리포트
-            if target_barcode not in self.reported_tags:
-                self.db.report_detection(
-                    tag_barcode=self.last_detection["tag_barcode"],
-                    patrol_id=self.current_patrol_id or 0,
-                    waypoint_id=self.shelves[shelf_name].get('waypoint_id', 1),
-                    x=self.current_x,
-                    y=self.current_y,
-                    detected_barcode=self.last_detection["detected_barcode"],
-                    yolo_class_id=self.last_detection["yolo_class_id"],
-                    confidence=self.last_detection["confidence"]
-                )
-                self.reported_tags.add(target_barcode)
-                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data.get('status', 'Unknown')}")
+            # DB에 최종 리포트 (에러가 주행을 막지 않도록 예외 처리)
+            try:
+                if target_barcode not in self.reported_tags:
+                    self.db.report_detection(
+                        tag_barcode=self.last_detection["tag_barcode"],
+                        patrol_id=self.current_patrol_id or 0,
+                        waypoint_id=self.shelves[shelf_name].get('waypoint_id', 1),
+                        x=self.current_x,
+                        y=self.current_y,
+                        detected_barcode=self.last_detection["detected_barcode"],
+                        yolo_class_id=self.last_detection["yolo_class_id"],
+                        confidence=self.last_detection["confidence"]
+                    )
+                    self.reported_tags.add(target_barcode)
+                    self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data.get('status', 'Unknown')}")
+            except Exception as e:
+                self.get_logger().error(f"❌ DB 리포팅 실패 (주행은 계속함): {e}")
 
-            # 다음 위치로 이동
+            # [핵심] 어떠한 상황에서도 다음 위치로 이동 명령을 보장함
             self.latest_ai_data = None # 데이터 초기화
             self.proceed_to_next_shelf()
 

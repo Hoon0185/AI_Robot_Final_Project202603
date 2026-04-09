@@ -87,7 +87,7 @@ class IntegratedPCNode(Node):
             return
             
         if self.latest_frame is None:
-            self.get_logger().warn("⚠️ [AI Watchdog] 카메라 영상이 수신되지 않고 있습니다. (Topic: camera/image/compressed)")
+            self.get_logger().warn("⚠️ [AI Watchdog] 카메라 영상이 수신되지 않고 있습니다. (Topic: /rtsp_image)")
             return
         
         frame = self.latest_frame.copy()
