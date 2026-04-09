@@ -177,8 +177,8 @@ class PatrolNode(Node):
         self.get_logger().info(f'--- [안정화 재출발] Goal: {shelf_name} ---')
         self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
         
-        # 0.5초 후 실제 전송 (메시지 폭주 방지)
-        self.create_timer(0.5, self._execute_resend)
+        # 0.5초 후 실제 전송 (메시지 폭주 방지용 일회성 타이머)
+        self._resend_timer_internal = self.create_timer(0.5, self._execute_resend)
 
     def _trigger_retry(self):
         """3초 대기 후 실제 재시도 함수를 호출합니다."""
@@ -188,7 +188,7 @@ class PatrolNode(Node):
         self.resend_current_goal()
 
     def _execute_resend(self):
-        """실제로 Nav2에 목표를 전송합니다."""
+        """실제로 Nav2에 목표를 전송합니다. 실행 직후 타이머를 파괴하여 일회성 동작을 보장합니다."""
         if hasattr(self, '_resend_timer_internal') and self._resend_timer_internal:
              self.destroy_timer(self._resend_timer_internal)
              self._resend_timer_internal = None
