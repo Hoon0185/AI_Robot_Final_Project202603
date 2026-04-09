@@ -88,10 +88,11 @@ ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false run_obstacle_no
 
 *   **빌드 누락 주의**: 코드를 수정했는데도 예전 에러 로그가 계속 뜬다면, `colcon build --symlink-install` 명령어가 빠지지 않았는지 확인하세요.
 *   **순찰 중단 로그 추적**: 순찰이 갑자기 멈춘다면 터미널 로그에서 **`[상태 변경] ...`**으로 시작하는 메시지를 찾으세요. 시스템이 순찰을 종료한 구체적인 원인(긴급 정지, 복귀 명령, 주행 실패 등)을 즉시 알 수 있습니다.
-*   **Aborted(6) 발생 시**: 장애물 회피 중 Preemption에 의해 Aborted가 발생해도 현재의 로봇은 순찰을 종료하지 않고 대기 후 재주행하도록 설계되어 있습니다.
-*   **카메라 지연(Cam Delay) 대응**: 현재 시스템은 누적 버퍼 클리어 로직이 적용되어 실시간성이 대폭 개선되었습니다. 하지만 여전히 지연이 심하다면 `camera_node.py`에서 FPS를 더 낮추거나(예: 15) 와이파이 채널을 점검하세요.
-*   **주행 민감도 조정 (BaseObstacle)**: 로봇이 장애물에 대해 너무 민감하거나 둔하게 반응한다면 `nav2_params.yaml`의 `BaseObstacle.scale` 값을 조정하세요 (현재 권장값 `1.0`).
-*   **코스트맵 정화**: 로봇이 주변 장애물을 실제보다 크게 인식하여 갇혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
+*   **Aborted(6) 발생 시**: 장애물 회피 중 Preemption에 의해 Aborted가 발생해도 현재의 로봇은 순찰을 종료하지 않고 2초 대기 후 자동으로 목표를 재전송하여 주행을 재개합니다.
+*   **지능형 장애물 인식 (Virtual Wall)**: 로봇이 주행 중 멈춰있다면 `ros2 topic echo /scan_virtual`을 확인하세요. Nav2가 장애물을 인식하여 우회 경로를 생성하도록 돕는 가짜 벽 정보가 발행되고 있는지 볼 수 있습니다.
+*   **카메라 지연(Cam Delay) 대응**: 현재 시스템은 누적 버퍼 클리어 로직이 적용되었습니다. 화면 지연이 누적된다면 'Buffer Skip' 로그가 발생하는지 확인하세요.
+*   **주행 민감도 조정 (sim_time)**: 로봇이 너무 소극적으로 움직이면 `nav2_params.yaml`의 `sim_time`을 조정하세요 (현재 권장값 `1.5`).
+*   **코스트맵 정화**: 로봇이 유령 장애물에 갇혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
     ```bash
     ros2 service call /local_costmap/clear_entirely_local_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
     ```

@@ -29,9 +29,8 @@
 ## 🛠️ 기술적 세부사항
 
 💡 **핵심 로직:**
-1. **이벤트 기반 동적 스케줄러**: `parameter_callback`과 `update_config` 함수를 통해 순찰 간격이나 모드가 변경되는 즉시 시스템에 반영되도록 설계.
-2. **Action 기반 정밀 내비게이션**: Nav2 액션 서버의 실시간 피드백을 수신하여 `GoalStatus`를 엄격히 검증하며, 특정 지점 도착 시 2초간 정지 후 다음 위치로 이동.
 3. **SLAM 및 TF 정합성 해결**: `systemd-timesyncd` 중단 후 수동 시간 동기화를 통해 TF 에러를 해결하고, `slam_toolbox`를 활용하여 실시간 지도 생성을 최적화함.
+4. **지능형 장애물 회피 (LOGIC_02)**: `SetParameters` 서비스를 통해 Nav2의 `FollowPath.max_vel_x`를 제어하고 가상 벽을 활용하여 유연한 유도 기동 구현.
 
 ### **1. Patrol Scheduler (복합 모드 및 동적 업데이트)**
 
@@ -260,6 +259,10 @@ def manual_trigger_callback(self, request, response):
 **31. 장애물 감지 노드 간섭 조절:**
 * 문제: 주변 환경이나 로봇 팔 등의 구조물로 인해 장애물 노드가 주행을 과도하게 방해함.
 * 해결: `total_patrol.launch.py`에 `run_obstacle_node` 인자를 추가하고, 런타임에 이 로직을 켜고 끌 수 있는 파라미터(`use_obstacle_avoidance`) 지원.
+
+**32. 지능형 장애물 회피 (LOGIC_02 통합):**
+* 문제: 수동 우회 로직이 Nav2 내비게이션 엔진과 충돌하여 움직임이 부자연스러움.
+* 해결: 내비게이션의 최대 속도를 0으로 만들어 정지시켰다가 다시 풀어주는 **Speed Control** 방식과, 전방에 **가상 벽(Virtual Wall)**을 쏘는 방식을 결합하여 Nav2가 스스로 최적의 우회 경로를 생성하도록 유도.
 </aside>
 </aside>
 
