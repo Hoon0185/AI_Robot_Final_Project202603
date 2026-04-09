@@ -44,19 +44,6 @@ class RobotLogicHandler:
         self._prepare_paths() #경로 설정 (로직 핸들러 생성 시점에 수행)
         if not self.is_debug:
             self._initialize_ros_nodes()
-            try:
-                if PatrolInterface:
-                    self.ros_interface = PatrolInterface()
-                else:
-                    raise ImportError("PatrolInterface module not found.")
-                if ObstacleInterface:
-                    self.obstacle_manager = ObstacleInterface()
-                    self.sub_obstacle_ui = self.ros_interface.node.create_subscription( String, 'obstacle_ui_log', self._obstacle_ui_callback, 10)
-                else:
-                    raise ImportError("ObstacleInterface module not found.")
-            except Exception as e:
-                self._log(f"[ERROR] ROS 2 Interface failed to start: {e}")
-                self._log("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
         else:
             self._log("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
 
@@ -113,9 +100,9 @@ class RobotLogicHandler:
         """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
 
-        # 구조: logic01/logic01/src/protect_product/protect_product/camera.py
+        # 구조: logic01/src/protect_product/protect_product/camera.py
         # 'protect_product' 패키지를 포함하는 상위 폴더인 'src' 레벨을 경로에 넣어야 함
-        ai_src_base = os.path.join(current_dir, 'logic01', 'logic01', 'src', 'protect_product')
+        ai_src_base = os.path.join(current_dir, 'logic01', 'src', 'protect_product')
 
         if ai_src_base not in sys.path:
             sys.path.append(ai_src_base)
@@ -141,12 +128,28 @@ class RobotLogicHandler:
         if not self.rclpy.ok():
             self.rclpy.init()
 
-        # [A] AI 노드 임포트 및 생성
+        # [A] 기본 주행 및 장애물 인터페이스 생성 (가장 먼저 수행되어야 함)
+        try:
+            from patrol_main.patrol_interface import PatrolInterface
+            from patrol_main.obstacle_interface import ObstacleInterface
+            
+            if PatrolInterface:
+                self.ros_interface = PatrolInterface()
+                self._log("🚀 [SYSTEM] 주행 인터페이스 연결 완료")
+            
+            if ObstacleInterface:
+                self.obstacle_manager = ObstacleInterface()
+                self.sub_obstacle_ui = self.ros_interface.node.create_subscription(
+                    String, 'obstacle_ui_log', self._obstacle_ui_callback, 10)
+                self._log("🚀 [SYSTEM] 장애물 인터페이스 연결 완료")
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 인터페이스 노드 생성 실패: {e}")
+
+        # [B] AI 노드 임포트 및 생성
         try:
             from protect_product.camera import IntegratedPCNode
             self._log("✅ [SYSTEM] AI 인식 모듈 로드 성공")
         except ImportError as e:
-            # 구조가 다를 경우를 대비한 2차 시도
             try:
                 from camera import IntegratedPCNode
                 self._log("✅ [SYSTEM] AI 모듈 로드 성공 (직접 참조)")
@@ -154,7 +157,7 @@ class RobotLogicHandler:
                 self._log(f"❌ [SYSTEM] AI 모듈 임포트 최종 실패: {e}")
                 IntegratedPCNode = None
 
-        # [A-2] RTSP 마스터 스트리밍 노드 임포트 및 생성 (지연 해갈의 핵심)
+        # [C] RTSP 마스터 스트리밍 노드 임포트 및 생성 (지연 해갈의 핵심)
         try:
             from protect_product.camera_node import RtspBridgeNode
             self.stream_node = RtspBridgeNode()
@@ -163,21 +166,19 @@ class RobotLogicHandler:
             self._log(f"⚠️ [SYSTEM] 스트리밍 노드 생성 실패: {e}")
             self.stream_node = None
 
+        # [D] 노드 인스턴스화 및 구독 설정
         try:
             if IntegratedPCNode:
                 self.cam_node = IntegratedPCNode()
                 self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
 
-            if self.ros_interface and hasattr(self.ros_interface, 'get_name'):
-                self.ros_interface = self.ros_interface # Placeholder
-
-            # [C] 캠 지연 해결을 위한 ROS 이미지 구독 (RTSP 직접 연결 대신 사용)
-            self.sub_image = self.ros_interface.node.create_subscription(
-                CompressedImage, '/rtsp_image', self._image_callback, 10)
-            self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
-
+            if self.ros_interface and hasattr(self.ros_interface, 'node'):
+                # 캠 지연 해결을 위한 ROS 이미지 구독
+                self.sub_image = self.ros_interface.node.create_subscription(
+                    CompressedImage, '/rtsp_image', self._image_callback, 10)
+                self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
         except Exception as e:
-            self._log(f"⚠️ [SYSTEM] 노드 생성 중 오류 발생: {e}")
+            self._log(f"⚠️ [SYSTEM] AI/이미지 구독 설정 중 오류: {e}")
 
     def _image_callback(self, msg):
         """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
