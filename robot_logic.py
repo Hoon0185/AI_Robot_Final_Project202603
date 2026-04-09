@@ -183,28 +183,9 @@ class RobotLogicHandler(QObject):
             self.ros_thread.start()
             self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (주행 제어 활성화)")
 
-            # [F] 자동 초기 위치 주입 (AMCL 경고 제거용 - 끈질긴 재시도 방식)
-            self._log("📍 [SYSTEM] 로봇 초기 위치 자동 동기화 시작...")
-            self.init_pose_retry_count = 0
-            self.init_pose_timer = QTimer()
-            self.init_pose_timer.timeout.connect(self._auto_initialize_pose)
-            self.init_pose_timer.start(2000) # 2초마다 재시도
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] 시스템 초기화 중 오류: {e}")
 
-    def _auto_initialize_pose(self):
-        """로봇이 위치를 잡을 때까지 주기적으로 초기 위치를 주입합니다."""
-        if not self.ros_interface: return
-        
-        # 이미 위치를 잡았거나 재시도 횟수를 초과하면 중단
-        if (self.ros_interface.latest_status and '"current_x":' in str(self.ros_interface.latest_status)) or self.init_pose_retry_count > 10:
-            self.init_pose_timer.stop()
-            self._log("✅ [SYSTEM] 로봇 위치 동기화 완료 (또는 최대 재시도 도달)")
-            return
-
-        self.init_pose_retry_count += 1
-        self._log(f"📍 [SYSTEM] 로봇 초기 위치 주입 중... (시도 {self.init_pose_retry_count}/10)")
-        self.ros_interface.publish_initial_pose(0.0, 0.0, 0.0)
 
     def _image_callback(self, msg):
         """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
