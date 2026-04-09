@@ -64,6 +64,7 @@ class PatrolNode(Node):
             DetectionArray, '/verified_objs', self.ai_callback, 10)
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
+        self.latest_ai_data = None
         self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode', 10) # AI 모드 제어 발행자 추가
         # 8. 위치 초기화 발행 (AMCL 보정용)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
@@ -77,7 +78,7 @@ class PatrolNode(Node):
         self.battery_sub = self.create_subscription(
             BatteryState, '/battery_state', self.battery_callback, 10)
         self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
-        
+
         # 10. 주행 재시도 제어 (무한 루프 방지용)
         self._is_handling_retry = False
         self.retry_timer = None
@@ -158,13 +159,13 @@ class PatrolNode(Node):
         """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
         if self._is_handling_retry:
             return
-            
+
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().warn('다시 보낼 목적지 인덱스가 범위를 벗어났습니다.')
             return
 
         self._is_handling_retry = True
-        
+
         # 이전 타이머 정리
         if self.retry_timer:
             self.destroy_timer(self.retry_timer)
@@ -176,7 +177,7 @@ class PatrolNode(Node):
         tx, ty, tyaw = float(coords['x']), float(coords['y']), float(coords['yaw'])
         self.get_logger().info(f'--- [안정화 재출발] Goal: {shelf_name} ---')
         self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
-        
+
         # 0.5초 후 실제 전송 (메시지 폭주 방지)
         self.create_timer(0.5, self._execute_resend)
 
@@ -185,14 +186,14 @@ class PatrolNode(Node):
         if hasattr(self, '_resend_timer_internal') and self._resend_timer_internal:
              self.destroy_timer(self._resend_timer_internal)
              self._resend_timer_internal = None
-        
+
         if self.current_shelf_idx >= len(self.shelf_list):
             return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
         tx, ty = float(coords['x']), float(coords['y'])
-        
+
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
@@ -368,7 +369,8 @@ class PatrolNode(Node):
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
             self.ai_wait_start_time = self.get_clock().now()
-            self.latest_ai_barcodes = []
+            self.latest_ai_data = None # [중요] 이전 데이터 초기화
+            self.ai_mode_pub.publish(Bool(data=True)) # AI 동작 시작 신호
 
             # 이전에 설정된 타이머가 있다면 제거
             if hasattr(self, '_delay_timer') and self._delay_timer:
@@ -383,7 +385,7 @@ class PatrolNode(Node):
                 self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting 3s for stabilization...')
                 if self.retry_timer: self.destroy_timer(self.retry_timer)
                 self.retry_timer = self.create_timer(3.0, self._trigger_retry)
-            
+
             # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
             if not self.is_paused:
                 self.publish_status('nav_alert')
@@ -463,15 +465,17 @@ class PatrolNode(Node):
         self.publish_status(status_for_ui)
 
     def ai_callback(self, msg):
-        """PC로부터 검증 상세 데이터를 수신"""
+        """Verifier 노드로부터 DetectionArray 메시지를 수신하여 저장"""
         if self.is_waiting_for_ai and len(msg.detections) > 0:
-            res = msg.detections[0]
-            # 수신된 데이터를 내부 변수에 저장
+            res = msg.detections[0] # Verifier가 보낸 가장 확실한 1개 데이터 사용
+
+            # [수정] Verifier.py의 return 구조와 메시지 필드를 1:1 매칭하여 저장
             self.latest_ai_data = {
                 "class_id": res.class_id,
                 "detected_barcode": res.detected_barcode,
                 "confidence": res.confidence,
-                "status": res.status
+                "status": res.status,       # '탐지됨' 혹은 '결품'
+                "item_name": res.item_name   # 물품명 (예: "Coke")
             }
 
     def battery_callback(self, msg):
@@ -495,39 +499,44 @@ class PatrolNode(Node):
         threading.Thread(target=run_report, daemon=True).start()
 
     def check_ai_result_and_proceed(self):
-        """결과가 왔는지 확인하고 DB에 기록"""
+        """데이터 수신 여부 확인 및 DB 기록 후 이동"""
         if not self.is_waiting_for_ai: return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
-
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # 결과를 받았거나 서버 설정 시간이 지났을 때
-        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > self.ai_wait_timeout:
+        # 데이터가 왔거나 타임아웃 발생 시
+        if self.latest_ai_data is not None or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
-            self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
+            self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료
 
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
 
-            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정
-            data = getattr(self, 'latest_ai_data', None) or {
-                "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
+            # [수정] Verifier 데이터가 없을 때(타임아웃)의 방어 로직
+            data = self.latest_ai_data or {
+                "class_id": -1,
+                "detected_barcode": "TIMEOUT",
+                "confidence": 0.0,
+                "status": "미인식",
+                "item_name": "확인불가"
             }
 
-            # 요구하신 형식대로 self.last_detection 구성
+            # [수정] UI 및 DB 리포트용 last_detection 데이터 구성 (Verifier 필드 적극 활용)
             self.last_detection = {
-                "tag_barcode": target_barcode,         # 원래 있어야 할 바코드
-                "detected_barcode": data["detected_barcode"], # 실제로 인식된 바코드
-                "yolo_class_id": data["class_id"],     # 물체 클래스 번호
-                "confidence": data["confidence"]       # 신뢰도
+                "tag_barcode": target_barcode,            # DB 상의 정답 바코드
+                "detected_barcode": data["detected_barcode"], # 실제 읽힌 바코드
+                "yolo_class_id": data["class_id"],
+                "confidence": round(data["confidence"], 2),
+                "status": data["status"],                 # '탐지됨'/'결품' 상태
+                "item_name": data["item_name"]            # 인식된 물품 이름
             }
 
-            # DB에 최종 리포트
+            # DB에 최종 리포트 (중복 방지)
             if target_barcode not in self.reported_tags:
                 self.db.report_detection(
-                    tag_barcode=self.last_detection["tag_barcode"],
+                    tag_barcode=target_barcode,
                     patrol_id=self.current_patrol_id or 0,
                     waypoint_id=self.shelves[shelf_name].get('waypoint_id', 1),
                     x=self.current_x,
@@ -537,10 +546,10 @@ class PatrolNode(Node):
                     confidence=self.last_detection["confidence"]
                 )
                 self.reported_tags.add(target_barcode)
-                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data['status']}")
+                self.get_logger().info(f"[DB 저장] {shelf_name}: {data['item_name']} ({data['status']})")
 
-            # 다음 위치로 이동
-            self.latest_ai_data = None # 데이터 초기화
+            # 데이터 초기화 및 다음 목적지로 이동
+            self.latest_ai_data = None
             self.proceed_to_next_shelf()
 
     def proceed_to_next_shelf(self):
