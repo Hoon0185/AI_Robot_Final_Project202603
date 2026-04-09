@@ -40,7 +40,7 @@ class Verifier:
             item_name = matched_item.class_name
             prod_bbox = matched_item.box
             confidence = matched_item.score
-            class_id = matched_item.id
+            class_id = matched_item.class_id
 
         return {
             'qr_bbox': qr_bbox,
