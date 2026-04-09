@@ -49,7 +49,6 @@ class ObstacleNode(Node):
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
     self.virtual_obstacle_pub = self.create_publisher(LaserScan, '/scan_virtual', 10)
-    # self.pause_pub = self.create_publisher(Bool, '/pause_patrol', 10) # 순찰 노드에 일시정지를 요청
     self.obstacle_status_pub = self.create_publisher(Bool, '/obstacle_detected_status', 10) # 행동트리에서 장애물 감지 여부 파악 위한 토픽
     self.pub_ui_log = self.create_publisher(String, 'obstacle_ui_log', 10)
 
@@ -261,7 +260,10 @@ class ObstacleNode(Node):
             self.is_blocked = False
             self.no_obstacle_start_time = None # 다음을 위해 초기화
             self.obstacle_status_pub.publish(Bool(data=False))
+<<<<<<< HEAD
             self.pause_pub.publish(Bool(data=False))
+=======
+>>>>>>> origin/LOGIC_02
           else:
             self.stop_robot() # 1.5초 대기 중에는 계속 정지 유지
 
@@ -274,7 +276,10 @@ class ObstacleNode(Node):
         self.is_blocked = False
         self.no_obstacle_start_time = None
         self.obstacle_status_pub.publish(Bool(data=False))
+<<<<<<< HEAD
         self.pause_pub.publish(Bool(data=False))
+=======
+>>>>>>> origin/LOGIC_02
 
   def timer_callback(self):
     # 후진 중일 때는 대기 및 우회 타이머 작동 X(장애물로 인해 후진중일 떄는 예외)

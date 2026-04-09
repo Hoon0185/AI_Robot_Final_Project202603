@@ -136,10 +136,10 @@ controller_server:
       decel_lim_x: -2.5
       decel_lim_y: 0.0
       decel_lim_theta: -3.2
-      vx_samples: 20
+      vx_samples: 40 # 20 -> 40 샘플링 상향 (더 정교하게)
       vy_samples: 0
-      vtheta_samples: 40
-      sim_time: 2.0 # 장애물 회피력 증가
+      vtheta_samples: 80 # 40 -> 80 샘플링 상향 (더 정교하게)
+      sim_time: 3.0 # 장애물 회피력 증가 (예측 시간) 2 -> 3초 변경
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
@@ -149,11 +149,11 @@ controller_server:
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle.scale: 0.5 # 장애물을 멀리 돌아가게 하는 성향(축소)
-      PathAlign.scale: 40.0 # 경로의 방향과 로봇의 정면을 맞추는 가중치 32 -> 40 변경
+      PathAlign.scale: 50.0 # 경로의 방향과 로봇의 정면을 맞추는 가중치 32 -> 50 변경
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 18.0 # 목표 좌표로 돌진하려는 힘 24 -> 18 변경
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 40.0 # 경로를 유지하는 힘 32 -> 40 변경
+      PathDist.scale: 50.0 # 경로를 유지하는 힘 32 -> 50 변경
       GoalDist.scale: 18.0 # 목표좌표로 돌진하는 힘 24 -> 18 변경
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
