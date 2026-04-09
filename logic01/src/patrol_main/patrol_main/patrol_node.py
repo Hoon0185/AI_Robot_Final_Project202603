@@ -530,18 +530,17 @@ class PatrolNode(Node):
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
 
-            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정 (이제 더욱 상세해집니다)
+            # 데이터가 없을 경우(타임아웃) '결품'으로 최종 보고 (사용자 요청 반영)
             data = getattr(self, 'latest_ai_data', None)
             
             if not data or data.get('status') == "SEARCHING":
-                # AI가 검색은 했지만 아무것도 못 찾고 타임아웃된 경우
                 data = {
                     "class_id": -1, 
                     "detected_barcode": "TIMEOUT", 
                     "confidence": 0.0, 
-                    "status": "인식 정보 없음 (TIMEOUT)"
+                    "status": "결품 (인식 정보 없음)"
                 }
-            # else: data가 있으면 (오진열, 결품, QR_MISSING 등) 그 데이터를 그대로 보관함
+            # else: data가 있으면 (오진열, 결품 등) 그 데이터를 그대로 보관함
 
             # 요구하신 형식대로 self.last_detection 구성
             self.last_detection = {

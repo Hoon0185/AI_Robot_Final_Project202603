@@ -26,13 +26,13 @@ class Verifier:
             self.conn = None
 
     def verify(self, qrs, items, target_barcode="UNKNOWN"):
-        # 1. 데이터가 아예 없으면 분석 불가 처리 (결품 가능성 높음)
+        # 1. 데이터가 아예 없으면 '결품'으로 즉각 판단 (사용자 요청 반영)
         if not qrs and not items:
             return {
-                'item_name': "미인식 (결품 의심)",
-                'status': '결품', # [수정] 아무것도 없으면 결품
+                'item_name': "인식 불가 (결품)",
+                'status': '결품',
                 'barcode': "NONE",
-                'bbox': [0,0,0,0],
+                'bbox': [0, 0, 0, 0],
                 'confidence': 0.0,
                 'yolo_id': -1
             }
@@ -93,7 +93,7 @@ class Verifier:
                 # 바코드가 없다면 가장 신뢰도 높은 상품 선택
                 matched_item = max(items, key=lambda x: x['score'])
 
-        # 5. 최종 검증 상태 결정 (사용자 요청 로직 반영)
+        # 5. 최종 검증 상태 결정 (웹/DB 정합성 기준)
         if row:
             db_product_name, db_yolo_id = row
             if matched_item:
@@ -102,28 +102,28 @@ class Verifier:
                 detected_yolo_id = current_yolo_id
                 confidence = matched_item['score']
 
-                # 정합성 판단
+                # 정합성 판단 (DB의 yolo_class_id를 절대 진리로 따름)
                 if int(current_yolo_id) == int(db_yolo_id):
                     status = '정상'
                     item_name = db_product_name if best_qr else f"[상품판독 성공] {db_product_name}"
                 else:
-                    # 정보가 다르면 '오진열'
+                    # 정보가 다르면 무조건 '오진열'
                     status = '오진열'
                     print(f"⚠️ [ID 불일치] DB ID: {db_yolo_id} | 인식 ID: {current_yolo_id} ({db_product_name})")
                     item_name = f"상품 불일치 (기대: {db_product_name})"
             else:
-                # 상품이 인식되지 않았다면 '결품'
+                # 기대 상품 위치에 상품이 없으면 '결품'
                 status = '결품'
                 item_name = f"{db_product_name} (결품)"
         elif not best_qr and matched_item:
-            # DB 정보는 없지만 상품은 있는 경우 (미등록 상품 등) -> 오진열 취합
+            # 바코드는 없고 엉뚱한(?) 상품만 있는 경우 -> 오진열로 통일
             status = '오진열'
             item_name = f"미등록 상품 (ID: {matched_item['id']})"
             bbox = matched_item['bbox']
             detected_yolo_id = matched_item['id']
             confidence = matched_item['score']
         else:
-            # 바코드도 없고 상품도 없을 때
+            # 최종적으로 탐지된 것이 아무것도 없을 때
             status = '결품'
             item_name = "인식 불가 (결품)"
 
