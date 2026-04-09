@@ -65,6 +65,7 @@ class PatrolNode(Node):
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
         self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode', 10) # AI 모드 제어 발행자 추가
+        self.target_product_pub = self.create_publisher(String, '/target_product', 10) # [추가] 목표 상품 바코드 전송
         # 8. 위치 초기화 발행 (AMCL 보정용)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False
@@ -377,9 +378,10 @@ class PatrolNode(Node):
 
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
-            self.ai_mode_pub.publish(Bool(data=True)) # [추가] 통합 AI 노드 활성화 신호 전송
+            self.latest_ai_data = None # 이전 데이터 초기화
+            self.ai_mode_pub.publish(Bool(data=True)) # 통합 AI 노드 활성화 신호 전송
+            self.target_product_pub.publish(String(data=target_barcode)) # 목표 바코드 정보 전송
             self.ai_wait_start_time = self.get_clock().now()
-            self.latest_ai_barcodes = []
 
             # 이전에 설정된 타이머가 있다면 제거
             if hasattr(self, '_delay_timer') and self._delay_timer:

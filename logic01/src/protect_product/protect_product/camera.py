@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import Bool # [추가] 온디맨드 제어용
+from std_msgs.msg import Bool, String # [추가] 온디맨드 제어 및 목표 상품 수신용
 from protect_product_msgs.msg import DetectionArray, Detection
 from cv_bridge import CvBridge
 import cv2
@@ -56,9 +56,16 @@ class IntegratedPCNode(Node):
             10)
             
         self.result_pub = self.create_publisher(DetectionArray, '/verified_objs', 10)
+        self.target_sub = self.create_subscription(String, '/target_product', self.target_callback, 10) # [추가] 목표 상품 수신
+        self.target_barcode = "UNKNOWN" # [추가] 목표 바코드 저장 변수
 
         # 4. 루프 타이머 (AI 연산은 부하가 크므로 10 FPS로 유지)
         self.timer = self.create_timer(1.0 / 10.0, self.process_all)
+
+    def target_callback(self, msg):
+        """로봇으로부터 현재 찾고 있는 목표 상품 바코드 수신"""
+        self.target_barcode = msg.data
+        self.get_logger().info(f"🎯 신규 목표 상품 설정됨: {self.target_barcode}")
 
     def ai_mode_callback(self, msg):
         """AI 인식 활성화/비활성화 제어"""
@@ -91,8 +98,8 @@ class IntegratedPCNode(Node):
             # Step 2: YOLO 탐지기 실행 (frame 전달)
             items = self.yolo_mod.predict(frame)
 
-            # Step 3: 검증기 실행 (두 결과값 비교)
-            result = self.verifier_mod.verify(qrs, items)
+            # Step 3: 검증기 실행 (로봇이 준 목표 바코드 정보 포함)
+            result = self.verifier_mod.verify(qrs, items, self.target_barcode)
 
             self.get_logger().info(f"🎯 [AI 탐지] 바코드: {len(qrs)}개 / 물체: {len(items)}개")
             for item in items:
