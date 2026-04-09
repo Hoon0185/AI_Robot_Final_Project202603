@@ -14,7 +14,7 @@ except ImportError:
     MinimapWidget = QFrame  # 파일이 없을 경우를 대비한 방어 코드
 
 class RtspWorker(QThread):
-    """RTSP 스트림을 백그라운드에서 직접 읽어오는 스레드"""
+    """RTSP 스트림을 백그라운드에서 직접 읽어오는 고신뢰성 스레드"""
     frameReceived = pyqtSignal(object) # 프레임(numpy) 전달
 
     def __init__(self, url):
@@ -24,32 +24,59 @@ class RtspWorker(QThread):
 
     def run(self):
         import cv2
+        import time
         import os
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-        cap = cv2.VideoCapture(self.url)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        while self.active:
-            if not cap.isOpened():
-                break
-            
-            # 버퍼 비우기 (최신 프레임 획득)
-            last_frame = None
-            while self.active:
-                grabbed = cap.grab()
-                if not grabbed: break
-                ret, frame = cap.retrieve()
-                if ret: last_frame = frame
-                else: break
-            
-            if last_frame is not None:
-                self.frameReceived.emit(last_frame)
-            
-            self.msleep(10) # CPU 부하 감소
         
-        cap.release()
+        # 최적화된 스트림 수신을 위한 환경 변수 (UDP 모드 권장)
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        
+        print(f"📡 [UI-THREAD] RTSP 스트리밍 시작: {self.url}")
+        
+        while self.active:
+            cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) # 버퍼 크기 최소화
+            
+            if not cap.isOpened():
+                print(f"❌ [UI-THREAD] 카메라 연결 실패. 3초 후 재연결 시도 중... ({self.url})")
+                cap.release()
+                for _ in range(30): # 3초간 세분화하여 대기 (정지 명령 즉각 대응용)
+                    if not self.active: break
+                    time.sleep(0.1)
+                continue
+
+            print("✅ [UI-THREAD] 카메라 연결 성공! 영상 수신을 시작합니다.")
+            
+            error_count = 0
+            while self.active:
+                # 버퍼 비우기 및 최신 프레임 획득 (grab -> retrieve 전략)
+                # 1. 먼저 쌓여 있는 프레임을 모두 grab (실제 데이터 디코딩 없이 포인터만 이동)
+                if not cap.grab():
+                    error_count += 1
+                    if error_count > 30: # 지속적으로 프레임이 안 오면 재연결
+                        print("⚠️ [UI-THREAD] 지속적인 프레임 수신 실패. 서버 연결을 재시작합니다.")
+                        break
+                    time.sleep(0.01)
+                    continue
+                
+                error_count = 0
+                # 2. 가장 마지막으로 grab된 최신 프레임만 실제로 디코딩(retrieve)
+                ret, frame = cap.retrieve()
+                
+                if ret:
+                    self.frameReceived.emit(frame)
+                else:
+                    print("⚠️ [UI-THREAD] 프레임 디코딩 실패.")
+                    break
+                
+                # CPU 점유율 과다 방지를 위한 미세 대기
+                time.sleep(0.01)
+
+            cap.release()
+            print("🔄 [UI-THREAD] RTSP 세션 종료. 재접속 준비...")
+            time.sleep(1)
 
     def stop(self):
+        print("🛑 [UI-THREAD] 스트리밍 스레드 중지 요청")
         self.active = False
         self.wait()
 
