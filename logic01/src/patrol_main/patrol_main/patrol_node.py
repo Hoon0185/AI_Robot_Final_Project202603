@@ -487,7 +487,7 @@ class PatrolNode(Node):
         threading.Thread(target=run_report, daemon=True).start()
 
     def check_ai_result_and_proceed(self):
-        """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행 (LOGIC_02 통합 버전)"""
+        """매칭 여부를 확인하고 결과를 DB에 기록 후 다음 단계 진행"""
         if not self.is_waiting_for_ai: return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
@@ -496,26 +496,19 @@ class PatrolNode(Node):
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # 결과를 받았거나 8초(기본값)가 지났을 때
-        # (ai_wait_timeout은 DB 설정을 따르되 없으면 8.0초 사용)
+        # 결과 수신 또는 타임아웃(기본 8초) 발생 시
         if (hasattr(self, 'latest_ai_data') and self.latest_ai_data) or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
-            self.ai_mode_pub.publish(Bool(data=False)) # AI 인식 종료 알림 (장애물 감지 재개)
+            self.ai_mode_pub.publish(Bool(data=False))
 
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
                 self._delay_timer = None
 
-            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정
-            data = getattr(self, 'latest_ai_data', None)
-            found = data is not None
+            data = getattr(self, 'latest_ai_data', None) or {
+                "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
+            }
 
-            if not found:
-                data = {
-                    "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
-                }
-
-            # 요구하신 형식대로 self.last_detection 구성
             self.last_detection = {
                 "tag_barcode": target_barcode,
                 "detected_barcode": data["detected_barcode"],
@@ -523,7 +516,6 @@ class PatrolNode(Node):
                 "confidence": data["confidence"]
             }
 
-            # DB에 최종 리포트
             if target_barcode not in self.reported_tags:
                 self.db.report_detection(
                     tag_barcode=target_barcode,
@@ -531,56 +523,30 @@ class PatrolNode(Node):
                     waypoint_id=waypoint_id,
                     x=self.current_x,
                     y=self.current_y,
-                    detected_barcode=data["detected_barcode"] if found else None,
+                    detected_barcode=data["detected_barcode"],
                     yolo_class_id=data["class_id"],
                     confidence=data["confidence"]
                 )
                 self.reported_tags.add(target_barcode)
-                self.get_logger().info(f"[AI] 결과 보고 완료: {target_barcode} (Found: {found})")
+                self.get_logger().info(f"[AI] 결과 보고 완료: {target_barcode}")
 
-            # 데이터 초기화 및 다음 위치로 이동
             self.latest_ai_data = None
             self.proceed_to_next_shelf()
 
-    def proceed_to_next_shelf(self):
-        """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""
-        if hasattr(self, '_delay_timer') and self._delay_timer:
-            self.destroy_timer(self._delay_timer)
-            self._delay_timer = None
-
-        if not self.is_patrolling:
-            self.get_logger().info('Patrol is no longer active. Stopping sequence.')
-            return
-
-        self.current_shelf_idx += 1
-        self.publish_status('patrolling')
-        self.send_next_goal()
-
     def reset_pose_to_origin(self):
-        """로봇의 위치 추정치를 (0,0)으로 초기화합니다."""
+        """로봇 위치를 (0,0,0)으로 초기화 (AMCL 동기화)"""
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = self.get_clock().now().to_msg()
-
-        # 위치 (0,0,0)
         msg.pose.pose.position.x = 0.0
         msg.pose.pose.position.y = 0.0
-        msg.pose.pose.position.z = 0.0
-
-        # 자세 (정면)
-        msg.pose.pose.orientation.x = 0.0
-        msg.pose.pose.orientation.y = 0.0
-        msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
-
-        # [LOGIC_02 통합] 공분산 초기화 (매우 낮은 값으로 설정하여 AMCL에 높은 확신 부여)
         msg.pose.covariance = [0.0] * 36
-        msg.pose.covariance[0] = 0.25 # x
-        msg.pose.covariance[7] = 0.25 # y
-        msg.pose.covariance[35] = 0.06 # yaw
-
+        msg.pose.covariance[0] = 0.25
+        msg.pose.covariance[7] = 0.25
+        msg.pose.covariance[35] = 0.06
         self.initial_pose_pub.publish(msg)
-        self.get_logger().info('Published Initial Pose to (0,0) with improved covariance.')
+        self.get_logger().info('AMCL 초기화 완료 (0,0,0)')
 
 
 def main(args=None):
