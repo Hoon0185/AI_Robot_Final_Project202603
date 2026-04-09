@@ -65,7 +65,7 @@ class PatrolNode(Node):
             DetectionArray, '/verified_objs', self.ai_callback, 10)
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
-        self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode', 10) # AI 모드 제어 발행자 추가
+        self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode_active', 10) # AI 모드 제어 발행자 추가 (ObstacleNode 연동)
         # 8. 위치 초기화 발행 (AMCL 보정용)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False
@@ -345,6 +345,7 @@ class PatrolNode(Node):
 
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
+            self.ai_mode_pub.publish(Bool(data=True)) # ObstacleNode에 AI 인식 중임을 알림 (장애물 감지 일시 정지용)
             self.ai_wait_start_time = self.get_clock().now()
             self.latest_ai_barcodes = []
 
@@ -480,7 +481,7 @@ class PatrolNode(Node):
         # 결과를 받았거나 서버 설정 시간이 지났을 때
         if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
-            self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
+            self.ai_mode_pub.publish(Bool(data=False)) # AI 인식 종료 알림 (장애물 감지 재개)
 
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)

@@ -14,8 +14,7 @@ class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
 
-    self.db = InventoryDB(base_url="http://16.184.56.119:8000")
-    # self.db = InventoryDB(base_url="http://16.")
+    self.db = InventoryDB()
 
     db_wait_time = 5 # 기본값 변수
     try:
