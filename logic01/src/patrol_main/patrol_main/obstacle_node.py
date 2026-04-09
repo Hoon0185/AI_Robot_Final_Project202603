@@ -239,8 +239,6 @@ class ObstacleNode(Node):
           status_msg.data = True
           self.obstacle_status_pub.publish(status_msg)
 
-        if not self.is_moving_backward:
-          self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
         self.publish_fake_scan(msg) # 가짜 벽 연속발행
       else:
         ## ---- 장애물이 사정거리 밖으로 사라졌을 때 ----
