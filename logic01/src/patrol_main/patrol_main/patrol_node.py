@@ -82,6 +82,14 @@ class PatrolNode(Node):
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
+        # [추가] 시작 시 자동으로 위치 초기화 (AMCL 동기화용)
+        self.initial_pose_timer = self.create_timer(1.0, self._auto_initial_pose_once)
+
+    def _auto_initial_pose_once(self):
+        """시작 시 딱 한 번 0,0,0으로 위치를 초기화합니다."""
+        self.destroy_timer(self.initial_pose_timer)
+        self.reset_pose_to_origin()
+
     def load_shelves(self):
         """순찰 포인트 및 시퀀스 로드 (1순위: 원격 DB Plan, 2순위: 로컬 YAML)"""
         try:
