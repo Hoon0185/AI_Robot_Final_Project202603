@@ -113,11 +113,11 @@ class IntegratedPCNode(Node):
                 msg = DetectionArray()
                 det = Detection()
 
-                # 요구하신 정보 매핑
+                # 요구하신 정보 매핑 (Detection.msg 필드명과 일치시켜 크래시 방지)
                 det.class_id = int(result.get('yolo_id', -1))       # 물체 클래스 번호
-                det.detected_barcode = result.get('barcode', 'NONE') # 인식된 바코드
-                det.confidence = float(result.get('confidence', 0.0)) # 신뢰도
-                det.status = result.get('status', 'Unknown')        # 정상/오진열 등
+                det.barcode = result.get('barcode', 'NONE')        # 인식된 바코드
+                det.score = float(result.get('confidence', 0.0))   # 신뢰도 (score 필드 사용)
+                det.status = result.get('status', 'Unknown')       # 판독 상태 (정상/오진열/결품)
 
                 # 결과가 나왔을 때 터미널에 출력
                 self.get_logger().info(f"===> [DETECTED] {result['item_name']} | Status: {result['status']}")
@@ -125,12 +125,12 @@ class IntegratedPCNode(Node):
                 msg.detections.append(det)
                 self.result_pub.publish(msg)
 
-            # [추가] 아무것도 탐지되지 않았을 때도 로봇에게 "찾는 중"임을 보고 (1초에 한 번만 발행하여 부하 방지)
+            # [추가] 아무것도 탐지되지 않았을 때도 로봇에게 "찾는 중"임을 보고
             if not analyze_success:
                 msg = DetectionArray()
                 det = Detection()
                 det.status = "SEARCHING" # 바코드/물체 모두 못 찾음
-                det.detected_barcode = "NONE"
+                det.barcode = "NONE"
                 msg.detections.append(det)
                 self.result_pub.publish(msg)
 

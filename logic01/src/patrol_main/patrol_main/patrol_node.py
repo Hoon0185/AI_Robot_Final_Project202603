@@ -479,12 +479,12 @@ class PatrolNode(Node):
         """PC로부터 검증 상세 데이터를 수신"""
         if self.is_waiting_for_ai and len(msg.detections) > 0:
             res = msg.detections[0]
-            # 수신된 데이터를 내부 변수에 저장
+            # [수정] Detection.msg의 최신 필드명(barcode, score, status) 반영
             self.latest_ai_data = {
-                "class_id": res.class_id,
-                "detected_barcode": res.detected_barcode,
-                "confidence": res.confidence,
-                "status": res.status
+                "class_id": getattr(res, 'class_id', -1),
+                "detected_barcode": getattr(res, 'barcode', 'NONE'),
+                "confidence": getattr(res, 'score', 0.0), # score 필드 사용
+                "status": getattr(res, 'status', 'Unknown')
             }
 
     def battery_callback(self, msg):
@@ -516,12 +516,13 @@ class PatrolNode(Node):
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # [상세 로깅] 현재 AI가 어떤 상태를 보고하고 있는지 실시간 모니터링
-        current_status = getattr(self, 'latest_ai_data', {}).get('status', '데이터 수신 대기중...') if hasattr(self, 'latest_ai_data') else '데이터 없음'
+        # [강력 조치] latest_ai_data가 None이거나 비어있을 때를 대비한 안전한 접근
+        ai_data = self.latest_ai_data or {}
+        current_status = ai_data.get('status', '데이터 수신 대기중...')
         self.get_logger().info(f"[AI 분석 중] {elapsed:.1f}s / {self.ai_wait_timeout:.1f}s | 상태: {current_status}")
 
         # [수정] 단순히 데이터가 있는지가 아니라, '정상' 결과를 얻었거나 시간이 다 됐을 때만 종료
-        has_success = hasattr(self, 'latest_ai_data') and self.latest_ai_data and self.latest_ai_data.get('status') == '정상'
+        has_success = ai_data.get('status') == '정상'
         
         if has_success or elapsed >= self.ai_wait_timeout:
             self.is_waiting_for_ai = False
@@ -542,15 +543,16 @@ class PatrolNode(Node):
                 }
             # else: data가 있으면 (오진열, 결품 등) 그 데이터를 그대로 보관함
 
-            # 요구하신 형식대로 self.last_detection 구성
+            # 요구하신 형식대로 self.last_detection 구성 (상태 정보 추가)
             self.last_detection = {
                 "tag_barcode": target_barcode,         # 원래 있어야 할 바코드
                 "detected_barcode": data["detected_barcode"], # 실제로 인식된 바코드
                 "yolo_class_id": data["class_id"],     # 물체 클래스 번호
-                "confidence": data["confidence"]       # 신뢰도
+                "confidence": data["confidence"],      # 신뢰도
+                "status": data.get("status", "Unknown") # 판독 상태
             }
 
-            # [강력 조치] DB 리포팅 시도 (에러가 나도 주행 흐름은 절대 방해하지 않음)
+            # [강력 조치] DB 리포팅 시도 (이제 status 데이터가 포함됩니다)
             try:
                 if target_barcode not in self.reported_tags:
                     # 타임아웃은 1초로 매우 짧게 설정 (이미 인벤토리_db.py에 반영됨)
@@ -562,10 +564,11 @@ class PatrolNode(Node):
                         y=self.current_y,
                         detected_barcode=self.last_detection["detected_barcode"],
                         yolo_class_id=self.last_detection.get("yolo_class_id", -1),
-                        confidence=self.last_detection["confidence"]
+                        confidence=self.last_detection["confidence"],
+                        status=self.last_detection["status"]
                     )
                     self.reported_tags.add(target_barcode)
-                    self.get_logger().info(f"✅ DB 리포트 성공: {target_barcode}")
+                    self.get_logger().info(f"✅ DB 리포트 성공: {target_barcode} ({self.last_detection['status']})")
             except Exception as e:
                 self.get_logger().error(f"⚠️ DB 리포트 지연/실패 (주행 강제 지속): {e}")
             finally:
