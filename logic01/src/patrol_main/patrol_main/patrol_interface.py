@@ -30,6 +30,9 @@ class PatrolInterface:
         self.buzzer_pub = self.node.create_publisher(Bool, '/robot_buzzer', 10)
         self.emergency_pub = self.node.create_publisher(Bool, '/emergency_stop', 10)
         self.cmd_pub = self.node.create_publisher(String, '/patrol_cmd', 10)
+        from geometry_msgs.msg import PoseWithCovarianceStamped
+        self.initial_pose_pub = self.node.create_publisher(
+            PoseWithCovarianceStamped, '/initialpose', 10)
 
         # Status Subscriber
         self.latest_status = None
@@ -76,6 +79,33 @@ class PatrolInterface:
         self.cached_robot_status = None
         self.status_poll_thread = threading.Thread(target=self._poll_status_loop, daemon=True)
         self.status_poll_thread.start()
+
+    def publish_initial_pose(self, x=0.0, y=0.0, yaw=0.0):
+        """로봇에게 초기 위치를 강제로 주입합니다. (AMCL 대기 상태 해제용)"""
+        from geometry_msgs.msg import PoseWithCovarianceStamped
+        import math
+
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
+        
+        msg.pose.pose.position.x = float(x)
+        msg.pose.pose.position.y = float(y)
+        
+        # Yaw to Quaternion
+        q_z = math.sin(yaw / 2.0)
+        q_w = math.cos(yaw / 2.0)
+        msg.pose.pose.orientation.z = q_z
+        msg.pose.pose.orientation.w = q_w
+        
+        # 공분산 초기화 (확신을 주는 값)
+        msg.pose.covariance = [0.0] * 36
+        msg.pose.covariance[0] = 0.25
+        msg.pose.covariance[7] = 0.25
+        msg.pose.covariance[35] = 0.06
+        
+        self.initial_pose_pub.publish(msg)
+        self.node.get_logger().info(f"✨ [INTERFACE] Initial Pose Published: ({x}, {y}, yaw={yaw})")
 
     def _poll_remote_commands(self):
         """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""

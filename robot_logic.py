@@ -183,6 +183,11 @@ class RobotLogicHandler(QObject):
             self.ros_thread.start()
             self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (주행 제어 활성화)")
 
+            # [F] 자동 초기 위치 주입 (AMCL 경고 제거용)
+            # 서버에서 마지막으로 확인된 위치가 있다면 그것을 사용, 없으면 0,0,0 사용
+            self._log("📍 [SYSTEM] 로봇 초기 위치 자동 동기화 시도...")
+            self.ros_interface.publish_initial_pose(0.0, 0.0, 0.0)
+
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] 시스템 초기화 중 오류: {e}")
 
