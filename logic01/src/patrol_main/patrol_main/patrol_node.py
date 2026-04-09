@@ -229,6 +229,9 @@ class PatrolNode(Node):
         if cmd == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence (Updating config first...)')
 
+            # --- [추가] 순찰 시작 전 유령 주행 명령(복귀 등) 강제 청소 ---
+            self.cancel_nav()
+
             # --- [추가] 순찰 시작 전 최신 설정 강제 동기화 ---
             self.load_shelves()
 
@@ -257,9 +260,10 @@ class PatrolNode(Node):
             self.go_to_origin()
 
     def cancel_nav(self):
-        """현재 진행 중인 Nav2 액션 목표를 취소합니다."""
+        """현재 진행 중인 Nav2 액션 목표를 실제로 취소합니다."""
         if self._goal_handle is not None:
-            self.get_logger().info('Cancelling current navigation goal...')
+            self.get_logger().info('Cancelling current navigation goal asynchronously...')
+            self._goal_handle.cancel_goal_async()
             self._goal_handle = None
         else:
             self.get_logger().info('No active navigation goal to cancel.')
@@ -334,9 +338,8 @@ class PatrolNode(Node):
         status = future.result().status
 
         if status == GoalStatus.STATUS_CANCELED:
-            self.get_logger().info('순찰이 일시 정지되어 주행이 안전하게 취소되었습니다.')
-            self.is_patrolling = True
-            self.is_paused = True
+            self.get_logger().info('Navigation goal was cancelled successfully.')
+            # 취소 시에는 순찰 상태를 꼬이게 하지 않고 조용히 리턴합니다.
             return
 
         if status == GoalStatus.STATUS_SUCCEEDED:
