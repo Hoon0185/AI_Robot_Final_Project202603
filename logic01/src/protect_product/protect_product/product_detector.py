@@ -16,14 +16,17 @@ class ProductDetector:
     def __init__(self, model_path=None):
         import os
         if model_path is None:
-            # 현재 파일 위치 기준 상대 경로로 models 폴더 찾기
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            # 구조: src/protect_product/protect_product/product_detector.py
-            # 모델 위치: src/protect_product/models/products.pt
-            model_path = os.path.join(current_dir, "..", "models", "products.pt")
+            # 1. ROS2 패키지 설치 경로에서 찾기 (표준)
+            try:
+                from ament_index_python.packages import get_package_share_directory
+                model_path = os.path.join(get_package_share_directory('protect_product'), 'models', 'products.pt')
+            except Exception:
+                # 2. 소스 코드 빌드 전 경로 폴백
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                model_path = os.path.join(current_dir, "..", "models", "products.pt")
             
             if not os.path.exists(model_path):
-                # 다른 후보 경로 확인 (심볼릭 링크 등 고려)
+                # 3. 개발 환경 절대 경로 폴백 (최후의 수단)
                 alt_path = "/home/penguin/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/protect_product/models/products.pt"
                 if os.path.exists(alt_path):
                     model_path = alt_path

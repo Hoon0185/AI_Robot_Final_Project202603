@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool # [추가] 온디맨드 제어용
 from protect_product_msgs.msg import DetectionArray, Detection
 from cv_bridge import CvBridge
 import cv2
@@ -47,11 +48,23 @@ class IntegratedPCNode(Node):
         self.bridge = CvBridge()
 
         # 3. 상태 및 퍼블리셔 설정
-        self.is_waiting_for_ai = True
+        self.is_waiting_for_ai = False  # [수정] 기본값은 연산 중단(False)
+        self.ai_mode_sub = self.create_subscription(
+            Bool, 
+            '/ai_mode', 
+            self.ai_mode_callback, 
+            10)
+            
         self.result_pub = self.create_publisher(DetectionArray, '/verified_objs', 10)
 
         # 4. 루프 타이머 (AI 연산은 부하가 크므로 10 FPS로 유지)
         self.timer = self.create_timer(1.0 / 10.0, self.process_all)
+
+    def ai_mode_callback(self, msg):
+        """AI 인식 활성화/비활성화 제어"""
+        self.is_waiting_for_ai = msg.data
+        status_str = "활성화" if self.is_waiting_for_ai else "비활성화(대기)"
+        self.get_logger().info(f"AI 인식 모드 전환: {status_str}")
 
     def image_callback(self, msg):
         """이미지 수신 시 최신 프레임 업데이트"""

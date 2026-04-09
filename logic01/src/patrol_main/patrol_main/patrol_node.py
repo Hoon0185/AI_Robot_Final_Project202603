@@ -377,6 +377,7 @@ class PatrolNode(Node):
 
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
+            self.ai_mode_pub.publish(Bool(data=True)) # [추가] 통합 AI 노드 활성화 신호 전송
             self.ai_wait_start_time = self.get_clock().now()
             self.latest_ai_barcodes = []
 

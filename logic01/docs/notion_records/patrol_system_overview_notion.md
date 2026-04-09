@@ -267,6 +267,10 @@ def manual_trigger_callback(self, request, response):
 **33. 내비게이션 파라미터 표준화 및 순정화:**
 * 문제: 여러 개발 단계에서 파라미터가 파편화되어 로봇의 거동이 예측 불가능해짐.
 * 해결: `LOGIC_01_STOCK_NAV` 브랜치를 신설하고 제조사(TurtleBot3) 순정 파라미터(`inflation: 0.5`, `scaling: 5.0`)로 전수 동기화하여 기준점을 재정립함. `transform_tolerance` 강화로 위치 추정 신뢰도 확보.
+
+**34. 통합 및 온디맨드 AI 비전 시스템 구축:**
+* 문제: YOLO, QR, 검증 노드가 분산되어 중복 연산을 수행하고 주행 중에도 CPU를 과도하게 점유함.
+* 해결: 모든 인식 로직을 `IntegratedPCNode`로 통합하여 프레임을 공유하고, `/ai_mode` 트리거를 도입하여 로봇이 매대 앞에 멈췄을 때만 연산이 활성화되는 온디맨드 시스템을 구축함.
 </aside>
 </aside>
 
