@@ -21,7 +21,7 @@ class ProductDetector:
             # 구조: src/protect_product/protect_product/product_detector.py
             # 모델 위치: src/protect_product/models/products.pt
             model_path = os.path.join(current_dir, "..", "models", "products.pt")
-            
+
             if not os.path.exists(model_path):
                 # 다른 후보 경로 확인 (심볼릭 링크 등 고려)
                 alt_path = "/home/penguin/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/protect_product/models/products.pt"

@@ -76,7 +76,6 @@ class IntegratedPCNode(Node):
                 time.sleep(0.5)
 
     def process_all(self):
-        print(f"DEBUG: AI 인식모드 = {self.is_waiting_for_ai}")
         if not self.is_waiting_for_ai: return
         frame = None
         # 최신 프레임을 안전하게 가져오기

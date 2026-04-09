@@ -1,4 +1,5 @@
 import sys
+import rclpy
 from PyQt6.QtWidgets import QApplication
 from robot_login import LoginWindow      # 로그인 UI
 from robot_ui import RobotControlPanel    # 메인 UI 도화지
@@ -26,6 +27,8 @@ class MainApp:
         self.main_view.show()
 
 def main():
+    if not rclpy.ok():
+        rclpy.init()
     app = QApplication(sys.argv)
     manager = MainApp()
     sys.exit(app.exec())

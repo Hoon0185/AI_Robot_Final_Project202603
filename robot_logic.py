@@ -1,14 +1,20 @@
 import sys
 import os
+import cv2
 from std_msgs.msg import String
 from sensor_msgs.msg import CompressedImage
-from PyQt6.QtCore import pyqtSignal, QObject, QThread
+from PyQt6.QtCore import pyqtSignal, QObject, QThread, QTimer
 
 # ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 patrol_main_path = os.path.join(current_dir, 'logic01', 'src', 'patrol_main')
 if patrol_main_path not in sys.path:
     sys.path.append(patrol_main_path)
+
+# AI 분석 노드(IntegratedPCNode)가 있는 경로 추가
+ai_node_path = os.path.join(current_dir, 'logic01', 'src', 'protect_product')
+if ai_node_path not in sys.path:
+    sys.path.append(ai_node_path)
 
 try:
     from patrol_main.patrol_interface import PatrolInterface
@@ -23,6 +29,12 @@ except ImportError:
         # 디버그 모드를 위해 임포트 실패 시 pass 처리 (is_debug에서 걸러짐)
         PatrolInterface = None
         ObstacleInterface = None
+
+# [중요] AI 분석 노드 임포트
+try:
+    from protect_product.camera import IntegratedPCNode
+except ImportError:
+    IntegratedPCNode = None
 
 try:
     import rclpy
@@ -62,7 +74,7 @@ class RobotLogicHandler(QObject):
         self.stream_node = None # Master 스트리밍 노드
         self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
         self.current_cam_mode = "DIRECT"
-        
+
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
         self.obstacle_manager = None
@@ -77,12 +89,14 @@ class RobotLogicHandler(QObject):
         self.ros_thread = None
 
         self._setup_connections()
+        self.ui_frame_timer = QTimer(self)
+        self.ui_frame_timer.timeout.connect(self.ui.update_frame) # UI의 함수와 연결
+        self.ui_frame_timer.start(30)  # 약 30fps로 프레임 갱신
         self.current_patrol_min = 60
         self.current_obstacle_sec = 5
         self._load_initial_data()
 
         # UI 업데이트용 타이머 (ROS 상태 반영)
-        from PyQt6.QtCore import QTimer
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.sync_ros_status)
         self.status_timer.start(50) # 1초마다 동기화
@@ -120,9 +134,6 @@ class RobotLogicHandler(QObject):
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
 
-        # 카메라 프레임 수신 (백엔드 -> UI)
-        self.signals.rtspFrameReceived.connect(self.ui.display_compressed_image)
-
     def _prepare_paths(self):
         """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -151,19 +162,23 @@ class RobotLogicHandler(QObject):
         # [A] 카메라부터 즉시 시작 (핵심: 주행 노드 대기와 상관없이 실행)
         try:
             self._log("💡 [SYSTEM] 로봇 카메라 직접 연결 모드로 시작합니다.")
-            self.ui.start_direct_rtsp(self.rtsp_url)
-        except Exception as cam_e:
-            self._log(f"⚠️ [SYSTEM] 카메라 초기 가동 실패: {cam_e}")
+            self.ai_node = IntegratedPCNode()
+            # [중요] UI가 ai_node에 접근할 수 있도록 직접 할당
+            self.ui.ai_node = self.ai_node
+            self._log("✅ [SYSTEM] AI 분석 노드 로드 및 UI 연결 완료")
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 카메라 초기 가동 실패: {e}")
+            self.ui.ai_node = None
 
         # [B] 기본 주행 및 장애물 인터페이스 생성
         try:
             from patrol_main.patrol_interface import PatrolInterface
             from patrol_main.obstacle_interface import ObstacleInterface
-            
+
             if PatrolInterface:
                 self.ros_interface = PatrolInterface()
                 self._log("🚀 [SYSTEM] 주행 인터페이스 연결 완료")
-            
+
             if ObstacleInterface:
                 self.obstacle_manager = ObstacleInterface()
                 self.sub_obstacle_ui = self.ros_interface.node.create_subscription(
@@ -195,7 +210,7 @@ class RobotLogicHandler(QObject):
     def _auto_initialize_pose(self):
         """로봇이 위치를 잡을 때까지 주기적으로 초기 위치를 주입합니다."""
         if not self.ros_interface: return
-        
+
         # 이미 위치를 잡았거나 재시도 횟수를 초과하면 중단
         if (self.ros_interface.latest_status and '"current_x":' in str(self.ros_interface.latest_status)) or self.init_pose_retry_count > 10:
             self.init_pose_timer.stop()
