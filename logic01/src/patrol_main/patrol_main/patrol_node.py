@@ -44,6 +44,7 @@ class PatrolNode(Node):
         self.last_detection = None
         self.reported_tags = set() # 중복 리포팅 방지를 위한 저장소
         self._goal_handle = None
+        self.retry_timer = None # [LOGIC_02 통합] 네비게이션 재시도 타이머
 
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
         self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
@@ -57,7 +58,7 @@ class PatrolNode(Node):
         self.current_y = 0.0
         self.pose_received = False # 위치 정보 수신 여부 확인 (0,0 보고 방지)
         self.pose_sub = self.create_subscription(
-            PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
+            PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
         self.pose_timer = self.create_timer(3.0, self.report_pose_to_server)
 
         # 7. AI 인식 연동 (Verifier 노드 데이터 수신)
@@ -98,6 +99,7 @@ class PatrolNode(Node):
                 config = self.db.get_patrol_config()
                 if config:
                     self.ai_wait_timeout = float(config.get('avoidance_wait_time', 8.0))
+                    self.get_logger().info(f"[DB] 서버 인식 대기시간 로드: {self.ai_wait_timeout}초")
                     self.get_logger().info(f"[DB] 서버 순찰 설정 로드 성공. AI 대기시간: {self.ai_wait_timeout}초")
 
                 return
@@ -160,6 +162,10 @@ class PatrolNode(Node):
 
     def resend_current_goal(self):
         """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
+        if self.retry_timer:
+            self.destroy_timer(self.retry_timer)
+            self.retry_timer = None
+
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().warn('다시 보낼 목적지 인덱스가 범위를 벗어났습니다.')
             return
@@ -357,9 +363,12 @@ class PatrolNode(Node):
             # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
             self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
         elif status == GoalStatus.STATUS_ABORTED:
-            # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 순찰을 완전히 끄지 않고 로그만 출력
-            self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting for next action or result.')
-            # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
+            # [LOGIC_02 통합] 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 2초 후 자동 재시도
+            self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Retrying in 2 seconds...')
+            if self.retry_timer:
+                self.destroy_timer(self.retry_timer)
+            self.retry_timer = self.create_timer(2.0, self.resend_current_goal)
+            
             if not self.is_paused:
                  self.publish_status('nav_alert')
         elif status == GoalStatus.STATUS_CANCELED:

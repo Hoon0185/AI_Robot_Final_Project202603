@@ -71,6 +71,7 @@ def generate_launch_description():
         DeclareLaunchArgument('run_rfid', default_value='false', description='Whether to run RFID localization node'),
         DeclareLaunchArgument('use_ai_sim', default_value='false', description='Whether to use AI detection simulation'),
         DeclareLaunchArgument('use_rviz', default_value='true', description='Whether to run RViz'),
+        DeclareLaunchArgument('run_obstacle_node', default_value='true', description='Whether to run obstacle avoidance node'),
 
         # 1. Navigation2 Bringup
         GroupAction(
@@ -117,6 +118,7 @@ def generate_launch_description():
             executable='obstacle_node',
             name='obstacle_node',
             parameters=[{'use_sim_time': use_sim_time}],
+            condition=IfCondition(LaunchConfiguration('run_obstacle_node')),
             output='screen'
         ),
 

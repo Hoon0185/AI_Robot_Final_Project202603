@@ -27,9 +27,8 @@ class ObstacleNode(Node):
     except Exception as e:
       self.get_logger().error(f"[DB] 서버 연결 실패: {e}")
 
-    self.declare_parameter('current_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
-
-    self.get_parameter('current_wait_time').get_parameter_value().integer_value
+    self.declare_parameter('current_wait_time', db_wait_time) # UI용 장애물 대기 시간 파라미터
+    self.declare_parameter('use_obstacle_avoidance', True) # 장애물 방해 여부 토글 파라미터 추가
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -177,6 +176,10 @@ class ObstacleNode(Node):
     """라이다 데이터 수신 시마다 장애물 감지 및 우회 로직 처리"""
     self.latest_scan_msg = msg
 
+    # ---- [추가] 장애물 회피 기능 자체가 꺼져있으면 무시 ----
+    if not self.get_parameter('use_obstacle_avoidance').get_parameter_value().bool_value:
+      return
+
     if self.is_teleop_active or self.is_detouring :
       return
 
@@ -270,6 +273,10 @@ class ObstacleNode(Node):
         self.pause_pub.publish(pause_msg)
 
   def timer_callback(self):
+    # ---- [추가] 장애물 회피 기능 자체가 꺼져있으면 타이머 로직 무시 ----
+    if not self.get_parameter('use_obstacle_avoidance').get_parameter_value().bool_value:
+      return
+
     if self.is_moving_backward: # 후진 중일 때는 10초 대기 및 우회 타이머 작동 X
       return
     if self.is_teleop_active :
@@ -403,6 +410,9 @@ class ObstacleNode(Node):
     msg.linear.x = 0.0
     msg.angular.z = 0.0
     self.cmd_vel_pub.publish(msg)
+    # [LOGIC_02 통합] 즉각적인 우선순위 점유를 위해 연속 발행 (Aggressive Stop)
+    for _ in range(5):
+      self.cmd_vel_pub.publish(msg)
 
 def main(args=None):
   if not rclpy.ok():
