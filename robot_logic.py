@@ -112,6 +112,11 @@ class RobotLogicHandler:
         if patrol_path not in sys.path:
             sys.path.append(patrol_path)
 
+        # [추가] 커스텀 메시지(protect_product_msgs) 경로 추가
+        msgs_path = os.path.join(current_dir, 'logic01', 'install', 'protect_product_msgs', 'local', 'lib', 'python3.10', 'dist-packages')
+        if msgs_path not in sys.path:
+            sys.path.append(msgs_path)
+
     def _initialize_ros_nodes(self):
         """실제 모듈을 임포트하고 노드 객체를 생성합니다."""
         import rclpy
