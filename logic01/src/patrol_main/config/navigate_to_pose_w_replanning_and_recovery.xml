@@ -10,9 +10,7 @@
       </RateController>
 
       <RecoveryNode number_of_retries="1" name="FollowPathAndHold">
-        <PipelineSequence name="HandleObstacleAwarePathFollowing">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
-        </PipelineSequence>
+        <FollowPath path="{path}" controller_id="FollowPath"/>
         <ClearEntireCostmap name="ClearLocalCostmap-Fallback" service_name="local_costmap/clear_entirely_local_costmap"/>
       </RecoveryNode>
 

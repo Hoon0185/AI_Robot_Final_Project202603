@@ -176,8 +176,8 @@ local_costmap:
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
-        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
+        inflation_radius: 0.30 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
+        cost_scaling_factor: 5.0 # 벽 근처의 '위험도 기울기' 결정
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -276,7 +276,7 @@ global_costmap:
         transform_tolerance: 1.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.40 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
+        inflation_radius: 0.30 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
         cost_scaling_factor: 5.0 # 벽 근처의 '위험도 기울기' 결정
       always_send_full_costmap: true
 
