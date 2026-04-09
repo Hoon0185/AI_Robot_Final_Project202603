@@ -139,7 +139,7 @@ controller_server:
       vx_samples: 20
       vy_samples: 0
       vtheta_samples: 40
-      sim_time: 1.5 # 장애물 회피력 증가
+      sim_time: 2.0 # 장애물 회피력 증가
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
@@ -148,13 +148,13 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 1.0 # 장애물 회피 가중치 낮춰서 벽도 장애물로 심하게 인식하지 않게 하기
-      PathAlign.scale: 32.0
+      BaseObstacle.scale: 0.5 # 장애물을 멀리 돌아가게 하는 성향(축소)
+      PathAlign.scale: 40.0 # 경로의 방향과 로봇의 정면을 맞추는 가중치 32 -> 40 변경
       PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 24.0
+      GoalAlign.scale: 18.0 # 목표 좌표로 돌진하려는 힘 24 -> 18 변경
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 32.0
-      GoalDist.scale: 24.0
+      PathDist.scale: 40.0 # 경로를 유지하는 힘 32 -> 40 변경
+      GoalDist.scale: 18.0 # 목표좌표로 돌진하는 힘 24 -> 18 변경
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
@@ -175,8 +175,8 @@ local_costmap:
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.25
-        cost_scaling_factor: 3.0
+        inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
+        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -275,8 +275,8 @@ global_costmap:
         transform_tolerance: 1.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.25
-        cost_scaling_factor: 3.0
+        inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
+        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
       always_send_full_costmap: true
 
 map_server:
