@@ -180,6 +180,13 @@ class PatrolNode(Node):
         # 0.5초 후 실제 전송 (메시지 폭주 방지)
         self.create_timer(0.5, self._execute_resend)
 
+    def _trigger_retry(self):
+        """3초 대기 후 실제 재시도 함수를 호출합니다."""
+        if self.retry_timer:
+            self.destroy_timer(self.retry_timer)
+            self.retry_timer = None
+        self.resend_current_goal()
+
     def _execute_resend(self):
         """실제로 Nav2에 목표를 전송합니다."""
         if hasattr(self, '_resend_timer_internal') and self._resend_timer_internal:
