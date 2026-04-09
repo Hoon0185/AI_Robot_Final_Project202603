@@ -82,21 +82,6 @@ class ObstacleNode(Node):
     self.current_linear_velocity = 0.0 # 현재 x축 선속도
     self.current_angular_velocity = 0.0 # 현재 z축 각속도
 
-  def set_nav2_speed(self, max_speed):
-    """Nav2의 최대 속도를 강제로 고정하거나 해제"""
-    if not self.nav_param_client.wait_for_service(timeout_sec=1.0):
-      self.get_logger().error('Controller Server 파라미터 서비스를 찾을 수 없습니다.')
-      return
-
-    req = SetParameters.Request()
-    param = Parameter()
-    param.name = 'FollowPath.max_vel_x' # FollowPath: nav2_params.yaml에 정의된 컨트롤러 이름
-    param.value = ParameterValue(type=ParameterType.PARAMETER_DOUBLE, double_value=max_speed)
-
-    req.parameters = [param]
-    self.nav_param_client.call_async(req)
-    self.get_logger().info(f'Nav2 속도 제한 설정 완료: {max_speed} m/s')
-
   def ai_mode_callback(self, msg):
     """AI 인식 대기 모드 활성화 여부 구독 콜백"""
     self.is_ai_mode = msg.data
@@ -229,12 +214,11 @@ class ObstacleNode(Node):
         if not self.is_blocked: # 최초 감지
           self.get_logger().warn(f'장애물이 감지되었습니다! 거리: {min_distance:.2f}m')
 
-          self.is_blocked = True
+        if not self.is_blocked:
+          self.get_logger().info('전방에 장애물 감지! Nav2의 자제 기동을 유도합니다.')
           self.blocked_start_time = self.get_clock().now()
-          self.no_obstacle_start_time = None
-
-          self.set_nav2_speed(0.0) # nav2 속도를 0으로 고정
-
+          self.is_blocked = True
+          
           status_msg = Bool()
           status_msg.data = True
           self.obstacle_status_pub.publish(status_msg)
@@ -248,19 +232,19 @@ class ObstacleNode(Node):
 
           if no_obstacle >= 1.5:
             self.get_logger().info('1.5초 동안 전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
-            self.set_nav2_speed(0.2) # 정상 속도 0.2로 복구
 
             self.is_blocked = False
             self.no_obstacle_start_time = None # 다음을 위해 초기화
             self.obstacle_status_pub.publish(Bool(data=False))
           else:
-            self.stop_robot() # 1.5초 대기 중에는 계속 정지 유지
+            # 1.5초 대기 중에는 Nav2가 스스로 판단하게 두거나, 
+            # 단순히 상태만 유지합니다 (강제 정지 명령 제거)
+            pass
 
     else:
       # ---- 라이다에 아무 것도 안 잡힐때 ----
       if self.is_blocked:
         self.get_logger().info('전방에 장애물이 완전히 사라졌습니다. 주행을 재개합니다.')
-        self.set_nav2_speed(0.2)          # 내비 속도 복구
         self.is_blocked = False
         self.no_obstacle_start_time = None
         self.obstacle_status_pub.publish(Bool(data=False))
@@ -296,8 +280,8 @@ class ObstacleNode(Node):
       stay_start = self.current_wait_time - 1.3 # 후진 종료 및 최종 정지 시작 (종료 1.3초 전)
 
       if elapsed_seconds < back_off_start_time:
-        # 1단계: 정지대기
-        self.stop_robot()
+        # 1단계: 정심 대기 - Nav2가 비헤이비어 트리와 파라미터에 따라 스스로 멈추도록 유도
+        pass
       elif back_off_start_time <= elapsed_seconds < stay_start:
         # 2단계: 대기 종료 직전 후진해서 공간 확보 (2.0 - 1.3 = 0.7초)
         msg = Twist()
@@ -307,13 +291,12 @@ class ObstacleNode(Node):
           self.get_logger().info('공간 확보를 위해 살짝 후진합니다...')
       elif stay_start <= elapsed_seconds < self.current_wait_time:
         # 3단계: 1.3초간 최종 정지 및 Nav2 경로 계산 대기
-        self.stop_robot()
+        pass
         if int(elapsed_seconds * 10) % 5 == 0:
           self.get_logger().info('후진 완료. Nav2 우회 준비 중...')
       elif elapsed_seconds >= self.current_wait_time:
         # 4단계: 해제 및 주행 재개
-        self.get_logger().info(f'{self.current_wait_time}초 경과. 자물쇠를 풀고 Nav2 회피를 허용합니다.')
-        self.set_nav2_speed(0.2)
+        self.get_logger().info(f'{self.current_wait_time}초 경과. Nav2에게 주행 재개를 알립니다.')
         self.is_blocked = False
         self.blocked_start_time = None
 
