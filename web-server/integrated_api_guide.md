@@ -110,3 +110,100 @@ if __name__ == "__main__":
 3.  **서버(FastAPI)**: `@router.post` 데코레이터가 요청을 수신하여 담당 함수로 배정.
 4.  **판독(Logic)**: 서버가 DB와 대조하여 '정상/결품/오진열' 판정 후 DB 저장.
 5.  **응답(Response)**: 판정 결과와 위치 정보를 로봇에게 리턴.
+
+---
+
+## 5. 로봇 텔레메트리 연동: 실시간 상태 전송
+
+로봇은 인식 작업 외에도 자신의 위치와 배터리 상태를 주기적으로 서버에 보고해야 합니다. 이 데이터는 HMI 대시보드에서 로봇의 '살아있음'과 '현재 위치'를 시각화하는 데 쓰입니다.
+
+### 📍 위치 정보 업데이트 (`/robot/pose`)
+로봇의 주행 오도메트리(Odometry) 정보를 서버에 전송합니다. (권장 간격: 1~2초)
+
+```python
+# odom_x, odom_y는 로봇 좌표계 기준
+requests.post(f"{BASE_URL}/robot/pose", json={"odom_x": 1.52, "odom_y": -0.85})
+```
+
+### 🔋 배터리 상태 업데이트 (`/robot/battery`)
+로봇의 배터리 잔량을 업데이트합니다.
+
+```python
+requests.post(f"{BASE_URL}/robot/battery", json={"percentage": 85.5})
+```
+
+---
+
+## 6. 하향식 명령 처리 (Command Polling)
+
+사용자가 HMI에서 'START'나 'STOP' 버튼을 누르면 서버 DB에 명령이 쌓입니다. 로봇은 이 명령을 **가져가서(Fetch)** 실행해야 합니다.
+
+### 📥 최신 명령 확인 (`/robot/command/latest`)
+
+```python
+def fetch_and_execute_command():
+    response = requests.get(f"{BASE_URL}/robot/command/latest")
+    if response.status_code == 200:
+        cmd = response.json()
+        cmd_type = cmd.get("command_type")
+        
+        if cmd_type == "START_PATROL":
+            print("🚀 순찰 시작 명령 수신!")
+            # 순찰 로직 가동...
+            mark_command_complete(cmd["command_id"])
+        elif cmd_type == "EMERGENCY_STOP":
+            print("🛑 비상 정지 명령 수신!")
+            # 즉시 정지 로직...
+            mark_command_complete(cmd["command_id"])
+
+def mark_command_complete(cmd_id):
+    # 명령 수행 완료 보고 (이걸 안 하면 서버는 계속 PENDING으로 인식)
+    requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+```
+
+---
+
+## 7. HMI 모니터링 원리 (`/status`)
+
+시스템의 전체 상태를 한눈에 파악하는 '마스터 API'입니다. HMI 웹페이지는 이 API를 1초마다 호출하여 화면을 갱신합니다.
+
+- **상태값**: `online` (로봇 하트비트 확인됨), `offline` (통신 단절).
+- **로봇 동작**: `순찰중`, `휴식중`, `비상정지`, `복귀중`.
+- **통합 데이터**: 현재 좌표, 배터리, 최신 명령, 서버 시간 등을 모두 포함합니다.
+
+---
+
+## 8. 전체 시스템 데이터 흐름도
+
+Gilbot 시스템의 각 구성 요소가 어떻게 맞물려 돌아가는지 요약합니다.
+
+```mermaid
+sequenceDiagram
+    participant H as HMI (Web/Kiosk)
+    participant S as Server (FastAPI)
+    participant R as Robot (TurtleBot)
+
+    Note over R,S: 1. 상태 보고 (Telemetry)
+    R->>S: POST /robot/pose (좌표/배터리)
+    S->>S: DB (robot_status) 갱신
+
+    Note over H,S: 2. 사용자 제어
+    H->>S: POST /patrol/start
+    S->>S: DB (robot_command) 명령 적재
+
+    Note over S,R: 3. 명령 전달 (Polling)
+    R->>S: GET /robot/command/latest
+    S-->>R: "START_PATROL" 전달
+    R->>S: POST /robot/command/{id}/complete
+
+    Note over R,S: 4. 임무 수행 및 결과 보고
+    R->>S: POST /detections/add (판독 데이터)
+    S->>S: DB (detection_log, alert) 기록
+
+    Note over H,S: 5. 실시간 모니터링
+    H->>S: GET /status
+    S-->>H: 로봇 상태 및 위치 데이터 반환
+```
+
+---
+*문서 최종 수정일: 2026-04-09 (v1.1)*
