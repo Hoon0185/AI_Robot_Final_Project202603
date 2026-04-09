@@ -1,5 +1,9 @@
 import cv2
-from pyzbar.pyzbar import decode
+try:
+    from pyzbar.pyzbar import decode
+    PYZBAR_AVAILABLE = True
+except ImportError:
+    PYZBAR_AVAILABLE = False
 
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -18,6 +22,11 @@ class QRDetector:
         pass
 
     def detect(self, frame):
+        if not PYZBAR_AVAILABLE:
+            # 의존성 부재 시 경고 출력 후 빈 결과 반환
+            print("WARNING [QR]: pyzbar module not found. QR detection skipped.")
+            return []
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)

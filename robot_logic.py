@@ -53,8 +53,9 @@ class RosWorker(QThread):
         self.active = False
         self.wait()
 
-class RobotLogicHandler:
+class RobotLogicHandler(QObject):
     def __init__(self, ui_instance, debug_mode=False):
+        super().__init__() # QObject 초기화
         self.ui = ui_instance
         self.is_debug = debug_mode # 디버그 모드 상태 저장
         self.cam_node = None
@@ -206,6 +207,7 @@ class RobotLogicHandler:
             # [E] 백그라운드 스레드 시작 (UI 프리징 방지)
             active_nodes = [self.cam_node, self.stream_node, self.ros_interface.node if self.ros_interface else None]
             self.ros_thread = RosWorker(active_nodes)
+            self.ros_thread.setParent(self) # 핸들러가 소멸되기 전까지 스레드 객체 유지
             self.ros_thread.start()
             self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (UI 프리징 해결)")
 
