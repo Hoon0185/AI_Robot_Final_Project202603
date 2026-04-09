@@ -353,9 +353,20 @@ class RobotControlPanel(QWidget):
 
     def update_frame(self):
         if hasattr(self, 'cap') and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if ret:
-                frame=cv2.flip(frame, -1)
+            # [최적화] 누적된 지연 방지를 위해 버퍼에 쌓인 예전 프레임들을 모두 Skip
+            while True:
+                grabbed = self.cap.grab()
+                if not grabbed:
+                    break
+                
+                # 다음 프레임이 있는지 확인 (없으면 이게 가장 최신임)
+                # retrieve()는 grab()한 최신 데이터를 가져옵니다.
+                ret, frame = self.cap.retrieve()
+                if not ret:
+                    break
+                    
+                # 최신 프레임을 찾았으므로 처리 진행
+                frame = cv2.flip(frame, -1)
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = rgb.shape
                 bytes_per_line = ch * w
@@ -365,15 +376,17 @@ class RobotControlPanel(QWidget):
                 # 라벨 크기에 맞춰 부드럽게 스케일링
                 pixmap = QPixmap.fromImage(qt_img).scaled(
                     self.cam_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio, # 왜곡 방지를 위해 KeepAspectRatio 권장
+                    Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
                 self.cam_label.setPixmap(pixmap)
-            else:
-                # 연결은 되어있으나 프레임을 못 가져오는 경우 (재연결 로직 필요할 수 있음)
-                self.cap.release()
+                
+                # 최신 프레임을 그렸으면 루프 종료
+                break
+        else:
+            # 연결이 끊겼거나 없는 경우
+            if hasattr(self, 'rtsp_url'):
                 self.cap = cv2.VideoCapture(self.rtsp_url)
-                pass
     def open_map(self):
         self.map_overlay.show()
         self.center_popup(self.map_popup_box)
