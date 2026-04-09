@@ -119,7 +119,6 @@ class RobotLogicHandler(QObject):
         # DB 및 알림 갱신 요청
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
-        self.ui.camModeToggleRequested.connect(self._handle_cam_mode_toggle)
 
         # 카메라 프레임 수신 (백엔드 -> UI)
         self.signals.rtspFrameReceived.connect(self.ui.display_compressed_image)
@@ -128,22 +127,10 @@ class RobotLogicHandler(QObject):
         """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
 
-        # 구조: logic01/src/protect_product/protect_product/camera.py
-        # 'protect_product' 패키지를 포함하는 상위 폴더인 'src' 레벨을 경로에 넣어야 함
-        ai_src_base = os.path.join(current_dir, 'logic01', 'src', 'protect_product')
-
-        if ai_src_base not in sys.path:
-            sys.path.append(ai_src_base)
-
         # PatrolInterface 경로 (logic01/src/patrol_main 대응)
         patrol_path = os.path.join(current_dir, 'logic01', 'src', 'patrol_main')
         if patrol_path not in sys.path:
             sys.path.append(patrol_path)
-
-        # [추가] 커스텀 메시지(protect_product_msgs) 경로 추가
-        msgs_path = os.path.join(current_dir, 'logic01', 'install', 'protect_product_msgs', 'local', 'lib', 'python3.10', 'dist-packages')
-        if msgs_path not in sys.path:
-            sys.path.append(msgs_path)
 
     def _initialize_ros_nodes(self):
         """실제 모듈을 임포트하고 노드 객체를 생성합니다."""
@@ -178,60 +165,24 @@ class RobotLogicHandler(QObject):
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] 인터페이스 노드 생성 실패: {e}")
 
-        # [B] AI 노드 임포트 및 생성
+        # [B] 인터페이스 노드 조율 및 카메라 시작
         try:
-            from protect_product.camera import IntegratedPCNode
-            self._log("✅ [SYSTEM] AI 인식 모듈 로드 성공")
-        except ImportError as e:
-            try:
-                from camera import IntegratedPCNode
-                self._log("✅ [SYSTEM] AI 모듈 로드 성공 (직접 참조)")
-            except:
-                self._log(f"❌ [SYSTEM] AI 모듈 임포트 최종 실패: {e}")
-                IntegratedPCNode = None
+            # 주행/장애물이 핵심이므로 최우선 실행
+            self._log("🚀 [SYSTEM] 주행 및 장애물 노드 통합 완료")
 
-        # [C] RTSP 마스터 스트리밍 노드 임포트 및 생성 (지연 해갈의 핵심)
-        try:
-            from protect_product.camera_node import RtspBridgeNode
-            self.stream_node = RtspBridgeNode()
-            self._log("🎥 [SYSTEM] RTSP 마스터 스트리밍 노드 활성화")
-        except Exception as e:
-            self._log(f"⚠️ [SYSTEM] 스트리밍 노드 생성 실패: {e}")
-            self.stream_node = None
-
-                    self.cam_node = IntegratedPCNode()
-                    self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
-                except Exception as ai_e:
-                    self._log(f"⚠️ [SYSTEM] AI 노드 생성 실패: {ai_e}")
-
-            # [D] 카메라 직접 연결 시작 (사용자 요청: ROS 토픽 모드 제거)
-            self._log("💡 [SYSTEM] 카메라 직접 연결 모드로 시작합니다.")
+            # 카메라 직접 연결 시작 (AI 브리지 없이 RTSP 직결)
+            self._log("💡 [SYSTEM] 로봇 카메라 직접 연결 모드로 시작합니다.")
             self.ui.start_direct_rtsp(self.rtsp_url)
 
-            # [E] 백그라운드 스레드 시작 (UI 프리징 방지)
-            active_nodes = [self.cam_node, self.stream_node, self.ros_interface.node if self.ros_interface else None]
+            # [E] 백그라운드 스레드 시작 (주행 인터페이스 전용)
+            active_nodes = [self.ros_interface.node if self.ros_interface else None]
             self.ros_thread = RosWorker(active_nodes)
-            self.ros_thread.setParent(self) # 핸들러가 소멸되기 전까지 스레드 객체 유지
+            self.ros_thread.setParent(self)
             self.ros_thread.start()
-            self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (UI 프리징 해결)")
+            self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (주행 제어 활성화)")
 
         except Exception as e:
-            self._log(f"⚠️ [SYSTEM] 통합 노드 조율 중 오류: {e}")
-
-    def _handle_cam_mode_toggle(self):
-        """사용자가 UI에서 모델 전환 버튼을 눌렀을 때의 처리"""
-        if self.current_cam_mode == "ROS":
-            # ROS -> DIRECT 전환
-            self.current_cam_mode = "DIRECT"
-            self.ui.lbl_cam_mode.setText("현재 모드: RTSP 직접 연결 (비상용)")
-            self._log("💡 [SYSTEM] 카메라 모드 전환: RTSP 직접 연결")
-            self.ui.start_direct_rtsp(self.rtsp_url)
-        else:
-            # DIRECT -> ROS 전환
-            self.current_cam_mode = "ROS"
-            self.ui.lbl_cam_mode.setText("현재 모드: ROS 2 (저지연)")
-            self._log("💡 [SYSTEM] 카메라 모드 전환: ROS 2 토픽 구독")
-            self.ui.stop_direct_rtsp()
+            self._log(f"⚠️ [SYSTEM] 시스템 초기화 중 오류: {e}")
 
     def _image_callback(self, msg):
         """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
