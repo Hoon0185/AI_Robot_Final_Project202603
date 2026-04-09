@@ -4,7 +4,7 @@ import datetime
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSlider, QFrame, QStackedWidget,
                              QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit)
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QImage, QPixmap, QTextCursor
 
 # --- [추가: MinimapWidget 임포트] ---
