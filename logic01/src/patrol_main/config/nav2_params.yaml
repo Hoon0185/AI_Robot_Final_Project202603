@@ -149,13 +149,13 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.5 # 장애물을 멀리 돌아가게 하는 성향(축소)
-      PathAlign.scale: 50.0 # 경로의 방향과 로봇의 정면을 맞추는 가중치 32 -> 50 변경
+      BaseObstacle.scale: 10.0 # 장애물을 멀리 돌아가게 하는 성향 (0.5 -> 10.0 상향)
+      PathAlign.scale: 32.0 # 경로 유지 가중치 하향 (50 -> 32)
       PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 18.0 # 목표 좌표로 돌진하려는 힘 24 -> 18 변경
+      GoalAlign.scale: 32.0 # 목표 돌진 가중치 상향 (18 -> 32)
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 50.0 # 경로를 유지하는 힘 32 -> 50 변경
-      GoalDist.scale: 18.0 # 목표좌표로 돌진하는 힘 24 -> 18 변경
+      PathDist.scale: 32.0 # 경로 엄격도 하향 (50 -> 32)
+      GoalDist.scale: 32.0 # 목표 지향성 상향 (18 -> 32)
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
@@ -176,8 +176,8 @@ local_costmap:
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
-        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
+        inflation_radius: 0.40 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
+        cost_scaling_factor: 5.0 # 벽 근처의 '위험도 기울기' 결정
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -276,8 +276,8 @@ global_costmap:
         transform_tolerance: 1.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.18 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
-        cost_scaling_factor: 15.0 # 벽 근처의 '위험도 기울기' 결정
+        inflation_radius: 0.40 # 로봇이 넘지 말아야 할 '가상의 벽 두께'
+        cost_scaling_factor: 5.0 # 벽 근처의 '위험도 기울기' 결정
       always_send_full_costmap: true
 
 map_server:
@@ -298,7 +298,7 @@ planner_server:
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.5
-      use_astar: false
+      use_astar: true
       allow_unknown: true
 
 behavior_server:
