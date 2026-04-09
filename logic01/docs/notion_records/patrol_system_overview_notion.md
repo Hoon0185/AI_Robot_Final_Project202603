@@ -271,6 +271,14 @@ def manual_trigger_callback(self, request, response):
 **34. 통합 및 온디맨드 AI 비전 시스템 구축:**
 * 문제: YOLO, QR, 검증 노드가 분산되어 중복 연산을 수행하고 주행 중에도 CPU를 과도하게 점유함.
 * 해결: 모든 인식 로직을 `IntegratedPCNode`로 통합하여 프레임을 공유하고, `/ai_mode` 트리거를 도입하여 로봇이 매대 앞에 멈췄을 때만 연산이 활성화되는 온디맨드 시스템을 구축함.
+
+**35. AI 인식 대기 시간 단축 및 타임아웃 문제:**
+* 문제: 서버(DB)의 `avoidance_wait_time` 설정값이 너무 낮게 동기화되어, 로봇이 도착하자마자 인식을 포기하고 `TIMEOUT`을 발생시키는 현상.
+* 해결: `patrol_node` 내에 최소 대기 시간 보장 로직을 추가하여, 서버 설정이 아무리 낮아도 최소 10초는 확정적으로 기다리도록 안전장치를 마련함.
+
+**36. 통합 패키지 실행 파일 명칭 불일치:**
+* 문제: AI 노드 통합 과정에서 `detector_node`라는 명칭이 사라졌으나, 상위 런치 파일(`total_patrol.launch.py`)에서 구형 명칭을 계속 호출하여 실행이 실패함.
+* 해결: `total_patrol.launch.py` 내의 호출부를 `integrated_node`로 전수 최신화하고 패키지 재빌드를 통해 정합성을 맞춤.
 </aside>
 </aside>
 

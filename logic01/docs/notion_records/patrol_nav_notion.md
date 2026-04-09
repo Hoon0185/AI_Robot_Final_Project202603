@@ -31,7 +31,8 @@ def get_result_callback(self, future):
     """내비게이션 결과 수신 및 상태별 시퀀스 제어"""
     status = future.result().status
     if status == GoalStatus.STATUS_SUCCEEDED:
-        self.get_logger().info(f'[{self.current_shelf_name}] 도착 완료. AI 검증 후 다음 지점으로.')
+        self.get_logger().info(f'[{self.current_shelf_name}] 도착 완료. AI 활성화 트리거(/ai_mode) 발송.')
+        self.ai_mode_pub.publish(Bool(data=True)) # [추가] AI 노드 깨우기
         self.proceed_to_next_shelf()
     elif status == GoalStatus.STATUS_ABORTED or status == GoalStatus.STATUS_CANCELED:
         # 장애물 우회 등으로 인한 중단 시, 순찰 종료 없이 대기 또는 재시도
