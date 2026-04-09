@@ -13,6 +13,46 @@ try:
 except ImportError:
     MinimapWidget = QFrame  # 파일이 없을 경우를 대비한 방어 코드
 
+class RtspWorker(QThread):
+    """RTSP 스트림을 백그라운드에서 직접 읽어오는 스레드"""
+    frameReceived = pyqtSignal(object) # 프레임(numpy) 전달
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self.active = True
+
+    def run(self):
+        import cv2
+        import os
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        cap = cv2.VideoCapture(self.url)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        while self.active:
+            if not cap.isOpened():
+                break
+            
+            # 버퍼 비우기 (최신 프레임 획득)
+            last_frame = None
+            while self.active:
+                grabbed = cap.grab()
+                if not grabbed: break
+                ret, frame = cap.retrieve()
+                if ret: last_frame = frame
+                else: break
+            
+            if last_frame is not None:
+                self.frameReceived.emit(last_frame)
+            
+            self.msleep(10) # CPU 부하 감소
+        
+        cap.release()
+
+    def stop(self):
+        self.active = False
+        self.wait()
+
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 
 class RobotControlPanel(QWidget):
@@ -368,55 +408,41 @@ class RobotControlPanel(QWidget):
         self.alarmRefreshRequested.emit()
 
     def _init_timers(self):
-        # [모드 공통] RTSP 직접 연결용 타이머 및 객체 초기화
-        self.direct_rtsp_timer = QTimer()
-        self.direct_rtsp_timer.timeout.connect(self.update_frame_direct)
-        self.direct_cap = None
+        # [모드 공통] RTSP 직접 연결용 객체 및 스레드 초기화
+        self.rtsp_worker = None
         self.direct_rtsp_url = ""
 
     def start_direct_rtsp(self, url):
-        """ROS 구독 실패 시 호출되는 비상 직접 연결 모드"""
-        print(f"📡 [UI] RTSP 직접 연결 시도... ({url})")
+        """ROS 구독 실패 또는 수동 전환 시 호출되는 비상 직접 연결 모드 (스레드 방식)"""
+        print(f"📡 [UI] RTSP 직접 연결 스레드 시작 시도... ({url})")
+        self.stop_direct_rtsp() # 이미 실행 중이면 중지
+
         self.direct_rtsp_url = url
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-        self.direct_cap = cv2.VideoCapture(url)
-        self.direct_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self.direct_rtsp_timer.start(30) # 30ms 간격으로 업데이트
+        self.rtsp_worker = RtspWorker(url)
+        self.rtsp_worker.frameReceived.connect(self.display_direct_frame)
+        self.rtsp_worker.start()
 
     def stop_direct_rtsp(self):
-        if self.direct_rtsp_timer.isActive():
-            self.direct_rtsp_timer.stop()
-        if self.direct_cap:
-            self.direct_cap.release()
-            self.direct_cap = None
+        """직접 연결 스레드 중지"""
+        if self.rtsp_worker and self.rtsp_worker.isRunning():
+            self.rtsp_worker.stop()
+            self.rtsp_worker = None
 
-    def update_frame_direct(self):
-        """UI에서 직접 카메라에 접속하여 영상을 갱신합니다."""
-        if self.direct_cap and self.direct_cap.isOpened():
-            # [최적화] 누적 지연 방지 (버퍼 비우기)
-            last_frame = None
-            while True:
-                grabbed = self.direct_cap.grab()
-                if not grabbed: break
-                ret, frame = self.direct_cap.retrieve()
-                if ret: last_frame = frame
-            
-            if last_frame is not None:
-                frame = cv2.flip(last_frame, -1)
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w, ch = rgb.shape
-                bytes_per_line = ch * w
+    def display_direct_frame(self, frame):
+        """RtspWorker에서 받은 프레임을 화면에 표시"""
+        if frame is not None:
+            frame = cv2.flip(frame, -1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb.shape
+            bytes_per_line = ch * w
 
-                qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-                pixmap = QPixmap.fromImage(qt_img).scaled(
-                    self.cam_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.cam_label.setPixmap(pixmap)
-        else:
-            # 연결 실패 시 재시도 로직 (옵션)
-            pass
+            qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(qt_img).scaled(
+                self.cam_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.cam_label.setPixmap(pixmap)
 
     def display_compressed_image(self, data):
         """백엔드 노드에서 전송받은 압축 이미지를 실시간으로 화면에 표시합니다."""
