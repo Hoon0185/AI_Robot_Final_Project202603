@@ -17,11 +17,12 @@ class PatrolInterface:
         self.node = Node(node_name)
 
         # Database & Server Sync
-        self.db = InventoryDB()
+        self.db = InventoryDB(base_url="http://16.184.56.119:8000")#16.184.56.119
 
         # Service Clients
         self.trigger_client = self.node.create_client(Trigger, '/trigger_manual_patrol')
         self.param_client = self.node.create_client(SetParameters, '/patrol_scheduler/set_parameters')
+        self.obs_param_client = self.node.create_client(SetParameters, '/obstacle_node/set_parameters')
 
         # Publishers (Manual Control)
         # LOGIC_02의 twist_mux 우선순위에 따라 /cmd_vel_teleop 사용
@@ -39,6 +40,7 @@ class PatrolInterface:
 
         self.last_status_received_time = 0.0
         self.last_robot_heartbeat_time = 0.0
+        self.last_command_execution_times = {}
 
         # Background spinning for asynchronous communication
         self.executor = rclpy.executors.SingleThreadedExecutor()
@@ -48,9 +50,6 @@ class PatrolInterface:
 
         # Remote Command Polling
         self.last_cmd_id = None
-        # [보완] 명령 종류별 마지막 실행 시간을 기록하기 위한 딕셔너리 초기화
-        self.last_command_execution_times = {} 
-        
         try:
             # 시작 시점의 최신 명령 ID를 가져와서 저장 (이전 명령 재실행 방지)
             init_data = self.db.get_latest_command()
@@ -61,27 +60,28 @@ class PatrolInterface:
             self.node.get_logger().error(f"Failed to fetch initial command ID: {e}")
 
         self.last_cmd_name = None
+        self.processed_ids = set()
+        self.last_command_execution_times = {}
         self.poll_thread = threading.Thread(target=self._poll_remote_commands, daemon=True)
         self.poll_thread.start()
 
         # Remote Config Sync Loop (Interval, Start/End, etc.)
         self.remote_interval_min = None
+        self.remote_avoidance_wait = None
         self.config_sync_thread = threading.Thread(target=self._sync_remote_config, daemon=True)
         self.config_sync_thread.start()
+
+        # [Optimized] Background Status Polling (History & Real-time Status)
+        self.cached_history = []
+        self.cached_robot_status = None
+        self.status_poll_thread = threading.Thread(target=self._poll_status_loop, daemon=True)
+        self.status_poll_thread.start()
 
     def _poll_remote_commands(self):
         """서버 대시보드로부터 원격 명령을 주기적으로 확인합니다."""
         import time
-        self.processed_ids = set() # 이미 처리한 중복 ID 방어용
         while rclpy.ok():
             try:
-                # [추가] 현재 로봇이 순찰 중인지 상태 확인 (중복 명령 방지용)
-                is_patrolling = False
-                if self.latest_status:
-                    current_status = self.latest_status.get("status", "").upper()
-                    # 순찰 중이거나 목표지로 이동 중일 때 잠금
-                    is_patrolling = current_status in ["PATROLLING", "MOVE_TO_GOAL", "MOVING"]
-
                 data = self.db.get_latest_command()
                 if data:
                     cmd_name = data.get('command_type') or data.get('command')
@@ -93,19 +93,12 @@ class PatrolInterface:
                         time.sleep(2.0)
                         continue
 
-                    # [핵심 로직] 순찰 중일 때 START_PATROL 명령이 오면 실행하지 않고 서버에서만 완료 처리
-                    if cmd_name == "START_PATROL" and is_patrolling:
-                        self.node.get_logger().info(f"[REMOTE SKIP] Already in {current_status}. Skipping START command ID: {cmd_id}")
-                        self.db.complete_command(cmd_id)
-                        self.last_cmd_id = cmd_id
-                        self.processed_ids.add(cmd_id)
-                        continue
-
                     # 2. 명령 종류별 디바운스 체크 (10초 쿨타임)
                     now = time.time()
                     last_exec_time = self.last_command_execution_times.get(cmd_name, 0)
                     if (now - last_exec_time) < 10.0:
-                        self.node.get_logger().info(f"[DEBOUNCE] Skipping {cmd_name} as it was recently executed.")
+                        self.node.get_logger().info(f"[DEBOUNCE] Skipping {cmd_name} as it was recently executed. Marking as DONE.")
+                        # 실행은 건너뛰되, 서버에는 완료 보고를 하여 명령이 계속 남지 않게 함
                         self.db.complete_command(cmd_id)
                         self.last_cmd_id = cmd_id
                         self.processed_ids.add(cmd_id)
@@ -126,7 +119,7 @@ class PatrolInterface:
                     if success:
                         self.node.get_logger().info(f"[REMOTE] Command {cmd_id} marked as COMPLETED on server.")
                     else:
-                        self.node.get_logger().warn(f"[REMOTE] Fail to mark {cmd_id} as COMPLETED.")
+                        self.node.get_logger().warn(f"[REMOTE] Fail to mark {cmd_id} as COMPLETED. Local lock is active.")
             except Exception as e:
                 self.node.get_logger().error(f"[REMOTE] Polling error: {e}")
             time.sleep(2.0)
@@ -164,12 +157,55 @@ class PatrolInterface:
                         if success:
                             self.remote_interval_min = new_interval
                             self.node.get_logger().info(f"[SYNC] Successfully updated /patrol_scheduler parameter.")
+                            # 로봇 노드에 설정 변경 신호 송출
+                            msg = String()
+                            msg.data = "RECONFIG"
+                            self.cmd_pub.publish(msg)
 
+                    # 2. 장애물 대기 시간 동기화 감지
+                    new_wait = config.get('avoidance_wait_time')
+                    if new_wait is not None:
+                        new_wait_int = int(new_wait)
+                        # 서버 값이 마지막으로 기록된 값과 다를 때만 전송 (무한 루프 방지)
+                        if new_wait_int != getattr(self, 'remote_avoidance_wait', None):
+                            self._set_node_param(self.obs_param_client, 'current_wait_time', new_wait_int)
+                            self.remote_avoidance_wait = new_wait_int
+                            self.node.get_logger().info(f"[SYNC] Obstacle wait time synced to {new_wait_int}s")
             except Exception as e:
                 self.node.get_logger().error(f"[SYNC] Config sync error: {e}")
 
             # 10초마다 확인
             time.sleep(10.0)
+
+    def _poll_status_loop(self):
+        """서버로부터 순찰 이력 및 실시간 로봇 상태를 백그라운드에서 주기적으로 가져옵니다."""
+        import time
+        while rclpy.ok():
+            try:
+                # 1. 순찰 이력 가져오기
+                history = self.db.get_patrol_history()
+                if history is not None:
+                    self.cached_history = history
+
+                # 2. 실시간 로봇 상태(/status) 가져오기
+                rt_status = self.db.get_robot_status()
+                if rt_status:
+                    self.cached_robot_status = rt_status
+            except Exception as e:
+                self.node.get_logger().error(f"[STATUS] Background polling error: {e}")
+            
+            # 2초마다 갱신 (네트워크 부하 및 실시간성 사이의 균형)
+            time.sleep(2.0)
+
+    def _set_node_param(self, client, name, value):
+        """파라미터 설정용 헴퍼 함수 추가"""
+        if not client.wait_for_service(timeout_sec=1.0):
+            return False
+        req = SetParameters.Request()
+        val = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=int(value))
+        req.parameters = [Parameter(name=name, value=val)]
+        client.call_async(req)
+        return True
 
     def _status_cb(self, msg):
         try:
@@ -242,18 +278,22 @@ class PatrolInterface:
         """부저를 삐, 삐, 삐 형태로 지정된 횟수만큼 울립니다. (비동기 처리)"""
         def run_beep():
             for i in range(count):
+                # 부저 켜기
                 msg_on = Bool()
                 msg_on.data = True
                 self.buzzer_pub.publish(msg_on)
                 time.sleep(duration)
 
+                # 부저 끄기
                 msg_off = Bool()
                 msg_off.data = False
                 self.buzzer_pub.publish(msg_off)
 
+                # 비프음 사이 간격 (마지막 회차 제외)
                 if i < count - 1:
                     time.sleep(0.1)
 
+        # UI 스레드를 방해하지 않도록 별도 스레드에서 실행
         beep_thread = threading.Thread(target=run_beep, daemon=True)
         beep_thread.start()
         return True, f"Buzzer beep sequence started ({count} times)"
@@ -280,11 +320,11 @@ class PatrolInterface:
         return True, "Reset position command sent"
 
     def get_inventory_data(self):
-        """DB에서 재고 리스트를 가져옵니다."""
+        """DB에서 재고 리스트를 가져옵니다. (6개 컬럼 형식)"""
         return self.db.get_inventory()
 
     def get_alarm_data(self):
-        """DB에서 재고 부족 알림 리스트를 가져옵니다."""
+        """DB에서 재고 부족 알림 리스트를 가져옵니다. (4개 컬럼 형식)"""
         return self.db.get_alarms()
 
     def set_patrol_interval(self, minutes: float):
@@ -300,11 +340,11 @@ class PatrolInterface:
         return self._set_param('reference_time', ref_time, ParameterType.PARAMETER_STRING)
 
     def set_scheduled_times(self, times: list):
-        """예약 순찰 시간 목록을 설정합니다."""
+        """예약 순찰 시간 목록(['HH:MM', ...])을 설정합니다."""
         return self._set_param('scheduled_times', times, ParameterType.PARAMETER_STRING_ARRAY)
 
     def trigger_manual_patrol(self):
-        """수동 순찰을 즉시 실행합니다."""
+        """수동 순찰을 즉시 실행합니다. (토픽 방식)"""
         msg = String()
         msg.data = "START_PATROL"
         self.cmd_pub.publish(msg)
@@ -312,27 +352,47 @@ class PatrolInterface:
         return True, "Manual patrol trigger sent via topic"
 
     def get_recent_patrol_time(self):
-        """최근 순찰 상태 및 시간 정보를 가져옵니다."""
+        """최근 순찰 상태 및 시간 정보를 가져옵니다. (백그라운드에서 캐시된 데이터 즉시 반환)"""
         res = {}
-        history = self.db.get_patrol_history()
-
-        if history and len(history) > 0:
-            latest = history[0]
+        
+        # 1. 캐시된 DB 이력에서 가장 최근 순찰 정보 추출
+        if self.cached_history and len(self.cached_history) > 0:
+            latest = self.cached_history[0]
             db_start_time = latest.get('start_time') or 'No Data'
             res = {
                 "status": latest.get('status', 'Completed'),
                 "start_time": db_start_time,
                 "end_time": latest.get('end_time', '-'),
-                "error_found": latest.get('error_found', 0)
+                "error_found": latest.get('error_found', 0),
+                "robot_x": latest.get('last_odom_x', 0.0),
+                "robot_y": latest.get('last_odom_y', 0.0)
             }
 
+        # 2. [최적화] 캐시된 서버 실시간 상태(robot_status 테이블) 반영
+        rt_status = self.cached_robot_status
+        if rt_status:
+            res["robot_x"] = rt_status.get("odom_x", res.get("robot_x", 0.0))
+            res["robot_y"] = rt_status.get("odom_y", res.get("robot_y", 0.0))
+            res["battery"] = rt_status.get("battery", 0.0)
+            # 서버로부터 유효한 좌표/배터리 등 데이터가 왔다면 통신 성공으로 간주하고 시간 최신화
+            # (서버의 status가 'offline'이더라도 데이터가 신선하면 온라인으로 판정하기 위함)
+            if rt_status.get("odom_x") is not None or rt_status.get("battery") is not None:
+                import time
+                self.last_status_received_time = time.time()
+
+        # 3. 로봇이 실시간 토픽(latest_status)을 쏘고 있다면 최우선으로 덮어씀
         if self.latest_status:
             topic_status = self.latest_status.get("status")
+
             if topic_status and topic_status not in ["idle", "IDLE"]:
                 res["status"] = topic_status
+
                 topic_start_time = self.latest_status.get("start_time")
                 if topic_start_time and topic_start_time != 'No Data':
                     res["start_time"] = topic_start_time
+                
+                res["robot_x"] = self.latest_status.get("current_x", res.get("robot_x", 0.0))
+                res["robot_y"] = self.latest_status.get("current_y", res.get("robot_y", 0.0))
 
             if res.get("status") == "patrolling" and "current_shelf" in self.latest_status:
                 res["current_shelf"] = self.latest_status["current_shelf"]
@@ -341,21 +401,26 @@ class PatrolInterface:
         return res if res else None
 
     def is_robot_online(self):
-        """최근 5초 이내에 하트비트를 수신했는지 확인합니다."""
+        """최근 10초 이내에 상태 메시지 혹은 하트비트를 수신했는지 확인합니다. (임계값 완화)"""
         now = time.time()
-        status_online = (now - self.last_status_received_time) < 5.0 if self.last_status_received_time > 0 else False
-        heartbeat_online = (now - self.last_robot_heartbeat_time) < 5.0 if self.last_robot_heartbeat_time > 0 else False
+        status_online = (now - self.last_status_received_time) < 10.0 if self.last_status_received_time > 0 else False
+        heartbeat_online = (now - self.last_robot_heartbeat_time) < 10.0 if self.last_robot_heartbeat_time > 0 else False
+
         return status_online or heartbeat_online
 
     def get_patrol_history_data(self):
+        """DB에서 전체 순찰 이력을 가져옵니다."""
         return self.db.get_patrol_history()
 
     def get_db_config(self):
+        """DB에서 현재 인벤토리/순찰 설정을 가져옵니다."""
         return self.db.get_patrol_config()
 
     def sync_config_to_db(self, avoidance_wait=10, hour=0, minute=0):
+        """현재 설정을 DB 서버에 저장합니다. (시/분 분리 전송)"""
         return self.db.update_patrol_config(avoidance_wait=avoidance_wait, hour=hour, minute=minute)
 
     def shutdown(self):
+        """ROS 노드와 백그라운드 스레드를 안전하게 종료합니다."""
         self.executor.shutdown()
         self.node.destroy_node()

@@ -44,12 +44,10 @@ class PatrolNode(Node):
         self.last_detection = None
         self.reported_tags = set() # 중복 리포팅 방지를 위한 저장소
         self._goal_handle = None
-        self.retry_timer = None # [LOGIC_02 통합] 네비게이션 재시도 타이머
 
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
         self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
         self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
-        self.pause_sub = self.create_subscription(Bool, '/pause_patrol', self.pause_callback, 10) # 장애물 노드로부터 일시정지 요청 수신
 
         # 5. 순찰 상태 발행 (UI용)
         self.patrol_status_pub = self.create_publisher(String, '/patrol_status', 10)
@@ -58,7 +56,7 @@ class PatrolNode(Node):
         self.current_y = 0.0
         self.pose_received = False # 위치 정보 수신 여부 확인 (0,0 보고 방지)
         self.pose_sub = self.create_subscription(
-            PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
+            PoseWithCovarianceStamped, 'amcl_pose', self.pose_callback, 10)
         self.pose_timer = self.create_timer(3.0, self.report_pose_to_server)
 
         # 7. AI 인식 연동 (Verifier 노드 데이터 수신)
@@ -66,7 +64,7 @@ class PatrolNode(Node):
             DetectionArray, '/verified_objs', self.ai_callback, 10)
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
-        self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode_active', 10) # AI 모드 제어 발행자 추가 (ObstacleNode 연동)
+        self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode', 10) # AI 모드 제어 발행자 추가
         # 8. 위치 초기화 발행 (AMCL 보정용)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.is_waiting_for_ai = False
@@ -82,14 +80,6 @@ class PatrolNode(Node):
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
-        # [추가] 시작 시 자동으로 위치 초기화 (AMCL 동기화용)
-        self.initial_pose_timer = self.create_timer(1.0, self._auto_initial_pose_once)
-
-    def _auto_initial_pose_once(self):
-        """시작 시 딱 한 번 0,0,0으로 위치를 초기화합니다."""
-        self.destroy_timer(self.initial_pose_timer)
-        self.reset_pose_to_origin()
-
     def load_shelves(self):
         """순찰 포인트 및 시퀀스 로드 (1순위: 원격 DB Plan, 2순위: 로컬 YAML)"""
         try:
@@ -99,7 +89,7 @@ class PatrolNode(Node):
                 self.shelves = db_plan
                 self.shelf_list = list(self.shelves.keys())
                 self.get_logger().info(f"Successfully loaded {len(self.shelves)} planned waypoints in sequence from Remote DB.")
-                
+
                 # [추가] DB에서 가져온 최신 좌표를 로컬 YAML 파일에 동기화(저장)
                 self.save_shelves_to_yaml()
 
@@ -107,7 +97,6 @@ class PatrolNode(Node):
                 config = self.db.get_patrol_config()
                 if config:
                     self.ai_wait_timeout = float(config.get('avoidance_wait_time', 8.0))
-                    self.get_logger().info(f"[DB] 서버 인식 대기시간 로드: {self.ai_wait_timeout}초")
                     self.get_logger().info(f"[DB] 서버 순찰 설정 로드 성공. AI 대기시간: {self.ai_wait_timeout}초")
 
                 return
@@ -135,7 +124,7 @@ class PatrolNode(Node):
             # 저장 경로 설정: 소스 코드 위치 우선 탐색
             pkg_dir = get_package_share_directory('patrol_main')
             yaml_path = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
-            
+
             # ROS 2 파라미터 표준 형식으로 데이터 구조화
             yaml_data = {
                 '/**': {
@@ -144,36 +133,23 @@ class PatrolNode(Node):
                     }
                 }
             }
-            
+
             with open(yaml_path, 'w') as f:
                 yaml.dump(yaml_data, f, default_flow_style=False)
-            
+
             self.get_logger().info(f"Successfully synchronized webDB coordinates to {yaml_path}")
-            
+
         except Exception as e:
             self.get_logger().error(f"Failed to save shelves to YAML: {e}")
 
-    def pause_callback(self, msg):
-        """장애물 감지 시 순찰 노드가 하는 역할"""
-        if msg.data and self.is_patrolling:
-            if not self.is_paused:
-                self.get_logger().warn('장애물 감지로 인해 현재 목적지 주행을 전면 취소하고 대기합니다.')
-                self.is_paused = True
+    def resend_current_goal_with_delay(self):
+        """로봇이 주춤거리거나 주행 시작 직후 터지는 현상을 막아주는 안정화 장치"""
+        self.destroy_timer(self._resend_timer)
+        self.resend_current_goal()
 
-                self.cancel_nav()
-
-        elif not msg.data and self.is_patrolling and self.is_paused:
-            self.get_logger().info('대기 시간이 끝나 장애물 상황이 해제되었습니다. 다시 가던 목적지로 출발합니다.')
-            self.is_paused = False
-
-            self.resend_current_goal()
 
     def resend_current_goal(self):
         """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
-        if self.retry_timer:
-            self.destroy_timer(self.retry_timer)
-            self.retry_timer = None
-
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().warn('다시 보낼 목적지 인덱스가 범위를 벗어났습니다.')
             return
@@ -359,7 +335,6 @@ class PatrolNode(Node):
 
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
-            self.ai_mode_pub.publish(Bool(data=True)) # ObstacleNode에 AI 인식 중임을 알림 (장애물 감지 일시 정지용)
             self.ai_wait_start_time = self.get_clock().now()
             self.latest_ai_barcodes = []
 
@@ -371,14 +346,12 @@ class PatrolNode(Node):
             # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
             self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
         elif status == GoalStatus.STATUS_ABORTED:
-            # [LOGIC_02 통합] 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 2초 후 자동 재시도
-            self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Retrying in 2 seconds...')
-            if self.retry_timer:
-                self.destroy_timer(self.retry_timer)
+            # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 순찰을 완전히 끄지 않고 로그만 출력
+            self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting for next action or result.')
             self.retry_timer = self.create_timer(2.0, self.resend_current_goal)
-            
+            # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
             if not self.is_paused:
-                 self.publish_status('nav_alert')
+                self.publish_status('nav_alert')
         elif status == GoalStatus.STATUS_CANCELED:
             self.get_logger().warn(f'Navigation was CANCELED (code: {status}). Waiting for next action.')
             # 취소 시에는 순찰을 완전히 끄지 않고 유지합니다. (장애물 회피 등에서 발생 가능)
@@ -487,66 +460,84 @@ class PatrolNode(Node):
         threading.Thread(target=run_report, daemon=True).start()
 
     def check_ai_result_and_proceed(self):
-        """매칭 여부를 확인하고 결과를 DB에 기록 후 다음 단계 진행"""
+        """결과가 왔는지 확인하고 DB에 기록"""
         if not self.is_waiting_for_ai: return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
-        waypoint_id = self.shelves[shelf_name].get('waypoint_id', 1)
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # 결과 수신 또는 타임아웃(기본 8초) 발생 시
-        if (hasattr(self, 'latest_ai_data') and self.latest_ai_data) or elapsed > self.ai_wait_timeout:
+        # 결과를 받았거나 서버 설정 시간이 지났을 때
+        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
-            self.ai_mode_pub.publish(Bool(data=False))
+            self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
 
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
-                self._delay_timer = None
 
+            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정
             data = getattr(self, 'latest_ai_data', None) or {
                 "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
             }
 
+            # 요구하신 형식대로 self.last_detection 구성
             self.last_detection = {
-                "tag_barcode": target_barcode,
-                "detected_barcode": data["detected_barcode"],
-                "yolo_class_id": data["class_id"],
-                "confidence": data["confidence"]
+                "tag_barcode": target_barcode,         # 원래 있어야 할 바코드
+                "detected_barcode": data["detected_barcode"], # 실제로 인식된 바코드
+                "yolo_class_id": data["class_id"],     # 물체 클래스 번호
+                "confidence": data["confidence"]       # 신뢰도
             }
 
+            # DB에 최종 리포트
             if target_barcode not in self.reported_tags:
                 self.db.report_detection(
-                    tag_barcode=target_barcode,
+                    tag_barcode=self.last_detection["tag_barcode"],
                     patrol_id=self.current_patrol_id or 0,
-                    waypoint_id=waypoint_id,
+                    waypoint_id=self.shelves[shelf_name].get('waypoint_id', 1),
                     x=self.current_x,
                     y=self.current_y,
-                    detected_barcode=data["detected_barcode"],
-                    yolo_class_id=data["class_id"],
-                    confidence=data["confidence"]
+                    detected_barcode=self.last_detection["detected_barcode"],
+                    yolo_class_id=self.last_detection["yolo_class_id"],
+                    confidence=self.last_detection["confidence"]
                 )
                 self.reported_tags.add(target_barcode)
-                self.get_logger().info(f"[AI] 결과 보고 완료: {target_barcode}")
+                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data['status']}")
 
-            self.latest_ai_data = None
+            # 다음 위치로 이동
+            self.latest_ai_data = None # 데이터 초기화
             self.proceed_to_next_shelf()
 
+    def proceed_to_next_shelf(self):
+        """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""
+        if hasattr(self, '_delay_timer') and self._delay_timer:
+            self.destroy_timer(self._delay_timer)
+            self._delay_timer = None
+
+        if not self.is_patrolling:
+            self.get_logger().info('Patrol is no longer active. Stopping sequence.')
+            return
+
+        self.current_shelf_idx += 1
+        self.publish_status('patrolling')
+        self.send_next_goal()
+
     def reset_pose_to_origin(self):
-        """로봇 위치를 (0,0,0)으로 초기화 (AMCL 동기화)"""
+        """로봇의 위치 추정치를 (0,0)으로 초기화합니다."""
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = self.get_clock().now().to_msg()
+
+        # 위치 (0,0,0)
         msg.pose.pose.position.x = 0.0
         msg.pose.pose.position.y = 0.0
+        msg.pose.pose.position.z = 0.0
+
+        # 자세 (정면)
+        msg.pose.pose.orientation.x = 0.0
+        msg.pose.pose.orientation.y = 0.0
+        msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
-        msg.pose.covariance = [0.0] * 36
-        msg.pose.covariance[0] = 0.25
-        msg.pose.covariance[7] = 0.25
-        msg.pose.covariance[35] = 0.06
-        self.initial_pose_pub.publish(msg)
-        self.get_logger().info('AMCL 초기화 완료 (0,0,0)')
 
 
 def main(args=None):

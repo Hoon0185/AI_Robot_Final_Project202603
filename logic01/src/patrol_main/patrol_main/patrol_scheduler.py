@@ -2,7 +2,6 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
-import json
 import time
 
 class PatrolScheduler(Node):
@@ -18,13 +17,8 @@ class PatrolScheduler(Node):
         
         self.update_config()
         
-        # 명령 발행 (절대 경로)
+        # 모든 노드가 들을 수 있도록 절대 경로(/)로 명령 발행
         self.publisher_ = self.create_publisher(String, '/patrol_cmd', 10)
-        
-        # [추가] 로봇의 현재 상태를 구독하여 순찰 중인지 확인
-        self.status_sub = self.create_subscription(
-            String, '/patrol_status', self._status_callback, 10)
-        self.is_robot_busy = False # 로봇의 동작 여부 플래그
         
         # 2. 서비스 서버 추가 (UI 수동 트리거용)
         self.srv = self.create_service(Trigger, 'trigger_manual_patrol', self.manual_trigger_callback)
@@ -34,20 +28,6 @@ class PatrolScheduler(Node):
         
         self.last_triggered_time = -1
         self.get_logger().info('Patrol Scheduler Node enhanced. Ready for UI integration.')
-
-    def _status_callback(self, msg):
-        """로봇의 상태를 확인하여 순찰 중인지 여부를 업데이트합니다."""
-        try:
-            status_data = json.loads(msg.data)
-            status = status_data.get("status", "").upper()
-            # 순찰 중이거나 이동 중이면 Busy 상태로 판단
-            if status in ["PATROLLING", "MOVE_TO_GOAL", "MOVING"]:
-                self.is_robot_busy = True
-            else:
-                self.is_robot_busy = False
-        except:
-            # JSON 파싱 실패 시 보수적으로 접근 (Busy 아님으로 간주하거나 이전 상태 유지)
-            pass
 
     def update_config(self, params=None):
         if params:
@@ -84,30 +64,26 @@ class PatrolScheduler(Node):
         return rclpy.node.SetParametersResult(successful=True)
 
     def clock_check_callback(self):
+        # 파 라이터 실시간 반영을 위해 매번 읽어오지 않고 update_config로 관리
+        # 더 이상 타이머에서 매번 읽어오지 않아 데드락을 방지합니다.
         now = time.localtime()
         current_time_str = time.strftime("%H:%M", now)
         current_timestamp = int(time.time())
         seconds_since_midnight = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
 
         if self.mode == 'periodic':
+            # 기준 시점(ref_offset_sec)으로부터 주기(interval_sec)가 경과했는지 확인
             diff = seconds_since_midnight - self.ref_offset_sec
             if diff >= 0 and diff % int(self.interval_sec) == 0:
                 if current_timestamp != self.last_triggered_time:
-                    # [보완] 로봇이 한가할 때만 트리거
-                    if not self.is_robot_busy:
-                        self.trigger_patrol(f'Periodic mode ({self.ref_time_str} start)')
-                    else:
-                        self.get_logger().warn('Periodic trigger skipped: Robot is already busy.')
+                    self.trigger_patrol(f'Periodic mode ({self.ref_time_str} start, {self.interval_sec/60}min interval)')
                     self.last_triggered_time = current_timestamp
         
         elif self.mode == 'scheduled':
+            # 현재 시각(HH:MM)이 목록에 있고, 초가 0일 때 (정각 트리거)
             if current_time_str in self.sched_times and now.tm_sec == 0:
                 if current_timestamp != self.last_triggered_time:
-                    # [보완] 로봇이 한가할 때만 트리거
-                    if not self.is_robot_busy:
-                        self.trigger_patrol(f'Scheduled mode (Time: {current_time_str})')
-                    else:
-                        self.get_logger().warn(f'Scheduled trigger ({current_time_str}) skipped: Robot busy.')
+                    self.trigger_patrol(f'Scheduled mode (Time: {current_time_str})')
                     self.last_triggered_time = current_timestamp
 
     def trigger_patrol(self, reason):
@@ -117,7 +93,6 @@ class PatrolScheduler(Node):
         self.get_logger().info(f'[{reason}] Starting Patrol at {time.strftime("%H:%M:%S", time.localtime())}')
 
     def manual_trigger_callback(self, request, response):
-        # 수동 트리거는 사용자의 직접 명령이므로 Busy 여부와 상관없이 일단 명령을 보냅니다.
         self.get_logger().info('Manual patrol trigger received via Service.')
         self.trigger_patrol('Manual trigger via UI')
         response.success = True
@@ -126,14 +101,11 @@ class PatrolScheduler(Node):
 
 def main(args=None):
     rclpy.init(args=args)
+    import time
     patrol_scheduler = PatrolScheduler()
-    try:
-        rclpy.spin(patrol_scheduler)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        patrol_scheduler.destroy_node()
-        rclpy.shutdown()
+    rclpy.spin(patrol_scheduler)
+    patrol_scheduler.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

@@ -148,7 +148,7 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 1.0
+      BaseObstacle.scale: 1.0 # 장애물 회피 가중치 낮춰서 벽도 장애물로 심하게 인식하지 않게 하기
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0

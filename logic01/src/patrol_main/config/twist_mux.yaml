@@ -7,7 +7,7 @@ twist_mux:
     topics:
       obstacle:
         topic: "/cmd_vel_obstacle"
-        timeout: 1.0
+        timeout: 0.2
         priority: 100
       teleop:
         topic: "/cmd_vel_teleop"
