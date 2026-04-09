@@ -239,7 +239,8 @@ class ObstacleNode(Node):
           status_msg.data = True
           self.obstacle_status_pub.publish(status_msg)
 
-        self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
+        if not self.is_moving_backward:
+          self.stop_robot() # 발견 유지 중일 때도 무조건 정지 명령 연속 발행
         self.publish_fake_scan(msg) # 가짜 벽 연속발행
       else:
         ## ---- 장애물이 사정거리 밖으로 사라졌을 때 ----
@@ -273,7 +274,8 @@ class ObstacleNode(Node):
         self.pause_pub.publish(Bool(data=False))
 
   def timer_callback(self):
-    if self.is_moving_backward: # 후진 중일 때는 10초 대기 및 우회 타이머 작동 X
+    # 후진 중일 때는 대기 및 우회 타이머 작동 X(장애물로 인해 후진중일 떄는 예외)
+    if self.is_moving_backward and not self.is_blocked:
       return
     if self.is_teleop_active :
       if self.is_front_danger:
@@ -295,24 +297,36 @@ class ObstacleNode(Node):
 
     # ---- 장애물 대기 구간 ----
     if self.is_blocked:
-
       elapsed_duration = self.get_clock().now() - self.blocked_start_time
       elapsed_seconds = elapsed_duration.nanoseconds / 1e9 # 나노초를 초 단위로 변환
 
-      if elapsed_seconds >= self.current_wait_time:
+      back_off_start_time = self.current_wait_time - 2.0 # 후진 타이밍 (대기시간 종료 2초 전 시작)
+      stay_start = self.current_wait_time - 1.3 # 후진 종료 및 최종 정지 시작 (종료 1.3초 전)
+
+      if elapsed_seconds < back_off_start_time:
+        # 1단계: 정지대기
+        self.stop_robot()
+      elif back_off_start_time <= elapsed_seconds < stay_start:
+        # 2단계: 대기 종료 직전 후진해서 공간 확보 (2.0 - 1.3 = 0.7초)
+        msg = Twist()
+        msg.linear.x = -0.07  # 아주 느리게 후진
+        self.cmd_vel_pub.publish(msg)
+        if int(elapsed_seconds * 10) % 5 == 0:
+          self.get_logger().info('공간 확보를 위해 살짝 후진합니다...')
+      elif stay_start <= elapsed_seconds < self.current_wait_time:
+        # 3단계: 1.3초간 최종 정지 및 Nav2 경로 계산 대기
+        self.stop_robot()
+        if int(elapsed_seconds * 10) % 5 == 0:
+          self.get_logger().info('후진 완료. Nav2 우회 준비 중...')
+      elif elapsed_seconds >= self.current_wait_time:
+        # 4단계: 해제 및 주행 재개
         self.get_logger().info(f'{self.current_wait_time}초 경과. 자물쇠를 풀고 Nav2 회피를 허용합니다.')
-
-        # 속도를 다시 정상(0.2)으로 전환
-        # Nav2는 가짜 벽(Fake Scan)을 보고 스스로 우회
         self.set_nav2_speed(0.2)
-
         self.is_blocked = False
         self.blocked_start_time = None
 
         # Nav2 비헤이비어 트리에 장애물이 없다고 알려서 회피 기동을 시작하게 함
-        status_msg = Bool()
-        status_msg.data = False
-        self.obstacle_status_pub.publish(status_msg)
+        self.obstacle_status_pub.publish(Bool(data=False))
 
 
   def call_clear_costmap_service(self):
