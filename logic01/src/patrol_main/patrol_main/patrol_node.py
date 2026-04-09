@@ -48,7 +48,6 @@ class PatrolNode(Node):
         # 4. 순찰 및 제어 명령 구독 - 네임스페이스 영향을 받지 않도록 절대 경로(/) 사용
         self.cmd_sub = self.create_subscription(String, '/patrol_cmd', self.cmd_callback, 10)
         self.emergency_sub = self.create_subscription(Bool, '/emergency_stop', self.emergency_callback, 10)
-        self.pause_sub = self.create_subscription(Bool, '/pause_patrol', self.pause_callback, 10) # 장애물 노드로부터 일시정지 요청 수신
 
         # 5. 순찰 상태 발행 (UI용)
         self.patrol_status_pub = self.create_publisher(String, '/patrol_status', 10)
@@ -90,7 +89,7 @@ class PatrolNode(Node):
                 self.shelves = db_plan
                 self.shelf_list = list(self.shelves.keys())
                 self.get_logger().info(f"Successfully loaded {len(self.shelves)} planned waypoints in sequence from Remote DB.")
-                
+
                 # [추가] DB에서 가져온 최신 좌표를 로컬 YAML 파일에 동기화(저장)
                 self.save_shelves_to_yaml()
 
@@ -125,7 +124,7 @@ class PatrolNode(Node):
             # 저장 경로 설정: 소스 코드 위치 우선 탐색
             pkg_dir = get_package_share_directory('patrol_main')
             yaml_path = os.path.join(pkg_dir, 'config', 'shelf_coords.yaml')
-            
+
             # ROS 2 파라미터 표준 형식으로 데이터 구조화
             yaml_data = {
                 '/**': {
@@ -134,29 +133,20 @@ class PatrolNode(Node):
                     }
                 }
             }
-            
+
             with open(yaml_path, 'w') as f:
                 yaml.dump(yaml_data, f, default_flow_style=False)
-            
+
             self.get_logger().info(f"Successfully synchronized webDB coordinates to {yaml_path}")
-            
+
         except Exception as e:
             self.get_logger().error(f"Failed to save shelves to YAML: {e}")
 
-    def pause_callback(self, msg):
-        """장애물 감지 시 순찰 노드가 하는 역할"""
-        if msg.data and self.is_patrolling:
-            if not self.is_paused:
-                self.get_logger().warn('장애물 감지로 인해 현재 목적지 주행을 전면 취소하고 대기합니다.')
-                self.is_paused = True
+    def resend_current_goal_with_delay(self):
+        """로봇이 주춤거리거나 주행 시작 직후 터지는 현상을 막아주는 안정화 장치"""
+        self.destroy_timer(self._resend_timer)
+        self.resend_current_goal()
 
-                self.cancel_nav()
-
-        elif not msg.data and self.is_patrolling and self.is_paused:
-            self.get_logger().info('대기 시간이 끝나 장애물 상황이 해제되었습니다. 다시 가던 목적지로 출발합니다.')
-            self.is_paused = False
-
-            self.resend_current_goal()
 
     def resend_current_goal(self):
         """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
@@ -358,9 +348,10 @@ class PatrolNode(Node):
         elif status == GoalStatus.STATUS_ABORTED:
             # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 순찰을 완전히 끄지 않고 로그만 출력
             self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting for next action or result.')
+            self.retry_timer = self.create_timer(2.0, self.resend_current_goal)
             # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
             if not self.is_paused:
-                 self.publish_status('nav_alert')
+                self.publish_status('nav_alert')
         elif status == GoalStatus.STATUS_CANCELED:
             self.get_logger().warn(f'Navigation was CANCELED (code: {status}). Waiting for next action.')
             # 취소 시에는 순찰을 완전히 끄지 않고 유지합니다. (장애물 회피 등에서 발생 가능)

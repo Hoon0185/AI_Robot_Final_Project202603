@@ -139,7 +139,7 @@ controller_server:
       vx_samples: 20
       vy_samples: 0
       vtheta_samples: 40
-      sim_time: 2.0 # 장애물 회피력 증가
+      sim_time: 1.5 # 장애물 회피력 증가
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
@@ -148,7 +148,7 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 3.00 # 장애물 회피 가중치 높여서 장애물에 더 민감하게 반응하도록 조정
+      BaseObstacle.scale: 1.0 # 장애물 회피 가중치 낮춰서 벽도 장애물로 심하게 인식하지 않게 하기
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
