@@ -1,6 +1,8 @@
 import sys
 import os
 from std_msgs.msg import String
+from sensor_msgs.msg import CompressedImage
+from PyQt6.QtCore import pyqtSignal, QObject
 
 # ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +28,9 @@ try:
     import rclpy
 except ImportError:
     rclpy = None
+
+class LogicSignals(QObject):
+    rtspFrameReceived = pyqtSignal(bytes)
 
 class RobotLogicHandler:
     def __init__(self, ui_instance, debug_mode=False):
@@ -54,6 +59,8 @@ class RobotLogicHandler:
                 self._log("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
         else:
             self._log("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
+
+        self.signals = LogicSignals() # UI 이미지 전송용 시그널 객체
 
         self._setup_connections()
         self.current_patrol_min = 60
@@ -98,6 +105,9 @@ class RobotLogicHandler:
         # DB 및 알림 갱신 요청
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
+
+        # 카메라 프레임 수신 (백엔드 -> UI)
+        self.signals.rtspFrameReceived.connect(self.ui.display_compressed_image)
 
     def _prepare_paths(self):
         """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
@@ -144,18 +154,34 @@ class RobotLogicHandler:
                 self._log(f"❌ [SYSTEM] AI 모듈 임포트 최종 실패: {e}")
                 IntegratedPCNode = None
 
+        # [A-2] RTSP 마스터 스트리밍 노드 임포트 및 생성 (지연 해갈의 핵심)
+        try:
+            from protect_product.camera_node import RtspBridgeNode
+            self.stream_node = RtspBridgeNode()
+            self._log("🎥 [SYSTEM] RTSP 마스터 스트리밍 노드 활성화")
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 스트리밍 노드 생성 실패: {e}")
+            self.stream_node = None
+
         try:
             if IntegratedPCNode:
                 self.cam_node = IntegratedPCNode()
                 self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
 
-            # [B] 기존 팀원들의 인터페이스 노드 생성
-            from patrol_main.patrol_interface import PatrolInterface
-            if PatrolInterface:
-                self.ros_interface = PatrolInterface()
-                self._log("🚀 [SYSTEM] 주행 인터페이스 연결 완료")
+            if self.ros_interface and hasattr(self.ros_interface, 'get_name'):
+                self.ros_interface = self.ros_interface # Placeholder
+
+            # [C] 캠 지연 해결을 위한 ROS 이미지 구독 (RTSP 직접 연결 대신 사용)
+            self.sub_image = self.ros_interface.node.create_subscription(
+                CompressedImage, '/rtsp_image', self._image_callback, 10)
+            self._log("📸 [SYSTEM] 캠 스트리밍 구독 시작 (/rtsp_image)")
+
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] 노드 생성 중 오류 발생: {e}")
+
+    def _image_callback(self, msg):
+        """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
+        self.signals.rtspFrameReceived.emit(msg.data)
 
     def sync_ros_status(self):
         """ROS 노드를 1스텝씩 실행하고 UI를 갱신합니다."""
@@ -167,6 +193,9 @@ class RobotLogicHandler:
         if rclpy.ok():
             if self.cam_node:
                 rclpy.spin_once(self.cam_node, timeout_sec=0)
+
+            if self.stream_node:
+                rclpy.spin_once(self.stream_node, timeout_sec=0)
 
             if self.ros_interface and hasattr(self.ros_interface, 'get_name'):
                 rclpy.spin_once(self.ros_interface, timeout_sec=0)

@@ -343,50 +343,36 @@ class RobotControlPanel(QWidget):
         self.alarmRefreshRequested.emit()
 
     def _init_timers(self):
-        self.timer = QTimer(); self.timer.timeout.connect(self.update_frame)
-        USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
-        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-        self.cap = cv2.VideoCapture(self.rtsp_url);
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self.timer.start(30)
+        # [삭제] 직접 RTSP 연결을 하던 VideoCapture와 타이머를 제거합니다.
+        # 대신 robot_logic.py의 시그널을 구독하여 처리합니다.
+        pass
 
-    def update_frame(self):
-        if hasattr(self, 'cap') and self.cap.isOpened():
-            # [최적화] 누적된 지연 방지를 위해 버퍼에 쌓인 예전 프레임들을 모두 Skip
-            while True:
-                grabbed = self.cap.grab()
-                if not grabbed:
-                    break
-                
-                # 다음 프레임이 있는지 확인 (없으면 이게 가장 최신임)
-                # retrieve()는 grab()한 최신 데이터를 가져옵니다.
-                ret, frame = self.cap.retrieve()
-                if not ret:
-                    break
-                    
-                # 최신 프레임을 찾았으므로 처리 진행
+    def display_compressed_image(self, data):
+        """백엔드 노드에서 전송받은 압축 이미지를 실시간으로 화면에 표시합니다."""
+        try:
+            import numpy as np
+            # 바이너리 데이터를 이미지로 변환
+            np_arr = np.frombuffer(data, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+            if frame is not None:
+                # 상하 반전 (필요한 경우) 및 RGB 변환
                 frame = cv2.flip(frame, -1)
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = rgb.shape
                 bytes_per_line = ch * w
 
                 qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-
-                # 라벨 크기에 맞춰 부드럽게 스케일링
+                
+                # 라벨 크기에 맞춰 최신 프레임 표시
                 pixmap = QPixmap.fromImage(qt_img).scaled(
                     self.cam_label.size(),
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
                 self.cam_label.setPixmap(pixmap)
-                
-                # 최신 프레임을 그렸으면 루프 종료
-                break
-        else:
-            # 연결이 끊겼거나 없는 경우
-            if hasattr(self, 'rtsp_url'):
-                self.cap = cv2.VideoCapture(self.rtsp_url)
+        except Exception as e:
+            print(f"이미지 디코딩 에러: {e}")
     def open_map(self):
         self.map_overlay.show()
         self.center_popup(self.map_popup_box)
