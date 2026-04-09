@@ -30,7 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'integrated_node = protect_product.camera:main',
-            'rtsp_camera = protect_product.camera_node:main',
+            'camera_node = protect_product.camera_node:main',
             'verifier_node = protect_product.verifier:main',
         ],
     },

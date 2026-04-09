@@ -1,97 +1,102 @@
-# IP Camera - RasberryPi 변환코드 (안되는 상황 대비)
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge
 import cv2
+import os
+import time
 
 class RtspBridgeNode(Node):
     def __init__(self):
         super().__init__('rtsp_bridge_node')
         self.bridge = CvBridge()
 
-        # RTSP 설정
-        USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
-        self.rtsp_url = f"rtsp://robot1:robot123@192.168.1.18:554/stream1"
+        # [네트워크 안정화] TCP 전송 강제 및 지연 최적화 설정
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+        
+        # RTSP 설정 (IP 확인 완료)
+        self.user, self.pw, self.ip = "robot1", "robot123", "192.168.1.18"
+        self.rtsp_url = f"rtsp://{self.user}:{self.pw}@{self.ip}:554/stream1"
 
-        self.cap = cv2.VideoCapture(self.rtsp_url)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.cap = None
+        self.connect_to_camera()
 
         self.cam_width = 640
         self.cam_height = 360
+        self.last_reconnect_time = time.time()
 
         # 발행 토픽명을 /rtsp_image로 고정
         self.publisher = self.create_publisher(CompressedImage, '/rtsp_image', 10)
 
-        # 20 FPS 송출 (45 FPS는 Wi-Fi 대역폭에 너무 부담을 줍니다)
-        self.timer = self.create_timer(1.0 / 20.0, self.timer_callback)
-        self.get_logger().info('/rtsp_image로 최적화 송출 중 (20 FPS)...')
+        # [대역폭 최적화] 5 FPS 송출 (데이터 소모량 75% 감소)
+        self.fps = 5.0
+        self.timer = self.create_timer(1.0 / self.fps, self.timer_callback)
+        self.get_logger().info(f'📉 /rtsp_image로 초경량 송출 중 ({self.fps} FPS, TCP 모드)...')
+
+    def connect_to_camera(self):
+        """카메라 연결 및 초기화"""
+        if self.cap is not None:
+            self.cap.release()
+        
+        self.get_logger().info(f"🔄 IPCAM 연결 시도 중... ({self.ip})")
+        self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        
+        if self.cap.isOpened():
+            self.get_logger().info("✅ IPCAM 연결 성공!")
+        else:
+            self.get_logger().error("❌ IPCAM 연결 실패. 재시도 예정.")
 
     def timer_callback(self):
-        # [최적화] 누적된 지연 방지를 위해 버퍼에 있는 이전 프레임들을 모두 읽어서 버림
-        # 오직 가장 최신 프레임만 발행합니다.
-        last_frame = None
-        while True:
-            grabbed = self.cap.grab()
-            if not grabbed:
-                break
-            
-            # 다음 프레임이 있는지 확인 (있으면 계속 grab해서 최신으로 이동)
-            ret, frame = self.cap.retrieve()
-            if ret:
-                last_frame = frame
+        # 카메라 연결 상태 확인 및 재접속 로직
+        if self.cap is None or not self.cap.isOpened():
+            if time.time() - self.last_reconnect_time > 3.0:
+                self.connect_to_camera()
+                self.last_reconnect_time = time.time()
+            return
+
+        # 최신 프레임 획득 (지연 방지용 다중 Grab)
+        # 5 FPS이므로 grab 횟수를 줄여 부하 최소화
+        for _ in range(2):
+            self.cap.grab()
         
-        # 가장 최신 프레임만 발행
-        if last_frame is not None:
-            resized_frame = cv2.resize(last_frame, (self.cam_width, self.cam_height))
-            
-            # JPEG 품질 설정 (80) 및 CompressedImage 변환
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-            _, buffer = cv2.imencode('.jpg', resized_frame, encode_param)
-            
-            msg = CompressedImage()
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.format = "jpeg"
-            msg.data = buffer.tobytes()
-            
-            self.publisher.publish(msg)
+        ret, frame = self.cap.retrieve()
+        
+        if not ret or frame is None:
+            # 프레임 수신 실패 시 (네트워크 장애 등)
+            self.get_logger().warn("⚠️ 프레임 수신 실패. 3초 후 재연결을 시도합니다.")
+            if time.time() - self.last_reconnect_time > 3.0:
+                self.connect_to_camera()
+                self.last_reconnect_time = time.time()
+            return
+
+        # [데이터 경량화] 이미지 크기 조정 및 강력 압축
+        resized_frame = cv2.resize(frame, (self.cam_width, self.cam_height))
+        
+        # [압축률 강화] 품질을 40으로 낮춰 패킷 크기 최적화 (사용자 요청 반영)
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 40]
+        _, buffer = cv2.imencode('.jpg', resized_frame, encode_param)
+        
+        msg = CompressedImage()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.format = "jpeg"
+        msg.data = buffer.tobytes()
+        
+        self.publisher.publish(msg)
+        # self.get_logger().debug("✅ 프레임 발행 완료")
 
 def main(args=None):
     rclpy.init(args=args)
     node = RtspBridgeNode()
-    try: rclpy.spin(node)
-    except KeyboardInterrupt: pass
-    finally: node.destroy_node(); rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if node.cap:
+            node.cap.release()
+        node.destroy_node()
+        rclpy.shutdown()
 
-
-# 터틀봇3 내에 만든 카메라 노드
-#1. nano camera_node.py
-#2. ===이전 코드 주석풀고 복사 붙이기
-#3. chmod +x camera_node.py (권한부여)
-#4. 실행 python3 camera_node.py
-
-# import rclpy
-# from rclpy.node import Node
-# from sensor_msgs.msg import CompressedImage
-# import cv2
-# from cv_bridge import CvBridge
-
-# class CameraNode(Node):
-#     def __init__(self):
-#         super().__init__('camera_node')
-#         self.bridge = CvBridge()
-#         self.publisher = self.create_publisher(CompressedImage, '/image_raw/compressed', 10)
-#         self.cap = cv2.VideoCapture(0) # 로봇의 카메라 인덱스
-#         self.timer = self.create_timer(0.033, self.timer_callback) # 30fps
-
-#     def timer_callback(self):
-#         ret, frame = self.cap.read()
-#         if ret:
-#             msg = self.bridge.cv2_to_compressed_imgmsg(frame)
-#             self.publisher.publish(msg)
-
-# def main():
-#     rclpy.init(); node = CameraNode(); rclpy.spin(node)
-
-###=====================================================================###
-
+if __name__ == '__main__':
+    main()

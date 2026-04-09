@@ -550,9 +550,10 @@ class PatrolNode(Node):
                 "confidence": data["confidence"]       # 신뢰도
             }
 
-            # DB에 최종 리포트 (에러가 주행을 막지 않도록 예외 처리)
+            # [강력 조치] DB 리포팅 시도 (에러가 나도 주행 흐름은 절대 방해하지 않음)
             try:
                 if target_barcode not in self.reported_tags:
+                    # 타임아웃은 1초로 매우 짧게 설정 (이미 인벤토리_db.py에 반영됨)
                     self.db.report_detection(
                         tag_barcode=self.last_detection["tag_barcode"],
                         patrol_id=self.current_patrol_id or 0,
@@ -560,17 +561,18 @@ class PatrolNode(Node):
                         x=self.current_x,
                         y=self.current_y,
                         detected_barcode=self.last_detection["detected_barcode"],
-                        yolo_class_id=self.last_detection["yolo_class_id"],
+                        yolo_class_id=self.last_detection.get("yolo_class_id", -1),
                         confidence=self.last_detection["confidence"]
                     )
                     self.reported_tags.add(target_barcode)
-                    self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data.get('status', 'Unknown')}")
+                    self.get_logger().info(f"✅ DB 리포트 성공: {target_barcode}")
             except Exception as e:
-                self.get_logger().error(f"❌ DB 리포팅 실패 (주행은 계속함): {e}")
-
-            # [핵심] 어떠한 상황에서도 다음 위치로 이동 명령을 보장함
-            self.latest_ai_data = None # 데이터 초기화
-            self.proceed_to_next_shelf()
+                self.get_logger().error(f"⚠️ DB 리포트 지연/실패 (주행 강제 지속): {e}")
+            finally:
+                # [핵심] 어떠한 상황에서도(에러 발생 포함) 다음 단계로 진행을 보장
+                self.is_waiting_for_ai = False
+                self.latest_ai_data = None
+                self.proceed_to_next_shelf()
 
     def proceed_to_next_shelf(self):
         """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""
