@@ -13,10 +13,31 @@ class DetectionResult:
     is_verified: bool = False # DB 검증 완료 여부
 
 class ProductDetector:
-    def __init__(self, model_path="/home/bird99/Desktop/database/heavy/products.pt"):
-        self.model = YOLO(model_path)
+    def __init__(self, model_path=None):
+        import os
+        if model_path is None:
+            # 현재 파일 위치 기준 상대 경로로 models 폴더 찾기
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # 구조: src/protect_product/protect_product/product_detector.py
+            # 모델 위치: src/protect_product/models/products.pt
+            model_path = os.path.join(current_dir, "..", "models", "products.pt")
+            
+            if not os.path.exists(model_path):
+                # 다른 후보 경로 확인 (심볼릭 링크 등 고려)
+                alt_path = "/home/penguin/Documents/GitHub/AI_Robot_Final_Project202603/logic01/src/protect_product/models/products.pt"
+                if os.path.exists(alt_path):
+                    model_path = alt_path
+
+        print(f"DEBUG [Product]: Loading model from {model_path}")
+        try:
+            self.model = YOLO(model_path)
+        except Exception as e:
+            print(f"ERROR [Product]: Failed to load YOLO model: {e}")
+            self.model = None
 
     def predict(self, frame):
+        if self.model is None:
+            return []
         results = self.model(frame, conf=0.6, iou=0.3, verbose=False)
         items = []
 
