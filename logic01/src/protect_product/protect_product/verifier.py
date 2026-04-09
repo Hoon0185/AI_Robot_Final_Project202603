@@ -3,13 +3,13 @@ from mysql.connector import Error
 
 class Verifier:
     def __init__(self):
-        # 1. DB 설정 정보 (직접 입력하거나 환경변수에서 로드)
+        # 1. DB 설정 정보
         self.db_config = {
             'host': '16.184.56.119',
             'user': 'gilbot',
             'password': 'robot123',
             'database': 'gilbot',
-            'port': 3306  # 기본 포트
+            'port': 3306 
         }
         self.conn = None
         self._connect_db()
@@ -26,16 +26,22 @@ class Verifier:
             self.conn = None
 
     def verify(self, qrs, items, target_barcode="UNKNOWN"):
-        # 1. 바코드와 상품이 모두 없으면 분석 불가
+        # 1. 데이터가 아예 없으면 분석 불가 처리 (결품 가능성 높음)
         if not qrs and not items:
-            return None
+            return {
+                'item_name': "미인식 (결품 의심)",
+                'status': '결품', # [수정] 아무것도 없으면 결품
+                'barcode': "NONE",
+                'bbox': [0,0,0,0],
+                'confidence': 0.0,
+                'yolo_id': -1
+            }
 
         # 연결 상태 확인 및 재연결
         if not self.conn or not self.conn.is_connected():
             self._connect_db()
             if not self.conn: return None
 
-        # 바코드와 상품 탐지 개수 확인
         num_qrs = len(qrs)
         num_items = len(items)
 
@@ -49,7 +55,7 @@ class Verifier:
             q_cx = (best_qr['bbox'][0] + best_qr['bbox'][2]) / 2
             detected_barcode = best_qr['text']
 
-        # 3. MySQL 실행 (바코드가 발견되면 실물 바코드로, 없으면 로봇이 준 목표 바코드로 조회)
+        # 3. MySQL 실행 (바코드 우선, 없으면 로봇의 목표 바코드로 정보 조회)
         row = None
         search_barcode = detected_barcode if best_qr else target_barcode
         
@@ -64,9 +70,9 @@ class Verifier:
             finally:
                 cursor.close()
 
-        # 결과 상태 변수 초기화
+        # 결과 변수 초기화 (기본값: 결품)
         status = '결품'
-        item_name = "물품 확인중..."
+        item_name = "미인식 (결품)"
         bbox = [0, 0, 0, 0]
         confidence = 0.0
         detected_yolo_id = -1
@@ -87,7 +93,7 @@ class Verifier:
                 # 바코드가 없다면 가장 신뢰도 높은 상품 선택
                 matched_item = max(items, key=lambda x: x['score'])
 
-        # 5. 최종 검증 상태 결정
+        # 5. 최종 검증 상태 결정 (사용자 요청 로직 반영)
         if row:
             db_product_name, db_yolo_id = row
             if matched_item:
@@ -96,34 +102,30 @@ class Verifier:
                 detected_yolo_id = current_yolo_id
                 confidence = matched_item['score']
 
-                # YOLO ID 비교 (디버깅 로그 포함)
+                # 정합성 판단
                 if int(current_yolo_id) == int(db_yolo_id):
                     status = '정상'
-                    if not best_qr:
-                        item_name = f"[상품판독 성공] {db_product_name}"
-                    else:
-                        item_name = db_product_name
+                    item_name = db_product_name if best_qr else f"[상품판독 성공] {db_product_name}"
                 else:
+                    # 정보가 다르면 '오진열'
+                    status = '오진열'
                     print(f"⚠️ [ID 불일치] DB ID: {db_yolo_id} | 인식 ID: {current_yolo_id} ({db_product_name})")
-                    if not best_qr:
-                        status = 'QR_MISSING' # 바코드가 없으므로 오배열 대신 MISSING으로 보고 (로봇의 재시도 유도)
-                        item_name = f"상품 불일치 (기대: {db_product_name})"
-                    else:
-                        status = '오배열'
-                        item_name = db_product_name
+                    item_name = f"상품 불일치 (기대: {db_product_name})"
             else:
+                # 상품이 인식되지 않았다면 '결품'
                 status = '결품'
-                item_name = db_product_name
+                item_name = f"{db_product_name} (결품)"
         elif not best_qr and matched_item:
-            # 바코드도 없고 DB 조회도 실패했지만 상품은 있는 경우
-            status = 'QR_MISSING'
-            item_name = f"미확인 상품 (ID: {matched_item['id']})"
+            # DB 정보는 없지만 상품은 있는 경우 (미등록 상품 등) -> 오진열 취합
+            status = '오진열'
+            item_name = f"미등록 상품 (ID: {matched_item['id']})"
             bbox = matched_item['bbox']
             detected_yolo_id = matched_item['id']
             confidence = matched_item['score']
         else:
-            status = '오배열'
-            item_name = "분석 불가(QR/상품 없음)"
+            # 바코드도 없고 상품도 없을 때
+            status = '결품'
+            item_name = "인식 불가 (결품)"
 
         return {
             'item_name': item_name,

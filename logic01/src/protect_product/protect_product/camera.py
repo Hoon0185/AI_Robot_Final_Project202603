@@ -117,7 +117,7 @@ class IntegratedPCNode(Node):
                 det.class_id = int(result.get('yolo_id', -1))       # 물체 클래스 번호
                 det.detected_barcode = result.get('barcode', 'NONE') # 인식된 바코드
                 det.confidence = float(result.get('confidence', 0.0)) # 신뢰도
-                det.status = result.get('status', 'Unknown')        # 정상/오배열 등
+                det.status = result.get('status', 'Unknown')        # 정상/오진열 등
 
                 # 결과가 나왔을 때 터미널에 출력
                 self.get_logger().info(f"===> [DETECTED] {result['item_name']} | Status: {result['status']}")
@@ -136,7 +136,7 @@ class IntegratedPCNode(Node):
 
     def draw_overlay(self, frame, result):
         """인식 결과에 따라 박스와 텍스트를 그리는 헬퍼 함수"""
-        color_map = {'정상': (0, 255, 0), '오배열': (0, 0, 255), '결품': (0, 165, 255)}
+        color_map = {'정상': (0, 255, 0), '오진열': (0, 0, 255), '결품': (0, 165, 255)}
         color = color_map.get(result['status'], (255, 255, 255))
 
         if any(result['bbox']):

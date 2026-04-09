@@ -541,7 +541,7 @@ class PatrolNode(Node):
                     "confidence": 0.0, 
                     "status": "인식 정보 없음 (TIMEOUT)"
                 }
-            # else: data가 있으면 (오배열, 결품, QR_MISSING 등) 그 데이터를 그대로 보관함
+            # else: data가 있으면 (오진열, 결품, QR_MISSING 등) 그 데이터를 그대로 보관함
 
             # 요구하신 형식대로 self.last_detection 구성
             self.last_detection = {
