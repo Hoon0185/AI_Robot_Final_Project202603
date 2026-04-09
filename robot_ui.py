@@ -27,8 +27,9 @@ class RtspWorker(QThread):
         import time
         import os
         
-        # 최적화된 스트림 수신을 위한 환경 변수 (UDP 모드 권장)
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        # 최적화된 스트림 수신을 위한 환경 변수 (UDP 모드 및 5초 타임아웃 설정)
+        # timeout은 마이크로초 단위 (5,000,000 = 5초)
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp|timeout;5000000"
         
         print(f"📡 [UI-THREAD] RTSP 스트리밍 시작: {self.url}")
         

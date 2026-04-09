@@ -148,7 +148,14 @@ class RobotLogicHandler(QObject):
         if not self.rclpy.ok():
             self.rclpy.init()
 
-        # [A] 기본 주행 및 장애물 인터페이스 생성 (가장 먼저 수행되어야 함)
+        # [A] 카메라부터 즉시 시작 (핵심: 주행 노드 대기와 상관없이 실행)
+        try:
+            self._log("💡 [SYSTEM] 로봇 카메라 직접 연결 모드로 시작합니다.")
+            self.ui.start_direct_rtsp(self.rtsp_url)
+        except Exception as cam_e:
+            self._log(f"⚠️ [SYSTEM] 카메라 초기 가동 실패: {cam_e}")
+
+        # [B] 기본 주행 및 장애물 인터페이스 생성
         try:
             from patrol_main.patrol_interface import PatrolInterface
             from patrol_main.obstacle_interface import ObstacleInterface
@@ -165,14 +172,9 @@ class RobotLogicHandler(QObject):
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] 인터페이스 노드 생성 실패: {e}")
 
-        # [B] 인터페이스 노드 조율 및 카메라 시작
+        # [C] 인터페이스 노드 조율 및 백그라운드 스레드 시작
         try:
-            # 주행/장애물이 핵심이므로 최우선 실행
             self._log("🚀 [SYSTEM] 주행 및 장애물 노드 통합 완료")
-
-            # 카메라 직접 연결 시작 (AI 브리지 없이 RTSP 직결)
-            self._log("💡 [SYSTEM] 로봇 카메라 직접 연결 모드로 시작합니다.")
-            self.ui.start_direct_rtsp(self.rtsp_url)
 
             # [E] 백그라운드 스레드 시작 (주행 인터페이스 전용)
             active_nodes = [self.ros_interface.node if self.ros_interface else None]
