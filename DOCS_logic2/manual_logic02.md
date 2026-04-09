@@ -4,13 +4,13 @@
 ```bash
 AI_Robot_Final_Project/
 └── src/
-    └── logic2_pkg/
+    └── patrol_main/
         ├── config/
         │   └── twist_mux.yaml        # [중요] cmd_vel 우선순위 설정
         ├── launch/
-        │   └── obstacle.launch.py    # [수정 필요] 노드 통합 실행 스크립트
+        │   └── obstacle.launch.py    # 장애물 노드 통합 실행 스크립트
         ├── logic2_pkg/
-        │   ├── obstacle_node.py      # 장애물 감지 및 회피 핵심 로직
+        │   ├── obstacle_node.py      # 장애물 감지 및 nav2 가로채기 핵심 로직
         │   └── obstacle_interface.py # UI-노드-DB 간 데이터 중재 클래스
         └── setup.py                  # 엔트리 포인트 설정
 ```
@@ -49,9 +49,8 @@ AI_Robot_Final_Project/
 `/cmd_vel` (최종 출력)
 
 ### 4. 장애물 감지 로직 상세 (수정 필요)
--감지 범위: 전방 60도(-30도 ~ +30도), 거리 0.35m 이내 장애물 감지 시 즉시 정지.
-- 가변 대기 시간: UI 슬라이더를 통해 obstacle_wait_time 파라미터를 실시간으로 변경 가능(기본 10초).
-- 자동 우회: 설정된 대기 시간이 지나면 로봇은 자동으로 제자리 회전(1.0 rad/s)을 2초간 수행하여 탈출 시도.
+- 감지 범위: 전방 30도(ranges[0:15] 및 ranges[345:360]), 거리 0.40m 이내 장애물 감지 시 즉시 정지.
+- 동작 방식: Nav2가 발행하는 /cmd_vel_nav를 구독하여 전방에 장애물이 감지되면 속도를 0으로 뭉개버리는 안전장치 역할 수행. (우회 주행 탈출 로직은 Nav2의 Recovery에 위임함)
 
 ### 5. 시스템 아키텍처 및 데이터 흐름도
 장애물 인식 대기 시간 설정 시, UI-메인로직-로봇-DB 서버 간의 상호작용 및 예외 처리 흐름은 다음과 같습니다.
@@ -66,8 +65,8 @@ AI_Robot_Final_Project/
 UI 파트에서 파이썬 함수만으로 대기 시간을 수정할 수 있도록 ObstacleInterface를 제공
 
 **A. 주요 특징 (Self-healing)**
-- 부팅 시 동기화: DB 연결 시 최신 설정값을 로드하여 로봇에 즉시 주입합니다.
-- 자동 재시도: DB 연결이 끊긴 상태에서 설정 변경 시, 로봇에는 즉시 반영하되 실패한 데이터는 `pending_data`에 보존합니다. 이후 10초 주기 타이머가 작동하여 DB 복구 시 자동으로 누락 데이터를 업데이트합니다.
+- 초기값 동기화: 클래스 생성 시 자동으로 DB(patrol_config)에서 최신 avoidance_wait_time 값을 가져와 로컬 변수(current_wait_time)에 세팅합니다. 실패 시 기본값 5초를 사용합니다.
+- 자동 재시도 (Fail-safe): DB 서버가 다운된 상태에서 설정 변경 시, 로봇의 ROS 파라미터는 즉시 바꾸되 실패한 데이터는 pending_data에 보관합니다. 이후 10초 주기 타이머가 돌며 서버 복구 시 누락 데이터를 자동으로 업데이트합니다.
 
 **B. 파이썬 API 사용법**
 `RobotLogicHandler`클래스(`robot_logic.py`)에서 아래와 같이 객체를 생성하여 연결합니다.

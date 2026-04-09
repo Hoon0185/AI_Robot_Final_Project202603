@@ -1,5 +1,8 @@
 import sys
 import os
+from std_msgs.msg import String
+from sensor_msgs.msg import CompressedImage
+from PyQt6.QtCore import pyqtSignal, QObject, QThread
 
 # ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,49 +12,90 @@ if patrol_main_path not in sys.path:
 
 try:
     from patrol_main.patrol_interface import PatrolInterface
+    from patrol_main.obstacle_interface import ObstacleInterface
 except ImportError:
     # 패키지 구조에 따라 직접 참조가 필요한 경우 하드코딩된 경로 추가
     sys.path.append(os.path.join(patrol_main_path, 'patrol_main'))
     try:
         from patrol_interface import PatrolInterface
+        from obstacle_interface import ObstacleInterface
     except ImportError:
         # 디버그 모드를 위해 임포트 실패 시 pass 처리 (is_debug에서 걸러짐)
         PatrolInterface = None
+        ObstacleInterface = None
 
-class RobotLogicHandler:
+try:
+    import rclpy
+except ImportError:
+    rclpy = None
+
+class LogicSignals(QObject):
+    rtspFrameReceived = pyqtSignal(bytes)
+
+class RosWorker(QThread):
+    """ROS 2 노드들을 백엔드에서 전용으로 스핀(Spin)시키는 스레드"""
+    def __init__(self, nodes):
+        super().__init__()
+        self.nodes = nodes
+        self.active = True
+
+    def run(self):
+        import rclpy
+        while self.active and rclpy.ok():
+            for node in self.nodes:
+                if node:
+                    # 각 노드의 콜백(타이머, 구독 등)을 0.01초씩 시도
+                    rclpy.spin_once(node, timeout_sec=0.01)
+            # CPU 점유율 과다 방지를 위한 미세한 휴식
+            self.msleep(1)
+
+    def stop(self):
+        self.active = False
+        self.wait()
+
+class RobotLogicHandler(QObject):
     def __init__(self, ui_instance, debug_mode=False):
+        super().__init__() # QObject 초기화
         self.ui = ui_instance
         self.is_debug = debug_mode # 디버그 모드 상태 저장
-
+        self.cam_node = None
+        self.stream_node = None # Master 스트리밍 노드
+        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
+        self.current_cam_mode = "DIRECT"
+        
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
+        self.obstacle_manager = None
+        self.rclpy = rclpy
+        self._prepare_paths() #경로 설정 (로직 핸들러 생성 시점에 수행)
         if not self.is_debug:
-            try:
-                if PatrolInterface:
-                    self.ros_interface = PatrolInterface()
-                else:
-                    raise ImportError("PatrolInterface module not found.")
-            except Exception as e:
-                self._log("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
+            self._initialize_ros_nodes()
         else:
             self._log("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
 
+        self.signals = LogicSignals() # UI 이미지 전송용 시그널 객체
+        self.ros_thread = None
+
         self._setup_connections()
         self.current_patrol_min = 60
-        self.current_obstacle_sec = 10
+        self.current_obstacle_sec = 5
         self._load_initial_data()
 
         # UI 업데이트용 타이머 (ROS 상태 반영)
         from PyQt6.QtCore import QTimer
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.sync_ros_status)
-        self.status_timer.start(1000) # 1초마다 동기화
+        self.status_timer.start(50) # 1초마다 동기화
 
     def _log(self, message):
         """터미널 출력(print)과 UI 콘솔(append_log)에 동시에 메시지를 남깁니다."""
         print(message)
         if hasattr(self.ui, 'append_log'):
             self.ui.append_log(message)
+
+    def _obstacle_ui_callback(self, msg):
+        """장애물 노드에서 보낸 문장(msg.data)를 UI로 바로 토스합니다."""
+        self._log(msg.data)
 
     def _setup_connections(self):
         """
@@ -76,6 +120,108 @@ class RobotLogicHandler:
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
 
+        # 카메라 프레임 수신 (백엔드 -> UI)
+        self.signals.rtspFrameReceived.connect(self.ui.display_compressed_image)
+
+    def _prepare_paths(self):
+        """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # PatrolInterface 경로 (logic01/src/patrol_main 대응)
+        patrol_path = os.path.join(current_dir, 'logic01', 'src', 'patrol_main')
+        if patrol_path not in sys.path:
+            sys.path.append(patrol_path)
+
+    def _initialize_ros_nodes(self):
+        """실제 모듈을 임포트하고 노드 객체를 생성합니다."""
+        import rclpy
+        global IntegratedPCNode
+
+        if self.rclpy is None:
+            try:
+                import rclpy
+                self.rclpy = rclpy
+            except:
+                self._log("❌ rclpy 임포트 불가")
+                return
+
+        if not self.rclpy.ok():
+            self.rclpy.init()
+
+        # [A] 카메라부터 즉시 시작 (핵심: 주행 노드 대기와 상관없이 실행)
+        try:
+            self._log("💡 [SYSTEM] 로봇 카메라 직접 연결 모드로 시작합니다.")
+            self.ui.start_direct_rtsp(self.rtsp_url)
+        except Exception as cam_e:
+            self._log(f"⚠️ [SYSTEM] 카메라 초기 가동 실패: {cam_e}")
+
+        # [B] 기본 주행 및 장애물 인터페이스 생성
+        try:
+            from patrol_main.patrol_interface import PatrolInterface
+            from patrol_main.obstacle_interface import ObstacleInterface
+            
+            if PatrolInterface:
+                self.ros_interface = PatrolInterface()
+                self._log("🚀 [SYSTEM] 주행 인터페이스 연결 완료")
+            
+            if ObstacleInterface:
+                self.obstacle_manager = ObstacleInterface()
+                self.sub_obstacle_ui = self.ros_interface.node.create_subscription(
+                    String, 'obstacle_ui_log', self._obstacle_ui_callback, 10)
+                self._log("🚀 [SYSTEM] 장애물 인터페이스 연결 완료")
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 인터페이스 노드 생성 실패: {e}")
+
+        # [C] 인터페이스 노드 조율 및 백그라운드 스레드 시작
+        try:
+            self._log("🚀 [SYSTEM] 주행 및 장애물 노드 통합 완료")
+
+            # [E] 백그라운드 스레드 시작 (주행 인터페이스 전용)
+            active_nodes = [self.ros_interface.node if self.ros_interface else None]
+            self.ros_thread = RosWorker(active_nodes)
+            self.ros_thread.setParent(self)
+            self.ros_thread.start()
+            self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (주행 제어 활성화)")
+
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 시스템 초기화 중 오류: {e}")
+
+
+    def _image_callback(self, msg):
+        """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
+        if self.current_cam_mode == "ROS":
+            self.signals.rtspFrameReceived.emit(msg.data)
+
+    def sync_ros_status(self):
+        """UI 상태(순찰 시간, 미니맵 등)만 주기적으로 갱신합니다. (스핀은 스레드에서 수행)"""
+        if self.is_debug:
+            self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
+            return
+
+        # UI 갱신 로직 (주행 상태 표시)
+        if not self.ros_interface: return
+        status = self.ros_interface.get_recent_patrol_time()
+        if status:
+            # 1. 마지막 순찰 시간 및 상태 표시 (상세 정보 포함)
+            time_info = status.get('start_time', 'No Data')
+            s_type = status.get('status', 'IDLE')
+
+            if s_type == 'patrolling':
+                shelf = status.get('current_shelf', 'Moving...')
+                progress = status.get('progress', '')
+                display_text = f"{time_info} (순찰 중: {shelf} {progress})"
+            else:
+                display_text = f"{time_info} ({s_type})"
+
+            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
+            if not self.ros_interface.is_robot_online():
+                display_text += " [OFFLINE]"
+
+            self.ui.set_last_patrol_time(display_text)
+
+            # 2. 미니맵 위치 실시간 업데이트 호출
+            self.update_minimap_pose()
+
     def _load_initial_data(self):
         """앱 시작 시 초기 데이터를 DB에서 가져와 UI 및 ROS에 세팅"""
         self.update_inventory_db()
@@ -88,8 +234,13 @@ class RobotLogicHandler:
                 self._log(f"[LOGIC] 서버에서 초기 설정 로드: {config}")
                 try:
                     # 1. 장애물 대기 시간 (UI 값 설정)
-                    self.current_obstacle_sec = config.get('avoidance_wait_time', 10)
-                    self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
+                    wait_time = config.get('avoidance_wait_time')
+                    if wait_time is not None:
+                        self.current_obstacle_sec = int(wait_time)
+                        self.ui.obstacle_row['slider'].setValue(self.current_obstacle_sec)
+                        if self.obstacle_manager:
+                            self.obstacle_manager.set_wait_time(self.current_obstacle_sec)
+                        self._log(f"[LOGIC] 서버 데이터로 장애물 대기시간 {self.current_obstacle_sec}초 동기화")
 
                     # 2. 순찰 간격 (UI 값 설정 및 ROS 파라미터 적용)
                     h = config.get('interval_hour', 0)
@@ -107,33 +258,10 @@ class RobotLogicHandler:
             self.ui.obstacle_row['slider'].setValue(10)
             self.ui.patrol_row['slider'].setValue(60)
 
-    def sync_ros_status(self):
-        """ROS에서 넘어온 최신 상태 또는 DB 로그를 UI에 반영합니다."""
-        if self.is_debug:
-            # 디버그 모드 가상 상태 표시
-            self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
-            return
 
-        if not self.ros_interface: return
 
-        status = self.ros_interface.get_recent_patrol_time()
-        if status:
-            # 마지막 순찰 시간 및 상태 표시
-            time_info = status.get('start_time', 'No Data')
-            s_type = status.get('status', 'IDLE')
-
-            if s_type == 'patrolling':
-                shelf = status.get('current_shelf', 'Moving...')
-                progress = status.get('progress', '')
-                display_text = f"{time_info} (순찰 중: {shelf} {progress})"
-            else:
-                display_text = f"{time_info} ({s_type})"
-
-            # 로봇 온라인 여부에 따라 [OFFLINE] 표시 추가
-            if not self.ros_interface.is_robot_online():
-                display_text += " [OFFLINE]"
-
-            self.ui.set_last_patrol_time(display_text)
+        # 초기 상태 반영
+        self.sync_ros_status()
 
     # --- [핸들러 함수들: 담당자들이 내용을 채울 부분] ---
 
@@ -158,16 +286,11 @@ class RobotLogicHandler:
     def on_obstacle_set(self, val):
         """장애물 대기 시간 설정 (상태 유지하며 DB 동기화)"""
         self.current_obstacle_sec = int(val)
-        h, m = divmod(self.current_patrol_min, 60)
-        self._log(f"[LOGIC] 장애물 대기 시간 {val}초 설정 (순찰 간격 {h}:{m} 유지)")
+        self._log(f"[LOGIC] 장애물 대기 시간 {val}초 설정 요청)")
 
-        if self.ros_interface:
-            # DB 서버 업데이트 (현재 순찰 간격 유지)
-            self.ros_interface.sync_config_to_db(
-                avoidance_wait=self.current_obstacle_sec,
-                hour=h,
-                minute=m
-            )
+        if self.obstacle_manager:
+            success, msg = self.obstacle_manager.update_db_and_sync(val)
+            self._log(f"[LOGIC] {msg}")
         elif self.is_debug:
             self._log(f"[DEBUG] DB 연결 없이 장애물 대기 시간 업데이트: {val}s")
 
@@ -243,27 +366,26 @@ class RobotLogicHandler:
         elif self.is_debug:
             self._log("[DEBUG] 수동 순찰 명령. 순찰 시작")
 
-    # --- 맵 패널 업데이트 로직 추가 ---
     def update_minimap_pose(self):
-        """ROS 실시간 좌표를 가져와 MinimapWidget(minimap.py)에 반영합니다."""
-        # UI 인스턴스에 minimap 위젯이 실제로 존재하는지 먼저 확인
+        """서버/ROS에서 온 최신 좌표를 MinimapWidget(minimap.py)에 반영합니다."""
         if not hasattr(self.ui, 'minimap') or self.ui.minimap is None:
-            self._log("minimap 객체가 없습니다.")
             return
+
         if self.is_debug:
-            #self._log("[DEBUG] 미니맵 디버그 좌표 전송 시도")
             self.ui.minimap.set_robot_pose(0.0, 0.0)
             return
+
         if not self.ros_interface:
             return
-        # 인터페이스로부터 최신 상태 데이터 획득
+
+        # 인터페이스로부터 최신 통합 상태 데이터 획득
         status = self.ros_interface.get_recent_patrol_time()
-        # 데이터가 있고, 내부에 좌표 정보(예: robot_x, robot_y)가 포함되어 있다면 미니맵 갱신
+
+        # 데이터가 있고 좌표 정보(robot_x, robot_y)가 포함되어 있다면 미니맵 갱신
         if status and 'robot_x' in status and 'robot_y' in status:
-            curr_x = status.get('robot_x', 0.0)
-            curr_y = status.get('robot_y', 0.0)
+            curr_x = float(status.get('robot_x', 0.0))
+            curr_y = float(status.get('robot_y', 0.0))
             self.ui.minimap.set_robot_pose(curr_x, curr_y)
         else:
-            # 좌표 데이터가 없을 때도 맵 자체는 보여야 하므로 강제 업데이트 호출
-            # 이 코드가 없으면 로봇 위치가 올 때까지 맵이 안 뜰 수 있습니다.
+            # 좌표가 없는 경우에도 기본 맵은 계속 렌더링되도록 함
             self.ui.minimap.update_map_display()

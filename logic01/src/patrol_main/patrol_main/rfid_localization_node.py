@@ -1,6 +1,13 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from std_msgs.msg import Bool
+try:
+    from turtlebot3_msgs.msg import Sound
+    from turtlebot3_msgs.srv import Sound as SoundSrv
+except ImportError:
+    Sound = None
+    SoundSrv = None
 import RPi.GPIO as GPIO
 from mfrc522 import SimpleMFRC522
 import time
@@ -35,8 +42,26 @@ class RFIDLocalizationNode(Node):
             10
         )
         
-        # RFID 리딩 타머 설정 (0.2초 간격)
+        # RFID 리딩 타이머 설정 (0.2초 간격)
         self.timer = self.create_timer(0.2, self.read_rfid_callback)
+        
+        # --- 부저(Buzzer) 제어 기능 통합 ---
+        self.buzzer_sub = self.create_subscription(
+            Bool,
+            '/robot_buzzer',
+            self.buzzer_callback,
+            10
+        )
+        
+        # 터틀봇3 실제 사운드 인터페이스 (서비스/토픽)
+        if SoundSrv:
+            self.sound_client = self.create_client(SoundSrv, '/sound')
+            self.get_logger().info('Buzzer linked via /sound Service.')
+        elif Sound:
+            self.sound_pub = self.create_publisher(Sound, '/sound', 10)
+            self.get_logger().info('Buzzer linked via /sound Topic.')
+        else:
+            self.get_logger().warn('turtlebot3_msgs Sound not found. Buzzer will not work.')
         
         self.get_logger().info('RFID Localization Node (Virtual Landmark) started.')
         self.get_logger().info('Ready to correct AMCL pose using MFRC522 tags.')
@@ -103,6 +128,28 @@ class RFIDLocalizationNode(Node):
              
         self.initial_pose_pub.publish(msg)
         self.get_logger().warn(f'--- Landmark Corrected! --- Tag ID: {tag_id} -> Coords: ({coords["x"]}, {coords["y"]})')
+
+    def buzzer_callback(self, msg):
+        """HMI(PC)의 부저 신호를 로봇 하드웨어 사운드로 연결합니다."""
+        if not msg.data:
+            return  # OFF 신호(False)는 무시
+
+        index = 4  # 4: 비프음 (BUTTON1 사운드)
+        
+        # 1. 서비스 방식 시도
+        if hasattr(self, 'sound_client') and self.sound_client.wait_for_service(timeout_sec=0.1):
+            req = SoundSrv.Request()
+            req.value = index
+            self.sound_client.call_async(req)
+            self.get_logger().info(f'Buzzer Service Call sent (Index: {index})')
+        # 2. 토픽 방식 폴백
+        elif hasattr(self, 'sound_pub'):
+            sound_msg = Sound()
+            sound_msg.value = index
+            self.sound_pub.publish(sound_msg)
+            self.get_logger().info(f'Buzzer Topic published (Index: {index})')
+        else:
+            self.get_logger().warn('No sound interface available on robot hardware.')
 
 def main(args=None):
     rclpy.init(args=args)

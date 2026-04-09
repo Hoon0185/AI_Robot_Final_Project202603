@@ -1,4 +1,6 @@
 import os
+import yaml
+import tempfile
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node, SetRemap
@@ -6,32 +8,71 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Grou
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from nav2_common.launch import RewrittenYaml
 
 def generate_launch_description():
     pkg_dir = get_package_share_directory('patrol_main')
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 
     # Configuration file paths
-    # LOGIC_02의 설정을 우선하여 사용
-    twist_mux_config = os.path.join(get_package_share_directory('logic2_pkg'), 'config', 'twist_mux.yaml')
-    nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml') # 우리 패키지의 파라미터 사용
-    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_01.yaml') # 실제 지도 이름으로 수정
+    twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
+    nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml')
+    # 맵 파일 경로 설정
+    map_file = os.path.join(pkg_dir, 'maps', 'my_store_map_02.yaml')
 
     # Launch arguments
     map_frame = LaunchConfiguration('map_frame', default='map')
     run_rfid = LaunchConfiguration('run_rfid', default='false')
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     use_ai_sim = LaunchConfiguration('use_ai_sim', default='false')
+    use_rviz = LaunchConfiguration('use_rviz', default='true')
 
+    bt_xml_file = os.path.join(pkg_dir, 'config', 'navigate_to_pose_w_replanning_and_recovery.xml')
+
+    # 1. 파라미터 로드 및 치환 (추가 안전장치)
+    with open(nav2_params_file, 'r') as f:
+        params_data = yaml.safe_load(f)
+
+    def deep_replace(obj, target, replacement):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if v == target:
+                    obj[k] = replacement
+                else:
+                    deep_replace(v, target, replacement)
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                if v == target:
+                    obj[i] = replacement
+                else:
+                    deep_replace(v, target, replacement)
+
+    deep_replace(params_data, "replace_at_runtime", bt_xml_file)
+
+    temp_params = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+    yaml.dump(params_data, temp_params)
+    modified_params_path = temp_params.name
+    temp_params.close()
+
+    param_substitutions = {
+        'use_sim_time': use_sim_time
+    }
+
+    configured_params = RewrittenYaml(
+        source_file=modified_params_path,
+        root_key='',
+        param_rewrites=param_substitutions,
+        convert_types=True
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('map_frame', default_value='map'),
         DeclareLaunchArgument('run_rfid', default_value='false', description='Whether to run RFID localization node'),
         DeclareLaunchArgument('use_ai_sim', default_value='false', description='Whether to use AI detection simulation'),
+        DeclareLaunchArgument('use_rviz', default_value='true', description='Whether to run RViz'),
 
-        # 1. Navigation2 Bringup (Forced Remap cmd_vel to cmd_vel_nav)
-        # GroupAction과 SetRemap(상대+절대)을 모두 사용하여 컨테이너 내부 노드까지 강제 리매핑합니다.
+        # 1. Navigation2 Bringup
         GroupAction(
             actions=[
                 SetRemap(src='/cmd_vel', dst='/cmd_vel_nav'),
@@ -41,7 +82,7 @@ def generate_launch_description():
                     launch_arguments={
                         'map': map_file,
                         'use_sim_time': use_sim_time,
-                        'params_file': nav2_params_file,
+                        'params_file': configured_params,
                         'autostart': 'true'
                     }.items()
                 ),
@@ -57,7 +98,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 3. Patrol Main Node (Navigation Goal Sender)
+        # 3. Patrol Main Node
         Node(
             package='patrol_main',
             executable='patrol_node',
@@ -70,19 +111,16 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 4. Obstacle Avoidance Node (LOGIC_02 패키지 사용)
+        # 4. Obstacle Avoidance Node
         Node(
-            package='logic2_pkg',
+            package='patrol_main',
             executable='obstacle_node',
             name='obstacle_node',
-            parameters=[{
-                'use_sim_time': use_sim_time
-            }],
+            parameters=[{'use_sim_time': use_sim_time}],
             output='screen'
         ),
 
-        # 5. Twist Mux (Final Arbitrator)
-        # Nav2 신호를 리매핑된 토픽(/cmd_vel_nav)으로 받고, 최종 명령은 /cmd_vel로 내보냅니다.
+        # 5. Twist Mux
         Node(
             package='twist_mux',
             executable='twist_mux',
@@ -101,7 +139,18 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 7. RFID Localization Node (Optional Correction)
+        # 7. RViz2
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d', os.path.join(get_package_share_directory('nav2_bringup'), 'rviz', 'nav2_default_view.rviz')],
+            parameters=[{'use_sim_time': use_sim_time}],
+            condition=IfCondition(use_rviz),
+            output='screen'
+        ),
+
+        # 8. RFID Localization Node
         Node(
             package='patrol_main',
             executable='rfid_localization_node',
@@ -111,7 +160,7 @@ def generate_launch_description():
             condition=IfCondition(run_rfid)
         ),
 
-        # 8. AI Product Detection System (added from main branch)
+        # 9. AI Product Detection System
         Node(
             package='protect_product',
             executable='detector_node',
@@ -127,4 +176,3 @@ def generate_launch_description():
             output='screen'
         )
     ])
-

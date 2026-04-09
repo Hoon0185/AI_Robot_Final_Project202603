@@ -22,7 +22,7 @@ class MinimapWidget(QWidget):
         self.map_original = None
         # 기본값 설정 (실제 YAML 로드 시 덮어씌워짐)
         self.map_info = {'resolution': 0.05, 'origin': [0.0, 0.0, 0.0]}
-        self.yaml_path = os.path.join(os.path.dirname(__file__), 'my_store_map_01.yaml')
+        self.yaml_path = os.path.join(os.path.dirname(__file__), 'my_store_map_02.yaml')
         self.robot_pose = (0.0, 0.0)
 
         self.load_map_data()
@@ -38,7 +38,7 @@ class MinimapWidget(QWidget):
             self.map_info['resolution'] = config.get('resolution', 0.05)
             self.map_info['origin'] = config.get('origin', [0.0, 0.0, 0.0])
 
-            pgm_filename = config.get('image', 'my_store_map_01.pgm')
+            pgm_filename = config.get('image', 'my_store_map_02.pgm')
             pgm_path = os.path.join(os.path.dirname(self.yaml_path), pgm_filename)
 
             if os.path.exists(pgm_path):

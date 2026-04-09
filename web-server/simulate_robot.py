@@ -22,8 +22,8 @@ logging.basicConfig(
 logger = logging.getLogger("Gilbot")
 
 # --- Configuration Defaults ---
-LOCAL_URL = "http://localhost:8000/api"
-SERVER_URL = "http://16.184.56.119/api"
+LOCAL_URL = "http://localhost:8000"
+SERVER_URL = "http://16.184.56.119"
 
 # --- Argument Parsing & Environment Selection ---
 def parse_args():
@@ -40,7 +40,7 @@ def parse_args():
             no_sync = True
         elif arg == "--password" and i + 1 < len(sys.argv):
             password = sys.argv[i+1]
-            
+
     return target, no_sync, password
 
 TARGET, NO_SYNC, SUDO_PWD = parse_args()
@@ -60,16 +60,16 @@ def sync_time(mode):
 
     script_path = os.path.join(os.path.dirname(__file__), "..", "scripts", "chrony_client_setup.sh")
     flag = "--local" if mode == "local" else "--remote"
-    
+
     print(f"\n[SYNC] {mode} 모드 시간 동기화를 시도합니다...")
-    
+
     try:
         # sudo 암호가 있으면 -S 옵션으로 자동 입력 시도
         if SUDO_PWD:
             cmd = f"echo '{SUDO_PWD}' | sudo -S bash {script_path} {flag}"
         else:
             cmd = f"sudo bash {script_path} {flag}"
-            
+
         # 쉘 명령 직접 실행 (상호작용 가능성 고려)
         result = os.system(cmd)
         if result == 0:
@@ -104,7 +104,7 @@ STATUS_EMERGENCY_STOP = "EMERGENCY_STOP"
 class VirtualRobot:
     def __init__(self, mode="local"):
         self.status = STATUS_IDLE
-        
+
         # --- URL Configuration based on mode ---
         if mode == "server":
             self.base_url = SERVER_URL
@@ -114,7 +114,7 @@ class VirtualRobot:
             self.base_url = LOCAL_URL
         else:
             # Assume it's an IP or hostname
-            self.base_url = f"http://{mode}:8000/api"
+            self.base_url = f"http://{mode}:8000"
 
         self.DETECT_URL = f"{self.base_url}/detections/add"
         self.CONFIG_URL = f"{self.base_url}/patrol/config"
@@ -135,11 +135,11 @@ class VirtualRobot:
         self.last_index = 0 # 마지막으로 완료한 웨이포인트 인덱스
         self.current_pos = (0.0, 0.0)
         self.print_lock = threading.Lock()
-        
+
         # 하트비트(Pose) 전용 스레드 시작
         self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self.heartbeat_thread.start()
-        
+
     def safe_print(self, msg):
         with self.print_lock:
             logger.info(msg)
@@ -184,7 +184,7 @@ class VirtualRobot:
         """서버에서 설정 정보 및 웨이포인트 경로를 읽어 메모리에 저장 (재시도 로직 포함)"""
         max_retries = 3
         retry_delay = 3
-        
+
         logger.info("======= 데이터 로딩 시퀀스 시작 =======")
 
         def fetch_with_retry(url, name):
@@ -202,7 +202,7 @@ class VirtualRobot:
                     logger.error(f"❌ {name} 시간 초과: 응답이 너무 늦습니다 (Timeout)")
                 except Exception as e:
                     logger.error(f"❌ {name} 알 수 없는 오류: {e}")
-                
+
                 if i < max_retries - 1:
                     time.sleep(retry_delay)
             return None
@@ -212,13 +212,13 @@ class VirtualRobot:
         if conf_data:
             self.avoidance_time = conf_data.get("avoidance_wait_time", 5)
             logger.info(f"   - 회피 대기 시간: {self.avoidance_time}초")
-        
+
         # 2. 이동 경로 로드
         plan_data = fetch_with_retry(self.PLAN_URL, "웨이포인트 경로")
         if plan_data:
             self.patrol_path = plan_data
             logger.info(f"   - 경로 데이터 로드 완료 ({len(self.patrol_path)}개)")
-        
+
         # 3. 전체 상품 정보 로드
         prod_data = fetch_with_retry(self.LIST_PRODUCTS_URL, "상품 마스터")
         if prod_data:
@@ -290,7 +290,7 @@ class VirtualRobot:
             self.last_index = 0 # 처음부터 시작
         else:
             # 비상 해제/재개 시나리오
-            
+
             # 수동으로 3번(재개)을 누른 경우 서버에도 알림
             if not remote:
                 try:
@@ -305,13 +305,13 @@ class VirtualRobot:
             # 이미 작동 중이라면 중복 실행 방지
             if self.status == STATUS_PATROLLING:
                 return
-            
+
             # 만약 진행 중이었던 순찰 정보(last_index)가 유효한지 확인
             # (last_index가 patrol_path 길이보다 작으면 갈 곳이 남은 것)
-            
+
             # [추가] 기지에 있다면 재개하지 않음 (유령 순찰 방지)
             dist_to_base = (self.current_pos[0]**2 + self.current_pos[1]**2)**0.5
-            
+
             if self.last_index < len(self.patrol_path) and dist_to_base > 0.3:
                 self.safe_print("\n" + "="*40)
                 self.safe_print(f"⏯️ [순찰 재개] {self.last_index + 1}번 웨이포인트부터 재개합니다.")
@@ -335,11 +335,11 @@ class VirtualRobot:
                 self.safe_print("⚠️ 서버 연결 실패 (오프라인 시뮬레이션)")
 
         self.status = STATUS_PATROLLING
-        
+
         # 로봇 현재 위치 유지
         current_x, current_y = self.current_pos
         robot_speed = 0.2 # 0.2 m/sec
-        
+
         # 순찰 시나리오 시뮬레이션 (마지막 인덱스부터 시작)
         for i in range(self.last_index, len(self.patrol_path)):
             if self.status != STATUS_PATROLLING:
@@ -352,14 +352,14 @@ class VirtualRobot:
             plan = self.patrol_path[i]
             target_x = plan.get('loc_x', 0.0)
             target_y = plan.get('loc_y', 0.0)
-            
+
             # 거리 계산 (Euclidean distance)
             distance = ((target_x - current_x)**2 + (target_y - current_y)**2)**0.5
             move_time = distance / robot_speed
-            
+
             self.safe_print(f"\n[{i+1}/{len(self.patrol_path)}] {plan['waypoint_name']} 이동 중...")
             self.safe_print(f"   - 목적지: ({target_x}, {target_y}) | 거리: {distance:.2f}m | 예상 소요 시간: {move_time:.1f}초")
-            
+
             # 실제 이동 시간만큼 대기 (이동 중 주기적으로 좌표 전송)
             if move_time > 0:
                 elapsed = 0
@@ -367,14 +367,14 @@ class VirtualRobot:
                 while elapsed < move_time:
                     if self.status != STATUS_PATROLLING:
                         break
-                    
+
                     # 현재 위치 선형 보간 (Linear Interpolation)
                     ratio = min(1.0, elapsed / move_time)
                     temp_x = current_x + (target_x - current_x) * ratio
                     temp_y = current_y + (target_y - current_y) * ratio
                     self.send_pose(temp_x, temp_y)
                     self.current_pos = (temp_x, temp_y)
-                    
+
                     self.interruptible_sleep(min(report_interval, move_time - elapsed))
                     elapsed += report_interval
 
@@ -384,29 +384,29 @@ class VirtualRobot:
             self.current_pos = (target_x, target_y)
             self.send_pose(target_x, target_y)
             if not self.interruptible_sleep(1.5): break
-            
+
             # 현재 위치 업데이트
             current_x, current_y = target_x, target_y
-            
+
             # 판정 시나리오 (70% 정상, 15% 결품, 15% 오진열)
             rand_val = random.random()
-            
+
             if rand_val < 0.7:
                 # 1. 정상 (실제 등록된 바코드 전송)
                 self.safe_print(f"   [결과] 정상 인식: {plan['product_name']}")
                 self.send_detection(plan['barcode_tag'], detected_barcode=plan['product_barcode'], odom_x=current_x, odom_y=current_y)
-            
+
             elif rand_val < 0.85:
                 # 2. 미진열/결품 (YOLO ID -1 또는 0 전송)
                 missing_id = random.choice([-1, 0])
                 self.safe_print(f"   [결과] 상품 미검출 (결품 시나리오) 발생 (YOLO ID: {missing_id})")
                 self.send_detection(plan['barcode_tag'], yolo_class_id=missing_id, confidence=0.0, odom_x=current_x, odom_y=current_y)
-            
+
             else:
                 # 3. 오진열 (엉뚱한 상품 클래스 전송)
                 # 현재 등록된 상품 마스터에서 의도하지 않은 상품의 YOLO ID를 무작위로 선택
                 wrong_products = [p for p in self.products if p.get('yolo_class_id') is not None and p.get('yolo_class_id') != plan.get('yolo_class_id')]
-                
+
                 if wrong_products:
                     wrong_p = random.choice(wrong_products)
                     wrong_yolo_id = wrong_p['yolo_class_id']
@@ -442,7 +442,7 @@ class VirtualRobot:
         if self.status == STATUS_EMERGENCY_STOP:
             self.safe_print("\n🔓 [비상 해제] 비상 정지 상태에서 기지 복귀 명령을 수신하여 비상을 해제합니다.")
             self.status = STATUS_RETURNING
-        
+
         # 기지(0,0)까지의 거리 및 시간 계산
         current_x, current_y = self.current_pos
         distance = (current_x**2 + current_y**2)**0.5
@@ -467,7 +467,7 @@ class VirtualRobot:
         self.status = STATUS_IDLE
         self.current_pos = (0.0, 0.0) # 최종 위치 보정
         self.last_index = len(self.patrol_path) # 유령 순찰 방지를 위해 인덱스 완료 처리
-        
+
         # 복귀 완료 신호 전송
         if not remote:
             try:
@@ -476,7 +476,7 @@ class VirtualRobot:
                     self.safe_print("✅ 서버에 기지 복귀 완료 신호를 전송했습니다.")
             except:
                 pass
-        
+
         # 원격 실행인 경우 메뉴 재출력
         if remote:
             self.print_menu()
@@ -486,14 +486,14 @@ class VirtualRobot:
         self.status = STATUS_EMERGENCY_STOP
         # 비상 정지 즉시 현재 위치 서버로 보고
         self.send_pose(self.current_pos[0], self.current_pos[1])
-        
+
         if not remote:
             try:
                 requests.post(self.STOP_PATROL_URL)
                 self.safe_print("✅ 서버에 비상 정지 신호를 전송했습니다.")
             except:
                 pass
-        
+
         # 원격 실행인 경우 메뉴 재출력
         if remote:
             self.print_menu()
@@ -507,10 +507,10 @@ class VirtualRobot:
                     cmd_data = res.json()
                     cmd_type = cmd_data.get("command_type")
                     cmd_id = cmd_data.get("command_id")
-                    
+
                     if cmd_type and cmd_type != "IDLE":
                         self.safe_print(f"\n📡 [원격 신호 수신] {cmd_type} (ID: {cmd_id})")
-                        
+
                         if cmd_type == "START_PATROL":
                             threading.Thread(target=self.start_patrol, args=(True,)).start()
                         elif cmd_type == "RETURN_TO_BASE":
@@ -519,20 +519,20 @@ class VirtualRobot:
                             self.emergency_stop(remote=True)
                         elif cmd_type == "RESUME_PATROL":
                             threading.Thread(target=self.start_patrol, args=(True, True)).start()
-                        
+
                         # 명령 완료 처리 알림
                         if cmd_id:
                             try:
                                 requests.post(f"{self.base_url}/robot/command/{cmd_id}/complete")
                             except:
                                 pass
-                    
+
                     # [추가] 대기 중(IDLE)이거나 명령 확인 시마다 현재 좌표와 하트비트 전송 (상시 위치 업데이트)
                     self.send_pose(self.current_pos[0], self.current_pos[1])
-                            
+
             except Exception as e:
                 pass
-            
+
             time.sleep(1) # 1초마다 확인 (반응성 향상)
 
     def run(self):
@@ -558,14 +558,14 @@ class VirtualRobot:
         # 3. 원격 명령 수신 스레드 시작
         self.polling_thread = threading.Thread(target=self.poll_commands, daemon=True)
         self.polling_thread.start()
-        
+
         self.safe_print("="*50)
         self.safe_print("🤖 Gilbot 확장 가상 로봇 시뮬레이터 v2.1")
         self.safe_print("   - 서버 주소: " + self.base_url)
         self.safe_print("   - 상태: " + self.status)
         self.safe_print("   - 원격 신호 대기 중 (Polling)")
         self.safe_print("="*50)
-        
+
         while True:
             try:
                 self.print_menu()
@@ -586,7 +586,7 @@ class VirtualRobot:
             except Exception as e:
                 time.sleep(5)
                 continue
-                
+
             if choice == '1':
                 self.start_patrol()
             elif choice == '2':
@@ -612,7 +612,7 @@ def kill_other_simulators():
         # ps aux에서 simulate_robot.py를 포함하고 현재 PID가 아닌 프로세스 찾기
         cmd = ["ps", "aux"]
         ps_output = subprocess.check_output(cmd).decode()
-        
+
         killed_count = 0
         for line in ps_output.splitlines():
             if "simulate_robot.py" in line and "grep" not in line:
@@ -627,7 +627,7 @@ def kill_other_simulators():
                     except PermissionError:
                         print(f"⚠️  PID {pid}를 종료할 권한이 없습니다.")
                     killed_count += 1
-        
+
         if killed_count > 0:
             print(f"🧹 기존 시뮬레이터 프로세스 {killed_count}개를 정리했습니다.")
     except Exception as e:
@@ -638,11 +638,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gilbot Virtual Robot Simulator")
     parser.add_argument("mode", nargs="?", default="local", help="Mode: local or server (default: local)")
     parser.add_argument("-k", "--kill", action="store_true", help="Kill existing simulator instances before starting")
-    
+
     args = parser.parse_args()
-    
+
     if args.kill:
         kill_other_simulators()
-        
+
     robot = VirtualRobot(mode=args.mode)
     robot.run()
