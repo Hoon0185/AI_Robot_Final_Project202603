@@ -83,13 +83,16 @@ class IntegratedPCNode(Node):
             self.get_logger().error(f"이미지 수신 에러: {e}")
 
     def process_all(self):
-        if not self.is_waiting_for_ai or self.latest_frame is None:
+        if not self.is_waiting_for_ai:
+            return
+            
+        if self.latest_frame is None:
+            self.get_logger().warn("⚠️ [AI Watchdog] 카메라 영상이 수신되지 않고 있습니다. (Topic: camera/image/compressed)")
             return
         
         frame = self.latest_frame.copy()
-        # 사용한 프레임은 비워서 중복 처리 방지 (옵션)
-        # self.latest_frame = None 
-
+        analyze_success = False
+        
         # --- [중요] 모든 인식/검증 로직이 동일한 frame을 공유함 ---
         if self.is_waiting_for_ai:
             # Step 1: QR 탐지기 실행 (frame 전달)
@@ -106,6 +109,7 @@ class IntegratedPCNode(Node):
                 self.get_logger().info(f"   ㄴ 탐지됨: {item.class_name} (신뢰도: {item.score:.2f})")
 
             if result:
+                analyze_success = True
                 msg = DetectionArray()
                 det = Detection()
 
@@ -118,6 +122,15 @@ class IntegratedPCNode(Node):
                 # 결과가 나왔을 때 터미널에 출력
                 self.get_logger().info(f"===> [DETECTED] {result['item_name']} | Status: {result['status']}")
 
+                msg.detections.append(det)
+                self.result_pub.publish(msg)
+
+            # [추가] 아무것도 탐지되지 않았을 때도 로봇에게 "찾는 중"임을 보고 (1초에 한 번만 발행하여 부하 방지)
+            if not analyze_success:
+                msg = DetectionArray()
+                det = Detection()
+                det.status = "SEARCHING" # 바코드/물체 모두 못 찾음
+                det.detected_barcode = "NONE"
                 msg.detections.append(det)
                 self.result_pub.publish(msg)
 

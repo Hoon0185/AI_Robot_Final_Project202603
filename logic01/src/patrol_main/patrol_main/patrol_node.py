@@ -78,7 +78,7 @@ class PatrolNode(Node):
         self.battery_sub = self.create_subscription(
             BatteryState, '/battery_state', self.battery_callback, 10)
         self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
-        
+
         # 10. 주행 재시도 제어 (무한 루프 방지용)
         self._is_handling_retry = False
         self.retry_timer = None
@@ -159,13 +159,13 @@ class PatrolNode(Node):
         """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
         if self._is_handling_retry:
             return
-            
+
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().warn('다시 보낼 목적지 인덱스가 범위를 벗어났습니다.')
             return
 
         self._is_handling_retry = True
-        
+
         # 이전 타이머 정리
         if self.retry_timer:
             self.destroy_timer(self.retry_timer)
@@ -177,7 +177,7 @@ class PatrolNode(Node):
         tx, ty, tyaw = float(coords['x']), float(coords['y']), float(coords['yaw'])
         self.get_logger().info(f'--- [안정화 재출발] Goal: {shelf_name} ---')
         self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
-        
+
         # 0.5초 후 실제 전송 (메시지 폭주 방지용 일회성 타이머)
         self._resend_timer_internal = self.create_timer(0.5, self._execute_resend)
 
@@ -193,14 +193,14 @@ class PatrolNode(Node):
         if hasattr(self, '_resend_timer_internal') and self._resend_timer_internal:
              self.destroy_timer(self._resend_timer_internal)
              self._resend_timer_internal = None
-        
+
         if self.current_shelf_idx >= len(self.shelf_list):
             return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
         tx, ty = float(coords['x']), float(coords['y'])
-        
+
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
@@ -396,7 +396,7 @@ class PatrolNode(Node):
                 self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting 3s for stabilization...')
                 if self.retry_timer: self.destroy_timer(self.retry_timer)
                 self.retry_timer = self.create_timer(3.0, self._trigger_retry)
-            
+
             # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
             if not self.is_paused:
                 self.publish_status('nav_alert')
@@ -516,20 +516,32 @@ class PatrolNode(Node):
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
+        # [상세 로깅] 현재 AI가 어떤 상태를 보고하고 있는지 실시간 모니터링
+        current_status = getattr(self, 'latest_ai_data', {}).get('status', '데이터 수신 대기중...') if hasattr(self, 'latest_ai_data') else '데이터 없음'
+        self.get_logger().info(f"[AI 분석 중] {elapsed:.1f}s / {self.ai_wait_timeout:.1f}s | 상태: {current_status}")
+
         # [수정] 단순히 데이터가 있는지가 아니라, '정상' 결과를 얻었거나 시간이 다 됐을 때만 종료
         has_success = hasattr(self, 'latest_ai_data') and self.latest_ai_data and self.latest_ai_data.get('status') == '정상'
         
-        if has_success or elapsed > self.ai_wait_timeout:
+        if has_success or elapsed >= self.ai_wait_timeout:
             self.is_waiting_for_ai = False
             self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
 
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
 
-            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정
-            data = getattr(self, 'latest_ai_data', None) or {
-                "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
-            }
+            # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정 (이제 더욱 상세해집니다)
+            data = getattr(self, 'latest_ai_data', None)
+            
+            if not data or data.get('status') == "SEARCHING":
+                # AI가 검색은 했지만 아무것도 못 찾고 타임아웃된 경우
+                data = {
+                    "class_id": -1, 
+                    "detected_barcode": "TIMEOUT", 
+                    "confidence": 0.0, 
+                    "status": "인식 정보 없음 (TIMEOUT)"
+                }
+            # else: data가 있으면 (오배열, 결품, QR_MISSING 등) 그 데이터를 그대로 보관함
 
             # 요구하신 형식대로 self.last_detection 구성
             self.last_detection = {
@@ -552,7 +564,7 @@ class PatrolNode(Node):
                     confidence=self.last_detection["confidence"]
                 )
                 self.reported_tags.add(target_barcode)
-                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data['status']}")
+                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data.get('status', 'Unknown')}")
 
             # 다음 위치로 이동
             self.latest_ai_data = None # 데이터 초기화
