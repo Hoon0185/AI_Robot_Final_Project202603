@@ -1,6 +1,8 @@
 import sys
 import os
 from std_msgs.msg import String
+from sensor_msgs.msg import CompressedImage
+from PyQt6.QtCore import pyqtSignal, QObject, QThread
 
 # ROS 2 패키지 경로 추가 (logic01/src/patrol_main 하위의 모듈을 참조하기 위함)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,11 +29,40 @@ try:
 except ImportError:
     rclpy = None
 
-class RobotLogicHandler:
+class LogicSignals(QObject):
+    rtspFrameReceived = pyqtSignal(bytes)
+
+class RosWorker(QThread):
+    """ROS 2 노드들을 백엔드에서 전용으로 스핀(Spin)시키는 스레드"""
+    def __init__(self, nodes):
+        super().__init__()
+        self.nodes = nodes
+        self.active = True
+
+    def run(self):
+        import rclpy
+        while self.active and rclpy.ok():
+            for node in self.nodes:
+                if node:
+                    # 각 노드의 콜백(타이머, 구독 등)을 0.01초씩 시도
+                    rclpy.spin_once(node, timeout_sec=0.01)
+            # CPU 점유율 과다 방지를 위한 미세한 휴식
+            self.msleep(1)
+
+    def stop(self):
+        self.active = False
+        self.wait()
+
+class RobotLogicHandler(QObject):
     def __init__(self, ui_instance, debug_mode=False):
+        super().__init__() # QObject 초기화
         self.ui = ui_instance
         self.is_debug = debug_mode # 디버그 모드 상태 저장
         self.cam_node = None
+        self.stream_node = None # Master 스트리밍 노드
+        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
+        self.current_cam_mode = "DIRECT"
+        
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
         self.obstacle_manager = None
@@ -39,21 +70,11 @@ class RobotLogicHandler:
         self._prepare_paths() #경로 설정 (로직 핸들러 생성 시점에 수행)
         if not self.is_debug:
             self._initialize_ros_nodes()
-            try:
-                if PatrolInterface:
-                    self.ros_interface = PatrolInterface()
-                else:
-                    raise ImportError("PatrolInterface module not found.")
-                if ObstacleInterface:
-                    self.obstacle_manager = ObstacleInterface()
-                    self.sub_obstacle_ui = self.ros_interface.node.create_subscription( String, 'obstacle_ui_log', self._obstacle_ui_callback, 10)
-                else:
-                    raise ImportError("ObstacleInterface module not found.")
-            except Exception as e:
-                self._log(f"[ERROR] ROS 2 Interface failed to start: {e}")
-                self._log("[SYSTEM] 릴리즈 모드에서 연결 실패. 하드웨어를 확인하세요.")
         else:
             self._log("[SYSTEM] DEBUG MODE 활성화: 외부 연결(ROS/DB) 없이 시뮬레이션 데이터를 사용합니다.")
+
+        self.signals = LogicSignals() # UI 이미지 전송용 시그널 객체
+        self.ros_thread = None
 
         self._setup_connections()
         self.current_patrol_min = 60
@@ -99,16 +120,12 @@ class RobotLogicHandler:
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
 
+        # 카메라 프레임 수신 (백엔드 -> UI)
+        self.signals.rtspFrameReceived.connect(self.ui.display_compressed_image)
+
     def _prepare_paths(self):
         """복잡한 디렉토리 구조에 맞춰 sys.path를 정확히 설정합니다."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # 구조: logic01/logic01/src/protect_product/protect_product/camera.py
-        # 'protect_product' 패키지를 포함하는 상위 폴더인 'src' 레벨을 경로에 넣어야 함
-        ai_src_base = os.path.join(current_dir, 'logic01', 'logic01', 'src', 'protect_product')
-
-        if ai_src_base not in sys.path:
-            sys.path.append(ai_src_base)
 
         # PatrolInterface 경로 (logic01/src/patrol_main 대응)
         patrol_path = os.path.join(current_dir, 'logic01', 'src', 'patrol_main')
@@ -131,45 +148,55 @@ class RobotLogicHandler:
         if not self.rclpy.ok():
             self.rclpy.init()
 
-        # [A] AI 노드 임포트 및 생성
+        # [A] 카메라부터 즉시 시작 (핵심: 주행 노드 대기와 상관없이 실행)
         try:
-            from protect_product.camera import IntegratedPCNode
-            self._log("✅ [SYSTEM] AI 인식 모듈 로드 성공")
-        except ImportError as e:
-            # 구조가 다를 경우를 대비한 2차 시도
-            try:
-                from camera import IntegratedPCNode
-                self._log("✅ [SYSTEM] AI 모듈 로드 성공 (직접 참조)")
-            except:
-                self._log(f"❌ [SYSTEM] AI 모듈 임포트 최종 실패: {e}")
-                IntegratedPCNode = None
+            self._log("💡 [SYSTEM] 로봇 카메라 직접 연결 모드로 시작합니다.")
+            self.ui.start_direct_rtsp(self.rtsp_url)
+        except Exception as cam_e:
+            self._log(f"⚠️ [SYSTEM] 카메라 초기 가동 실패: {cam_e}")
 
+        # [B] 기본 주행 및 장애물 인터페이스 생성
         try:
-            if IntegratedPCNode:
-                self.cam_node = IntegratedPCNode()
-                self._log("🚀 [SYSTEM] AI 인식 노드 활성화 완료")
-
-            # [B] 기존 팀원들의 인터페이스 노드 생성
             from patrol_main.patrol_interface import PatrolInterface
+            from patrol_main.obstacle_interface import ObstacleInterface
+            
             if PatrolInterface:
                 self.ros_interface = PatrolInterface()
                 self._log("🚀 [SYSTEM] 주행 인터페이스 연결 완료")
+            
+            if ObstacleInterface:
+                self.obstacle_manager = ObstacleInterface()
+                self.sub_obstacle_ui = self.ros_interface.node.create_subscription(
+                    String, 'obstacle_ui_log', self._obstacle_ui_callback, 10)
+                self._log("🚀 [SYSTEM] 장애물 인터페이스 연결 완료")
         except Exception as e:
-            self._log(f"⚠️ [SYSTEM] 노드 생성 중 오류 발생: {e}")
+            self._log(f"⚠️ [SYSTEM] 인터페이스 노드 생성 실패: {e}")
+
+        # [C] 인터페이스 노드 조율 및 백그라운드 스레드 시작
+        try:
+            self._log("🚀 [SYSTEM] 주행 및 장애물 노드 통합 완료")
+
+            # [E] 백그라운드 스레드 시작 (주행 인터페이스 전용)
+            active_nodes = [self.ros_interface.node if self.ros_interface else None]
+            self.ros_thread = RosWorker(active_nodes)
+            self.ros_thread.setParent(self)
+            self.ros_thread.start()
+            self._log("🧵 [SYSTEM] ROS 백그라운드 스레드 시작 (주행 제어 활성화)")
+
+        except Exception as e:
+            self._log(f"⚠️ [SYSTEM] 시스템 초기화 중 오류: {e}")
+
+
+    def _image_callback(self, msg):
+        """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
+        if self.current_cam_mode == "ROS":
+            self.signals.rtspFrameReceived.emit(msg.data)
 
     def sync_ros_status(self):
-        """ROS 노드를 1스텝씩 실행하고 UI를 갱신합니다."""
+        """UI 상태(순찰 시간, 미니맵 등)만 주기적으로 갱신합니다. (스핀은 스레드에서 수행)"""
         if self.is_debug:
             self.ui.set_last_patrol_time("2026-03-31 16:30 (DEBUG MODE ACTIVE)")
             return
-
-        # rclpy.spin_once를 통해 노드들의 콜백(카메라 추론 등)을 실제로 실행
-        if rclpy.ok():
-            if self.cam_node:
-                rclpy.spin_once(self.cam_node, timeout_sec=0)
-
-            if self.ros_interface and hasattr(self.ros_interface, 'get_name'):
-                rclpy.spin_once(self.ros_interface, timeout_sec=0)
 
         # UI 갱신 로직 (주행 상태 표시)
         if not self.ros_interface: return

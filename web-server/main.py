@@ -82,6 +82,7 @@ class UnifiedRegisterInput(BaseModel):
     category: str = "General"
     min_inventory_qty: int = 5
     waypoint_name: str
+    loc_yaw: float = 0.0
     row_num: int = 1
     yolo_class_id: Optional[int] = None
 
@@ -104,6 +105,7 @@ class WaypointUpdate(BaseModel):
     waypoint_name: str
     loc_x: float
     loc_y: float
+    loc_yaw: float
 
 # 데이터베이스 연결 함수
 def get_db_connection():
@@ -857,7 +859,7 @@ async def get_patrol_plan():
         query = """
             SELECT 
                 p.plan_id, p.waypoint_id, p.barcode_tag, p.product_id,
-                p.plan_order, w.waypoint_name, w.loc_x, w.loc_y, p.row_num,
+                p.plan_order, w.waypoint_name, w.loc_x, w.loc_y, w.loc_yaw, p.row_num,
                 m.product_name, m.barcode as product_barcode
             FROM waypoint_product_plan p
             LEFT JOIN waypoint w ON p.waypoint_id = w.waypoint_id
@@ -1093,8 +1095,8 @@ async def unified_register(data: UnifiedRegisterInput):
             res_max = cursor.fetchone()
             new_no = (res_max['max_no'] if res_max and res_max['max_no'] else 100) + 1
             cursor.execute(
-                "INSERT INTO waypoint (waypoint_no, waypoint_name, loc_x, loc_y) VALUES (%s, %s, 0.0, 0.0)", 
-                (new_no, data.waypoint_name)
+                "INSERT INTO waypoint (waypoint_no, waypoint_name, loc_x, loc_y, loc_yaw) VALUES (%s, %s, 0.0, 0.0, %s)", 
+                (new_no, data.waypoint_name, data.loc_yaw)
             )
             waypoint_id = cursor.lastrowid
 

@@ -45,7 +45,7 @@ class ObstacleNode(Node):
     self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
     self.plan_sub = self.create_subscription(Path, '/plan', self.plan_callback, 10) # 경로 수신
     self.teleop_sub = self.create_subscription(Twist, '/cmd_vel_teleop', self.teleop_callback, 10) # 수동
-    self.ai_mode_sub = self.create_subscription(Bool, '/ai_mode_active', self.ai_mode_callback, 10) # AI 인식 대기 모드 활성화 여부 구독
+    self.ai_mode_sub = self.create_subscription(Bool, '/ai_mode', self.ai_mode_callback, 10) # AI 인식 대기 모드 활성화 여부 구독
 
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)
@@ -78,7 +78,7 @@ class ObstacleNode(Node):
     self.blocked_start_time = None # 장애물 감지 시작 시각 기록용
     self.no_obstacle_start_time = None # 장애물 사라진 시각 기록용
     self.safe_distance = 0.30 # (확실한 정지 보장)
-    self.clear_distance = self.safe_distance + 0.1 # 장애물 완전 제거 기준 (60cm)
+    self.clear_distance = self.safe_distance + 0.05 # 장애물 완전 제거 기준 0.35
     self.current_wait_time = db_wait_time # 대기시간
     self.latest_scan_msg = None # 최신 라이다 데이터 저장용
     # self.fake_scan = None # 가짜 벽 메시지 재사용을 위한 변수
@@ -181,7 +181,6 @@ class ObstacleNode(Node):
       self.is_moving_backward = True
     else:
       self.is_moving_backward = False
-
 
   def scan_callback(self, msg):
     """라이다 데이터 수신 시마다 장애물 감지 및 우회 로직 처리"""

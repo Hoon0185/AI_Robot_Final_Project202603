@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool # [추가] 온디맨드 제어용
 from protect_product_msgs.msg import DetectionArray, Detection
 from cv_bridge import CvBridge
 import cv2
@@ -30,9 +31,15 @@ class IntegratedPCNode(Node):
     def __init__(self):
         super().__init__('integrated_pc_node')
 
-        # 1. 단일 비디오 캡처 객체 생성
-        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
-        self.cap = cv2.VideoCapture(self.rtsp_url)
+        # [최적화] 직접 RTSP를 열지 않고, camera_node가 발행하는 이미지를 구독합니다.
+        # 이를 통해 전체 시스템의 네트워크 대역폭 점유를 획기적으로 줄입니다.
+        self.subscription = self.create_subscription(
+            CompressedImage,
+            '/rtsp_image',
+            self.image_callback,
+            10)
+            
+        self.latest_frame = None
 
         # 2. 분석 모듈 객체화
         self.qr_mod = QRDetector()
@@ -41,19 +48,40 @@ class IntegratedPCNode(Node):
         self.bridge = CvBridge()
 
         # 3. 상태 및 퍼블리셔 설정
-        self.is_waiting_for_ai = True
+        self.is_waiting_for_ai = False  # [수정] 기본값은 연산 중단(False)
+        self.ai_mode_sub = self.create_subscription(
+            Bool, 
+            '/ai_mode', 
+            self.ai_mode_callback, 
+            10)
+            
         self.result_pub = self.create_publisher(DetectionArray, '/verified_objs', 10)
 
-        # 4. 루프 타이머 (모든 인식 과정을 이 안에서 순차 실행)
-        self.timer = self.create_timer(0.033, self.process_all)
+        # 4. 루프 타이머 (AI 연산은 부하가 크므로 10 FPS로 유지)
+        self.timer = self.create_timer(1.0 / 10.0, self.process_all)
+
+    def ai_mode_callback(self, msg):
+        """AI 인식 활성화/비활성화 제어"""
+        self.is_waiting_for_ai = msg.data
+        status_str = "활성화" if self.is_waiting_for_ai else "비활성화(대기)"
+        self.get_logger().info(f"AI 인식 모드 전환: {status_str}")
+
+    def image_callback(self, msg):
+        """이미지 수신 시 최신 프레임 업데이트"""
+        try:
+            import numpy as np
+            np_arr = np.frombuffer(msg.data, np.uint8)
+            self.latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            self.get_logger().error(f"이미지 수신 에러: {e}")
 
     def process_all(self):
-        print(f"DEBUG: AI 인식모드 = {self.is_waiting_for_ai}")
-        if not self.is_waiting_for_ai: return
-        ret, frame = self.cap.read()
-        if not ret:
-            self.cap.open(self.rtsp_url) # 연결 끊김 시 재시도
+        if not self.is_waiting_for_ai or self.latest_frame is None:
             return
+        
+        frame = self.latest_frame.copy()
+        # 사용한 프레임은 비워서 중복 처리 방지 (옵션)
+        # self.latest_frame = None 
 
         # --- [중요] 모든 인식/검증 로직이 동일한 frame을 공유함 ---
         if self.is_waiting_for_ai:

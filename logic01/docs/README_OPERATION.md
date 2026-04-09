@@ -13,7 +13,7 @@
 
 ## 1. 사전 준비 사항
 *   **ROS 2 Humble** 및 필수 의존성 설치
-*   **FastAPI 백엔드** 및 **DB** 가동 완료 (PC DB 포트 **8000** 직접 연결 확인)
+*   **FastAPI 백엔드** 및 **DB** 가동 완료 (PC DB 포트 **8000** 표준 직접 연결 확인)
 *   터틀봇3와 PC 간의 **시간 동기화** (`chrony`) 완료
 
 ---
@@ -73,15 +73,26 @@ python3 main.py
 
 ```bash
 # 한 번에 실행 (네트워크 안정 시 추천)
-ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false
+ros2 launch patrol_main total_patrol.launch.py use_ai_sim:=false run_obstacle_node:=true
 ```
+
+### [옵션] 장애물 노드 비활성화
+장애물 회피 로직의 간섭 없이 순수 성능을 테스트하고 싶다면 아래 옵션으로 시작하거나, 런타임에 끌 수 있습니다.
+*   **시작 시 노드 제외**: `run_obstacle_node:=false` 추가
+*   **실행 중 로직 비활성화**:
+    ```bash
+    ros2 param set /obstacle_node use_obstacle_avoidance false
+    ```
 
 ---
 
 *   **빌드 누락 주의**: 코드를 수정했는데도 예전 에러 로그가 계속 뜬다면, `colcon build --symlink-install` 명령어가 빠지지 않았는지 확인하세요.
 *   **순찰 중단 로그 추적**: 순찰이 갑자기 멈춘다면 터미널 로그에서 **`[상태 변경] ...`**으로 시작하는 메시지를 찾으세요. 시스템이 순찰을 종료한 구체적인 원인(긴급 정지, 복귀 명령, 주행 실패 등)을 즉시 알 수 있습니다.
-*   **Aborted(6) 발생 시**: 장애물 회피 중 Preemption에 의해 Aborted가 발생해도 현재의 로봇은 순찰을 종료하지 않고 대기 후 재주행하도록 설계되어 있습니다.
-*   **코스트맵 정화**: 로봇이 주변 장애물을 실제보다 크게 인식하여 갇혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
+*   **Aborted(6) 발생 시**: 장애물 회피 중 Preemption에 의해 Aborted가 발생해도 현재의 로봇은 순찰을 종료하지 않고 2초 대기 후 자동으로 목표를 재전송하여 주행을 재개합니다.
+*   **지능형 장애물 인식 (Virtual Wall)**: 로봇이 주행 중 멈춰있다면 `ros2 topic echo /scan_virtual`을 확인하세요. Nav2가 장애물을 인식하여 우회 경로를 생성하도록 돕는 가짜 벽 정보가 발행되고 있는지 볼 수 있습니다.
+*   **카메라 지연(Cam Delay) 대응**: 현재 시스템은 누적 버퍼 클리어 로직이 적용되었습니다. 화면 지연이 누적된다면 'Buffer Skip' 로그가 발생하는지 확인하세요.
+*   **주행 민감도 조정 (sim_time)**: 로봇이 너무 소극적으로 움직이면 `nav2_params.yaml`의 `sim_time`을 조정하세요 (현재 권장값 `1.5`).
+*   **코스트맵 정화**: 로봇이 유령 장애물에 갇혔을 경우 아래 명령으로 코스트맵을 초기화하세요.
     ```bash
     ros2 service call /local_costmap/clear_entirely_local_costmap nav2_msgs/srv/ClearEntireCostmap "{}"
     ```

@@ -77,6 +77,10 @@ class PatrolNode(Node):
         self.battery_sub = self.create_subscription(
             BatteryState, '/battery_state', self.battery_callback, 10)
         self.battery_timer = self.create_timer(15.0, self.report_battery_to_server)
+        
+        # 10. 주행 재시도 제어 (무한 루프 방지용)
+        self._is_handling_retry = False
+        self.retry_timer = None
 
         self.get_logger().info('Patrol Main Node (Server Link Version) started.')
 
@@ -144,23 +148,58 @@ class PatrolNode(Node):
 
     def resend_current_goal_with_delay(self):
         """로봇이 주춤거리거나 주행 시작 직후 터지는 현상을 막아주는 안정화 장치"""
-        self.destroy_timer(self._resend_timer)
+        if self.retry_timer:
+            self.destroy_timer(self.retry_timer)
+            self.retry_timer = None
         self.resend_current_goal()
 
 
     def resend_current_goal(self):
         """서버 세션을 건드리지 않고, 현재 멈춰있는 인덱스의 좌표만 Nav2에 다시 전송합니다."""
+        if self._is_handling_retry:
+            return
+            
         if self.current_shelf_idx >= len(self.shelf_list):
             self.get_logger().warn('다시 보낼 목적지 인덱스가 범위를 벗어났습니다.')
             return
+
+        self._is_handling_retry = True
+        
+        # 이전 타이머 정리
+        if self.retry_timer:
+            self.destroy_timer(self.retry_timer)
+            self.retry_timer = None
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         coords = self.shelves[shelf_name]
 
         tx, ty, tyaw = float(coords['x']), float(coords['y']), float(coords['yaw'])
-        self.get_logger().info(f'--- [재출발] Goal: {shelf_name} ---')
+        self.get_logger().info(f'--- [안정화 재출발] Goal: {shelf_name} ---')
         self.get_logger().info(f'Target Coords: X={tx:.4f}, Y={ty:.4f}, Yaw={tyaw:.4f}')
+        
+        # 0.5초 후 실제 전송 (메시지 폭주 방지용 일회성 타이머)
+        self._resend_timer_internal = self.create_timer(0.5, self._execute_resend)
 
+    def _trigger_retry(self):
+        """3초 대기 후 실제 재시도 함수를 호출합니다."""
+        if self.retry_timer:
+            self.destroy_timer(self.retry_timer)
+            self.retry_timer = None
+        self.resend_current_goal()
+
+    def _execute_resend(self):
+        """실제로 Nav2에 목표를 전송합니다. 실행 직후 타이머를 파괴하여 일회성 동작을 보장합니다."""
+        if hasattr(self, '_resend_timer_internal') and self._resend_timer_internal:
+             self.destroy_timer(self._resend_timer_internal)
+             self._resend_timer_internal = None
+        
+        if self.current_shelf_idx >= len(self.shelf_list):
+            return
+
+        shelf_name = self.shelf_list[self.current_shelf_idx]
+        coords = self.shelves[shelf_name]
+        tx, ty = float(coords['x']), float(coords['y'])
+        
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.map_frame
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
@@ -190,6 +229,9 @@ class PatrolNode(Node):
         if cmd == 'START_PATROL' and not self.is_patrolling:
             self.get_logger().info('Starting Patrol Sequence (Updating config first...)')
 
+            # --- [추가] 순찰 시작 전 유령 주행 명령(복귀 등) 강제 청소 ---
+            self.cancel_nav()
+
             # --- [추가] 순찰 시작 전 최신 설정 강제 동기화 ---
             self.load_shelves()
 
@@ -218,9 +260,10 @@ class PatrolNode(Node):
             self.go_to_origin()
 
     def cancel_nav(self):
-        """현재 진행 중인 Nav2 액션 목표를 취소합니다."""
+        """현재 진행 중인 Nav2 액션 목표를 실제로 취소합니다."""
         if self._goal_handle is not None:
-            self.get_logger().info('Cancelling current navigation goal...')
+            self.get_logger().info('Cancelling current navigation goal asynchronously...')
+            self._goal_handle.cancel_goal_async()
             self._goal_handle = None
         else:
             self.get_logger().info('No active navigation goal to cancel.')
@@ -295,9 +338,8 @@ class PatrolNode(Node):
         status = future.result().status
 
         if status == GoalStatus.STATUS_CANCELED:
-            self.get_logger().info('순찰이 일시 정지되어 주행이 안전하게 취소되었습니다.')
-            self.is_patrolling = True
-            self.is_paused = True
+            self.get_logger().info('Navigation goal was cancelled successfully.')
+            # 취소 시에는 순찰 상태를 꼬이게 하지 않고 조용히 리턴합니다.
             return
 
         if status == GoalStatus.STATUS_SUCCEEDED:
@@ -335,6 +377,7 @@ class PatrolNode(Node):
 
             # AI 인식 대기 모드 진입
             self.is_waiting_for_ai = True
+            self.ai_mode_pub.publish(Bool(data=True)) # [추가] 통합 AI 노드 활성화 신호 전송
             self.ai_wait_start_time = self.get_clock().now()
             self.latest_ai_barcodes = []
 
@@ -346,9 +389,12 @@ class PatrolNode(Node):
             # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
             self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
         elif status == GoalStatus.STATUS_ABORTED:
-            # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 순찰을 완전히 끄지 않고 로그만 출력
-            self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting for next action or result.')
-            self.retry_timer = self.create_timer(2.0, self.resend_current_goal)
+            # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 즉시 보내지 않고 3초 쿨다운 적용
+            if not self._is_handling_retry:
+                self.get_logger().warn(f'Navigation was ABORTED (code: {status}). Waiting 3s for stabilization...')
+                if self.retry_timer: self.destroy_timer(self.retry_timer)
+                self.retry_timer = self.create_timer(3.0, self._trigger_retry)
+            
             # 만약 일시정지 상태도 아니고 주행이 완전히 멈춘 것이 확실할 때만 에러 처리
             if not self.is_paused:
                 self.publish_status('nav_alert')
