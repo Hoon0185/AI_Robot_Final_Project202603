@@ -27,6 +27,7 @@ class RobotControlPanel(QWidget):
     resetConfirmed = pyqtSignal()
     dbRefreshRequested = pyqtSignal()
     alarmRefreshRequested = pyqtSignal()
+    camModeToggleRequested = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -77,11 +78,35 @@ class RobotControlPanel(QWidget):
 
     def _setup_left_panel(self):
         left_container = QVBoxLayout()
+        
+        # 카메라 영역 컨테이너 (레이블 + 전환 버튼)
+        cam_frame = QFrame()
+        cam_frame.setFixedSize(640, 480) # 버튼 영역 고려하여 약간 높임
+        cam_frame.setStyleSheet("background-color: #2C2C2C; border-radius: 15px;")
+        cam_box_layout = QVBoxLayout(cam_frame)
+        cam_box_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 상단 제어 바 (모드 전환 버튼)
+        cam_ctrl_layout = QHBoxLayout()
+        self.lbl_cam_mode = QLabel("현재 모드: ROS 2 (저지연)")
+        self.lbl_cam_mode.setStyleSheet("color: #AAAAAA; font-size: 12px; font-weight: normal;")
+        
+        self.btn_toggle_cam = QPushButton("🔄 연결 모드 전환")
+        self.btn_toggle_cam.setFixedSize(130, 28)
+        self.btn_toggle_cam.setStyleSheet("QPushButton { background-color: #444444; color: white; border-radius: 5px; font-size: 11px; } QPushButton:hover { background-color: #555555; }")
+        self.btn_toggle_cam.clicked.connect(lambda: self.camModeToggleRequested.emit())
+        
+        cam_ctrl_layout.addWidget(self.lbl_cam_mode)
+        cam_ctrl_layout.addStretch()
+        cam_ctrl_layout.addWidget(self.btn_toggle_cam)
+        cam_box_layout.addLayout(cam_ctrl_layout)
+
         self.cam_label = QLabel("캠 영상 송출")
         self.cam_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cam_label.setStyleSheet("background-color: #2C2C2C; color: white; border-radius: 15px; font-size: 18px; font-weight: bold;")
-        self.cam_label.setFixedSize(640, 450)
-        left_container.addWidget(self.cam_label, stretch=3)
+        self.cam_label.setStyleSheet("color: white; font-size: 18px; font-weight: bold; border: none;")
+        cam_box_layout.addWidget(self.cam_label)
+        
+        left_container.addWidget(cam_frame, stretch=3)
 
         logs_frame = QFrame()
         logs_frame.setFixedHeight(60)

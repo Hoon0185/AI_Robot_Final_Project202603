@@ -61,6 +61,7 @@ class RobotLogicHandler(QObject):
         self.cam_node = None
         self.stream_node = None # Master 스트리밍 노드
         self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
+        self.current_cam_mode = "ROS" # "ROS" 또는 "DIRECT"
         
         # ROS 2 인터페이스 초기화 (디버그 모드가 아닐 때만 시도)
         self.ros_interface = None
@@ -118,6 +119,7 @@ class RobotLogicHandler(QObject):
         # DB 및 알림 갱신 요청
         self.ui.dbRefreshRequested.connect(self.update_inventory_db)
         self.ui.alarmRefreshRequested.connect(self.update_alarm_list)
+        self.ui.camModeToggleRequested.connect(self._handle_cam_mode_toggle)
 
         # 카메라 프레임 수신 (백엔드 -> UI)
         self.signals.rtspFrameReceived.connect(self.ui.display_compressed_image)
@@ -227,9 +229,25 @@ class RobotLogicHandler(QObject):
         except Exception as e:
             self._log(f"⚠️ [SYSTEM] 통합 노드 조율 중 오류: {e}")
 
+    def _handle_cam_mode_toggle(self):
+        """사용자가 UI에서 모델 전환 버튼을 눌렀을 때의 처리"""
+        if self.current_cam_mode == "ROS":
+            # ROS -> DIRECT 전환
+            self.current_cam_mode = "DIRECT"
+            self.ui.lbl_cam_mode.setText("현재 모드: RTSP 직접 연결 (비상용)")
+            self._log("💡 [SYSTEM] 카메라 모드 전환: RTSP 직접 연결")
+            self.ui.start_direct_rtsp(self.rtsp_url)
+        else:
+            # DIRECT -> ROS 전환
+            self.current_cam_mode = "ROS"
+            self.ui.lbl_cam_mode.setText("현재 모드: ROS 2 (저지연)")
+            self._log("💡 [SYSTEM] 카메라 모드 전환: ROS 2 토픽 구독")
+            self.ui.stop_direct_rtsp()
+
     def _image_callback(self, msg):
         """백엔드에서 오는 최적화된 이미지를 UI 시그널로 전달"""
-        self.signals.rtspFrameReceived.emit(msg.data)
+        if self.current_cam_mode == "ROS":
+            self.signals.rtspFrameReceived.emit(msg.data)
 
     def sync_ros_status(self):
         """UI 상태(순찰 시간, 미니맵 등)만 주기적으로 갱신합니다. (스핀은 스레드에서 수행)"""
