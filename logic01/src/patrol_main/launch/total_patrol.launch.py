@@ -160,18 +160,11 @@ def generate_launch_description():
             condition=IfCondition(run_rfid)
         ),
 
-        # 9. AI Product Detection System
+        # 9. AI Product Detection & Verification System (Unified)
         Node(
             package='protect_product',
-            executable='detector_node',
-            name='detector_node',
-            parameters=[{'use_sim_time': use_sim_time}],
-            output='screen'
-        ),
-        Node(
-            package='protect_product',
-            executable='verifier_node',
-            name='verifier_node',
+            executable='integrated_node',
+            name='integrated_pc_node',
             parameters=[{'use_sim_time': use_sim_time}],
             output='screen'
         )
