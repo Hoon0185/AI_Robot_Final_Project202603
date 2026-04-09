@@ -470,52 +470,59 @@ class PatrolNode(Node):
         threading.Thread(target=run_report, daemon=True).start()
 
     def check_ai_result_and_proceed(self):
-        """결과가 왔는지 확인하고 DB에 기록"""
+        """AI 인식 대기 중 매칭 여부를 확인하고 다음 단계 진행 (LOGIC_02 통합 버전)"""
         if not self.is_waiting_for_ai: return
 
         shelf_name = self.shelf_list[self.current_shelf_idx]
         target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
+        waypoint_id = self.shelves[shelf_name].get('waypoint_id', 1)
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # 결과를 받았거나 서버 설정 시간이 지났을 때
-        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > self.ai_wait_timeout:
+        # 결과를 받았거나 8초(기본값)가 지났을 때
+        # (ai_wait_timeout은 DB 설정을 따르되 없으면 8.0초 사용)
+        if (hasattr(self, 'latest_ai_data') and self.latest_ai_data) or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
             self.ai_mode_pub.publish(Bool(data=False)) # AI 인식 종료 알림 (장애물 감지 재개)
 
             if self._delay_timer:
                 self.destroy_timer(self._delay_timer)
+                self._delay_timer = None
 
             # 데이터가 없을 경우(타임아웃)를 대비한 기본값 설정
-            data = getattr(self, 'latest_ai_data', None) or {
-                "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
-            }
+            data = getattr(self, 'latest_ai_data', None)
+            found = data is not None
+
+            if not found:
+                data = {
+                    "class_id": -1, "detected_barcode": "TIMEOUT", "confidence": 0.0, "status": "Fail"
+                }
 
             # 요구하신 형식대로 self.last_detection 구성
             self.last_detection = {
-                "tag_barcode": target_barcode,         # 원래 있어야 할 바코드
-                "detected_barcode": data["detected_barcode"], # 실제로 인식된 바코드
-                "yolo_class_id": data["class_id"],     # 물체 클래스 번호
-                "confidence": data["confidence"]       # 신뢰도
+                "tag_barcode": target_barcode,
+                "detected_barcode": data["detected_barcode"],
+                "yolo_class_id": data["class_id"],
+                "confidence": data["confidence"]
             }
 
             # DB에 최종 리포트
             if target_barcode not in self.reported_tags:
                 self.db.report_detection(
-                    tag_barcode=self.last_detection["tag_barcode"],
+                    tag_barcode=target_barcode,
                     patrol_id=self.current_patrol_id or 0,
-                    waypoint_id=self.shelves[shelf_name].get('waypoint_id', 1),
+                    waypoint_id=waypoint_id,
                     x=self.current_x,
                     y=self.current_y,
-                    detected_barcode=self.last_detection["detected_barcode"],
-                    yolo_class_id=self.last_detection["yolo_class_id"],
-                    confidence=self.last_detection["confidence"]
+                    detected_barcode=data["detected_barcode"] if found else None,
+                    yolo_class_id=data["class_id"],
+                    confidence=data["confidence"]
                 )
                 self.reported_tags.add(target_barcode)
-                self.get_logger().info(f"DB 저장 완료: {target_barcode} - {data['status']}")
+                self.get_logger().info(f"[AI] 결과 보고 완료: {target_barcode} (Found: {found})")
 
-            # 다음 위치로 이동
-            self.latest_ai_data = None # 데이터 초기화
+            # 데이터 초기화 및 다음 위치로 이동
+            self.latest_ai_data = None
             self.proceed_to_next_shelf()
 
     def proceed_to_next_shelf(self):
@@ -548,6 +555,15 @@ class PatrolNode(Node):
         msg.pose.pose.orientation.y = 0.0
         msg.pose.pose.orientation.z = 0.0
         msg.pose.pose.orientation.w = 1.0
+
+        # [LOGIC_02 통합] 공분산 초기화 (매우 낮은 값으로 설정하여 AMCL에 높은 확신 부여)
+        msg.pose.covariance = [0.0] * 36
+        msg.pose.covariance[0] = 0.25 # x
+        msg.pose.covariance[7] = 0.25 # y
+        msg.pose.covariance[35] = 0.06 # yaw
+
+        self.initial_pose_pub.publish(msg)
+        self.get_logger().info('Published Initial Pose to (0,0) with improved covariance.')
 
 
 def main(args=None):
