@@ -514,8 +514,10 @@ class PatrolNode(Node):
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
 
-        # 결과를 받았거나 서버 설정 시간이 지났을 때
-        if hasattr(self, 'latest_ai_data') and self.latest_ai_data or elapsed > self.ai_wait_timeout:
+        # [수정] 단순히 데이터가 있는지가 아니라, '정상' 결과를 얻었거나 시간이 다 됐을 때만 종료
+        has_success = hasattr(self, 'latest_ai_data') and self.latest_ai_data and self.latest_ai_data.get('status') == '정상'
+        
+        if has_success or elapsed > self.ai_wait_timeout:
             self.is_waiting_for_ai = False
             self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
 

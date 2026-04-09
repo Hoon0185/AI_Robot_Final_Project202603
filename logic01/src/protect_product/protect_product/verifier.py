@@ -76,10 +76,11 @@ class Verifier:
                 bbox = matched_item['bbox']
                 current_yolo_id = matched_item['id']
 
-                # YOLO ID 비교
-                if int(current_yolo_id) == int(db_yolo_id): # 타입 일치 확인
+                # YOLO ID 비교 (디버깅 로그 추가)
+                if int(current_yolo_id) == int(db_yolo_id):
                     status = '정상'
                 else:
+                    print(f"⚠️ [ID 불일치] DB ID: {db_yolo_id} | 인식 ID: {current_yolo_id} ({db_product_name})")
                     status = '오배열'
                 item_name = db_product_name
             else:
