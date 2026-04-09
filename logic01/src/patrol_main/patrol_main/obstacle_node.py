@@ -17,8 +17,7 @@ from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
-
-    self.db = InventoryDB(base_url="http://16.184.56.119:8000")
+    self.db = InventoryDB(base_url="http://16.184.56.119/api")
     # self.db = InventoryDB(base_url="http://16.")
 
     db_wait_time = 5 # 기본값 변수
@@ -32,8 +31,8 @@ class ObstacleNode(Node):
     except Exception as e:
       self.get_logger().error(f"[DB] 서버 연결 실패: {e}")
 
-    self.declare_parameter('current_wait_time',db_wait_time) # UI용 장애물 대기 시간 파라미터
-    self.get_parameter('current_wait_time').get_parameter_value().integer_value
+    self.declare_parameter('current_wait_time', db_wait_time)
+    self.declare_parameter('use_obstacle_avoidance', True) # 기본값 활성화
 
     qos_profile = QoSProfile(
       reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -111,6 +110,12 @@ class ObstacleNode(Node):
     """수동조작 도중 장애물 부딪힘 방지하는 함수"""
     self.teleop_linear_x = msg.linear.x
     self.teleop_angular_z = msg.angular.z
+    
+    # 장애물 회피 사용 여부 파라미터 실시간 체크
+    use_avoidance = self.get_parameter('use_obstacle_avoidance').get_parameter_value().bool_value
+    if not use_avoidance:
+      self.cmd_vel_pub.publish(msg)
+      return
 
     if abs(self.teleop_linear_x) > 0.001 or abs(self.teleop_angular_z) > 0.001:
       self.is_teleop_active = True # 수동 조작중
