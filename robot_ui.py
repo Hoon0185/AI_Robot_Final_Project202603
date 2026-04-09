@@ -1,11 +1,28 @@
 import cv2
 import os
+import sys
+import rclpy
+import threading
 import datetime
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSlider, QFrame, QStackedWidget,
                              QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QTextCursor
+
+# 카메라 불러오기 - 이중으로 카메라 불러오던 현상 수정
+ai_module_path = r"logic01/src/protect_product" # <-- 여기에 src 폴더의 실제 전체 경로를 적어주세요.
+if ai_module_path not in sys.path:
+    sys.path.append(ai_module_path)
+try:
+    from protect_product.camera import IntegratedPCNode
+    print("✅ [Success] 캠을 성공적으로 불러왔습니다!")
+except ImportError as e:
+    print("❌ [Error] 캠을 찾을 수 없습니다... 경로를 확인해주세요!")
+    print(f"현재 등록된 경로: {ai_module_path}")
+    print(f"에러 메시지: {e}")
+    sys.path.append(os.path.abspath("logic01/src/protect_product"))
+
 
 # --- [추가: MinimapWidget 임포트] ---
 try:
@@ -34,6 +51,9 @@ class RobotControlPanel(QWidget):
         self.initUI()
         self._init_timers()
         self._connect_internal_events()
+        self.ai_node=IntegratedPCNode()
+        self.ros_thread = threading.Thread(target=lambda: rclpy.spin(self.ai_node), daemon=True)
+        self.ros_thread.start()
 
     def _init_styles(self):
         self.main_qss = "background-color: #F0F4F8; font-family: 'Malgun Gothic';"
@@ -343,35 +363,36 @@ class RobotControlPanel(QWidget):
         self.alarmRefreshRequested.emit()
 
     def _init_timers(self):
-        self.timer = QTimer(); self.timer.timeout.connect(self.update_frame)
-        USER, PASS, IP = "robot1", "robot123", "192.168.1.18"
-        self.rtsp_url = "rtsp://robot1:robot123@192.168.1.18:554/stream1"
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-        self.cap = cv2.VideoCapture(self.rtsp_url); self.timer.start(33)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_frame)
+        self.timer.start(33)
 
     def update_frame(self):
-        if hasattr(self, 'cap') and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if ret:
-                frame=cv2.flip(frame, -1)
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w, ch = rgb.shape
-                bytes_per_line = ch * w
+        # AI 노드에서 처리 중인 최신 프레임을 가져옴
+        frame = None
+        with self.ai_node.frame_lock:
+            if self.ai_node.latest_frame is not None:
+                # AI 분석 결과가 반영된 도화지를 가져오기 위해 복사
+                frame = self.ai_node.latest_frame.copy()
 
-                qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+        # 가져온 프레임이 있다면 UI에 출력
+        if frame is not None:
+            # 1. AI 노드의 그리기 함수 호출 (이미 그려진 상태라면 생략 가능)
+            if self.ai_node.last_result:
+                self.ai_node.draw_overlay(frame, self.ai_node.last_result)
+            frame = cv2.flip(frame, -1)
 
-                # 라벨 크기에 맞춰 부드럽게 스케일링
-                pixmap = QPixmap.fromImage(qt_img).scaled(
-                    self.cam_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio, # 왜곡 방지를 위해 KeepAspectRatio 권장
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.cam_label.setPixmap(pixmap)
-            else:
-                # 연결은 되어있으나 프레임을 못 가져오는 경우 (재연결 로직 필요할 수 있음)
-                self.cap.release()
-                self.cap = cv2.VideoCapture(self.rtsp_url)
-                pass
+            # 3. PyQt 형식으로 변환 BGR > RGB
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb.shape
+            qt_img = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+
+            pixmap = QPixmap.fromImage(qt_img).scaled(
+                self.cam_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.cam_label.setPixmap(pixmap)
     def open_map(self):
         self.map_overlay.show()
         self.center_popup(self.map_popup_box)

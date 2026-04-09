@@ -7,7 +7,7 @@ from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 
 class InventoryDB:
-    def __init__(self, base_url="http://16.184.56.119/api"):
+    def __init__(self, base_url="http://16.184.56.119:8000"):
         self.base_url = base_url
         try:
             pkg_dir = get_package_share_directory('patrol_main')
@@ -121,7 +121,7 @@ class InventoryDB:
     def get_latest_command(self):
         """서버 대시보드에서 보낸 최신 원격 명령을 가져옵니다. (id 포함)"""
         try:
-            res = requests.get(f"{self.base_url}/robot/command/latest", timeout=1.0)
+            res = requests.get(f"{self.base_url}/robot/command/latest", timeout=2.0)
             if res.status_code == 200:
                 data = res.json()
                 # command_type 또는 command 필드 추출
@@ -139,6 +139,16 @@ class InventoryDB:
             return res.status_code == 200
         except Exception:
             return False
+
+    def get_robot_status(self):
+        """서버로부터 로봇의 실시간 상태(심박수, 현재좌표, 배터리 등)를 가져옵니다."""
+        try:
+            res = requests.get(f"{self.base_url}/status", timeout=2.0)
+            if res.status_code == 200:
+                return res.json()
+        except Exception:
+            pass
+        return None
 
     def start_patrol_session(self):
         """서버에 순찰 시작 세션을 생성하고 patrol_id를 반환합니다."""
@@ -211,7 +221,7 @@ class InventoryDB:
             "status": str(status)
         }
         try:
-            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=0.5)
+            res = requests.post(f"{self.base_url}/robot/pose", json=payload, timeout=2.0)
             if res.status_code == 200:
                 return True
         except Exception:
@@ -256,7 +266,7 @@ class InventoryDB:
         """서버로 로봇의 현재 배터리 잔량 전송"""
         try:
             payload = {"percentage": float(percentage)}
-            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=0.5)
+            res = requests.post(f"{self.base_url}/robot/battery", json=payload, timeout=2.0)
             return res.status_code == 200
         except Exception:
             return False

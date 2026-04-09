@@ -106,22 +106,30 @@ class RFIDRobotNode(Node):
         if not msg.data:
             return  # OFF 신호(False)는 무시
 
-        index = 4  # 4(BUTTON1-삐 소리), 1(Startup), 3(ERROR)가 비프음으로 적절
+        index = 4  # 4(BUTTON1-삐 소리)
+        
+        try:
+            # 1. 서비스 방식 시도 (가장 확실함)
+            if hasattr(self, 'sound_client'):
+                if self.sound_client.service_is_ready():
+                    req = SoundSrv.Request()
+                    req.value = index
+                    self.sound_client.call_async(req)
+                    self.get_logger().info(f'Buzzer Service Call sent (Index: {index})')
+                    return
+                else:
+                    self.get_logger().warn('Sound service not ready, falling back to topic.')
 
-        # 1. 서비스 방식 시도 (가장 확실함)
-        if hasattr(self, 'sound_client') and self.sound_client.wait_for_service(timeout_sec=0.1):
-            req = SoundSrv.Request()
-            req.value = index
-            self.sound_client.call_async(req)
-            self.get_logger().info(f'Buzzer Service Call sent (Index: {index})')
-        # 2. 토픽 방식 폴백
-        elif hasattr(self, 'sound_pub'):
-            sound_msg = Sound()
-            sound_msg.value = index
-            self.sound_pub.publish(sound_msg)
-            self.get_logger().info(f'Buzzer Topic published (Index: {index})')
-        else:
-            self.get_logger().warn('No sound interface available.')
+            # 2. 토픽 방식 폴백
+            if hasattr(self, 'sound_pub'):
+                sound_msg = Sound()
+                sound_msg.value = index
+                self.sound_pub.publish(sound_msg)
+                self.get_logger().info(f'Buzzer Topic published (Index: {index})')
+            else:
+                self.get_logger().warn('No sound interface available on robot hardware.')
+        except Exception as e:
+            self.get_logger().error(f'Error triggering buzzer: {e}')
 
     def publish_heartbeat(self):
         """PC UI가 로봇이 살아있음을 알 수 있도록 주기적으로 하트비트 토픽 발행 (웹 보고는 제외)"""

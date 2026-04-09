@@ -9,4 +9,3 @@ Detection[] detections
 # string[] class_names
 # float32[] scores
 # string[] barcodes
-

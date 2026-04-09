@@ -7,7 +7,9 @@ int32 y2
 # 분류 정보
 int32 class_id
 string class_name
-float32 score
+float32 confidence
 
 # 추가 정보 (재고/바코드)
+string detected_barcode
 string barcode
+string status

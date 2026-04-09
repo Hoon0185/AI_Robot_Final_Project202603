@@ -34,7 +34,7 @@ python main.py
 ```
 -   **API 주소**: `http://localhost:8000` (Local 구동 시)
 -   **연동 DB**: `16.184.56.119` (AWS Lightsail)
--   **정상 확인**: 브라우저에서 `http://localhost:8000/api/status` 접속 시 `"database": "connected"` 확인.
+-   **정상 확인**: 브라우저에서 `http://localhost:8000/status` 접속 시 `"database": "connected"` 확인.
 
 ### **Step 3: 관리자 웹 UI 기동**
 직관적인 모니터링을 위해 프론트엔드를 실행합니다.
@@ -66,7 +66,7 @@ python simulate_robot.py
 1.  **웹 UI**에서 '순찰 개시' 클릭.
 2.  **백엔드**의 `robot_command` 테이블에 `START_PATROL` 명령 적재.
 3.  **로봇**이 다음 폴링 주기에 명령 수신 후 동작 시작.
-4.  **로봇**이 인식한 이미지 결과(바코드 등)를 백엔드 `/api/detections/add`로 전송.
+4.  **로봇**이 인식한 이미지 결과(바코드 등)를 백엔드 `/detections/add`로 전송.
 5.  **웹 UI** 상황판에 실시간 결과 업데이트.
 
 ---
@@ -108,10 +108,10 @@ python simulate_robot.py
 
 | 함수 | 역할 | 호출 방식 및 로직 |
 | :--- | :--- | :--- |
-| **`load_memory()`** | 설정 및 경로 동기화 | 서버의 `/api/patrol/config`, `/api/patrol/plan`, `/api/products` API를 호출하여 최신 환경 정보를 로봇 메모리에 탑재합니다. |
-| **`poll_commands()`** | 원격 명령 수신 | 2초 간격으로 서버의 `/api/robot/command/latest`를 조회(Polling)하여 `START_PATROL`, `EMERGENCY_STOP` 등의 명령이 있는지 확인합니다. |
+| **`load_memory()`** | 설정 및 경로 동기화 | 서버의 `/patrol/config`, `/patrol/plan`, `/products` API를 호출하여 최신 환경 정보를 로봇 메모리에 탑재합니다. |
+| **`poll_commands()`** | 원격 명령 수신 | 2초 간격으로 서버의 `/robot/command/latest`를 조회(Polling)하여 `START_PATROL`, `EMERGENCY_STOP` 등의 명령이 있는지 확인합니다. |
 | **`start_patrol()`** | 순찰 시나리오 수행 | 순찰 상태를 시작하고 서버에 시작 신호를 보낸 뒤, `load_memory`로 가져온 웨이포인트 경로를 따라 이동 및 스캔을 시뮬레이션합니다. |
-| **`send_detection()`** | 인식 결과 보고 | 스캔된 태그와 인식된 상품 정보를 서버의 `/api/detections/add` 경로로 전송하여 DB에 기록하고 판독하도록 요청합니다. |
+| **`send_detection()`** | 인식 결과 보고 | 스캔된 태그와 인식된 상품 정보를 서버의 `/detections/add` 경로로 전송하여 DB에 기록하고 판독하도록 요청합니다. |
 | **`emergency_stop()`**| 비상 정지 처리 | 현재 진행 중인 모든 동작을 중단하고 서버에 비상 정지 상태를 보고합니다. |
 
 ---
@@ -122,12 +122,12 @@ python simulate_robot.py
 
 | 엔드포인트 | Method | 담당 기능 | 데이터 예시 |
 | :--- | :--- | :--- | :--- |
-| **`/api/status`** | GET | 서버 및 DB 연결 상태 확인 | `{ "status": "running", "database": "connected" }` |
-| **`/api/robot/command/latest`**| GET | 대기 중인 로봇 명령 조회 | `{ "command_id": 12, "command_type": "START_PATROL" }` |
-| **`/api/detections/add`** | POST | 상품 인식 데이터 전송 및 판정 | **In**: `{ "tag_barcode": "T001", "detected_barcode": "8801..." }` <br> **Out**: `{ "judgment": "정상/결품/오진열" }` |
-| **`/api/patrol/start`** | POST | 순찰 시작 로그 생성 | `{ "message": "Success", "patrol_id": 105 }` |
-| **`/api/patrol/finish`** | POST | 순찰 완료 처리 및 기지 복귀 | `{ "message": "Patrol finished successfully" }` |
-| **`/api/robot/command/{id}/complete`**| POST | 수행된 명령 완료 처리 | 시뮬레이터가 명령을 받은 후 완료되었음을 서버에 알림 |
+| **`/status`** | GET | 서버 및 DB 연결 상태 확인 | `{ "status": "running", "database": "connected" }` |
+| **`/robot/command/latest`**| GET | 대기 중인 로봇 명령 조회 | `{ "command_id": 12, "command_type": "START_PATROL" }` |
+| **`/detections/add`** | POST | 상품 인식 데이터 전송 및 판정 | **In**: `{ "tag_barcode": "T001", "detected_barcode": "8801..." }` <br> **Out**: `{ "judgment": "정상/결품/오진열" }` |
+| **`/patrol/start`** | POST | 순찰 시작 로그 생성 | `{ "message": "Success", "patrol_id": 105 }` |
+| **`/patrol/finish`** | POST | 순찰 완료 처리 및 기지 복귀 | `{ "message": "Patrol finished successfully" }` |
+| **`/robot/command/{id}/complete`**| POST | 수행된 명령 완료 처리 | 시뮬레이터가 명령을 받은 후 완료되었음을 서버에 알림 |
 
 ---
 
@@ -141,27 +141,27 @@ sequenceDiagram
     participant Srv as 백엔드 서버 (FastAPI)
     participant Rob as 로봇 (시뮬레이터)
     
-    UI->>Srv: POST /api/patrol/start (순찰 개시 클릭)
+    UI->>Srv: POST /patrol/start (순찰 개시 클릭)
     Srv->>Srv: DB 명령 큐(robot_command) 상에 명령 적재
     Srv-->>UI: 200 OK (순찰 ID 생성 및 응답)
     
     loop 주기적 폴링 (Polling)
-        Rob->>Srv: GET /api/robot/command/latest
+        Rob->>Srv: GET /robot/command/latest
         Srv-->>Rob: 200 OK (START_PATROL 명령 전달)
     end
     
-    Rob->>Srv: GET /api/patrol/plan (순찰 경로 및 상품 데이터 로드)
+    Rob->>Srv: GET /patrol/plan (순찰 경로 및 상품 데이터 로드)
     Srv-->>Rob: 200 OK (Waypoints & Product List)
     
     loop 각 웨이포인트 스캔 수행
-        Rob->>Srv: POST /api/detections/add (바코드 인식 결과 전송)
+        Rob->>Srv: POST /detections/add (바코드 인식 결과 전송)
         Srv->>Srv: 인식 데이터 DB 기록 및 정상 여부 판독
         Srv-->>Rob: 200 OK (판정 결과: 정상/결품/오진열)
-        UI->>Srv: GET /api/inventory (실시간 상황판 갱신, 3초 주기)
+        UI->>Srv: GET /inventory (실시간 상황판 갱신, 3초 주기)
         Srv-->>UI: 현장 데이터 업데이트 결과 전송
     end
     
-    Rob->>Srv: POST /api/patrol/finish (복귀 완료 신호)
+    Rob->>Srv: POST /patrol/finish (복귀 완료 신호)
     Srv-->>Rob: 200 OK
     Srv-->>UI: 상태를 '완료'로 갱신
 ```
