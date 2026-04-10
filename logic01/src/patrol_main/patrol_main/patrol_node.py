@@ -484,8 +484,7 @@ class PatrolNode(Node):
             self.latest_ai_data = {
                 "class_id": cid if cid is not None else -1,
                 "detected_barcode": getattr(res, 'barcode', 'NONE'),
-                "confidence": getattr(res, 'score', 0.0), # score 필드 사용
-                "status": getattr(res, 'status', 'Unknown')
+                "confidence": getattr(res, 'score', 0.0) # score 필드 사용
             }
 
     def battery_callback(self, msg):
@@ -519,11 +518,10 @@ class PatrolNode(Node):
 
         # [강력 조치] latest_ai_data가 None이거나 비어있을 때를 대비한 안전한 접근
         ai_data = self.latest_ai_data or {}
-        current_status = ai_data.get('status', '데이터 수신 대기중...')
-        self.get_logger().info(f"[AI 분석 중] {elapsed:.1f}s / {self.ai_wait_timeout:.1f}s | 상태: {current_status}")
+        self.get_logger().info(f"[AI 분석 중] {elapsed:.1f}s / {self.ai_wait_timeout:.1f}s")
 
-        # [수정] 단순히 데이터가 있는지가 아니라, '정상' 결과를 얻었거나 시간이 다 됐을 때만 종료
-        has_success = ai_data.get('status') == '정상'
+        # 데이터가 수신되면 조기 종료
+        has_success = self.latest_ai_data is not None
 
         if has_success or elapsed >= self.ai_wait_timeout:
             self.is_waiting_for_ai = False
@@ -535,12 +533,11 @@ class PatrolNode(Node):
             # 데이터가 없을 경우(타임아웃) '결품'으로 최종 보고 (사용자 요청 반영)
             data = getattr(self, 'latest_ai_data', None)
 
-            if not data or data.get('status') == "SEARCHING":
+            if not data:
                 data = {
                     "class_id": -1,
-                    "detected_barcode": "TIMEOUT",
-                    "confidence": 0.0,
-                    "status": "결품 (인식 정보 없음)"
+                    "detected_barcode": "-1",
+                    "confidence": 0.0
                 }
             # else: data가 있으면 (오진열, 결품 등) 그 데이터를 그대로 보관함
 
