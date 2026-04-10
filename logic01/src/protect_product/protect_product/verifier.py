@@ -30,8 +30,7 @@ class Verifier:
         if not qrs and not items:
             return {
                 'item_name': "인식 불가 (결품)",
-                'status': '결품',
-                'barcode': "NONE",
+                'barcode': "-1",
                 'bbox': [0, 0, 0, 0],
                 'confidence': 0.0,
                 'yolo_id': -1
@@ -129,8 +128,7 @@ class Verifier:
 
         return {
             'item_name': item_name,
-            'status': status,
-            'barcode': detected_barcode,
+            'barcode': detected_barcode if detected_barcode != "QR_NOT_FOUND" else "-1",
             'bbox': bbox,
             'confidence': float(confidence),
             'yolo_id': int(detected_yolo_id)

@@ -117,27 +117,25 @@ class IntegratedPCNode(Node):
                 det.class_id = int(result.get('yolo_id', -1))       # 물체 클래스 번호
                 det.barcode = result.get('barcode', 'NONE')        # 인식된 바코드
                 det.score = float(result.get('confidence', 0.0))   # 신뢰도 (score 필드 사용)
-                det.status = result.get('status', 'Unknown')       # 판독 상태 (정상/오진열/결품)
+                det.status = ""                                    # [삭제] 상태 판독 안 함
 
                 # 결과가 나왔을 때 터미널에 출력
-                self.get_logger().info(f"===> [DETECTED] {result['item_name']} | Status: {result['status']}")
+                self.get_logger().info(f"===> [DETECTED] {result['item_name']} (Barcode: {det.barcode})")
 
                 msg.detections.append(det)
                 self.result_pub.publish(msg)
 
-            # [추가] 아무것도 탐지되지 않았을 때도 로봇에게 "찾는 중"임을 보고
+            # [추가] 아무것도 탐지되지 않았을 때도 로봇에게 보고
             if not analyze_success:
                 msg = DetectionArray()
                 det = Detection()
-                det.status = "SEARCHING" # 바코드/물체 모두 못 찾음
-                det.barcode = "NONE"
+                det.barcode = "-1"
                 msg.detections.append(det)
                 self.result_pub.publish(msg)
 
     def draw_overlay(self, frame, result):
         """인식 결과에 따라 박스와 텍스트를 그리는 헬퍼 함수"""
-        color_map = {'정상': (0, 255, 0), '오진열': (0, 0, 255), '결품': (0, 165, 255)}
-        color = color_map.get(result['status'], (255, 255, 255))
+        color = (0, 255, 0) # 기본 초록색
 
         if any(result['bbox']):
             cv2.rectangle(frame, (int(result['bbox'][0]), int(result['bbox'][1])),
