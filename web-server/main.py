@@ -725,7 +725,7 @@ async def add_detection(data: DetectionInput):
         final_detected_barcode = data.detected_barcode
         detected_product_id_internal = None # 판독용 내부 변수
         
-        if not final_detected_barcode and data.yolo_class_id is not None and data.yolo_class_id not in [-1, 0]:
+        if not final_detected_barcode and data.yolo_class_id is not None and data.yolo_class_id != -1:
             # YOLO 클래스 아이디로 상품 바코드 조회
             cursor.execute("SELECT barcode, product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
             prod = cursor.fetchone()
@@ -741,9 +741,9 @@ async def add_detection(data: DetectionInput):
 
         # 4. 판독 로직 (정상 / 결품 / 오진열)
         result_status = '정상'
-        if not final_detected_barcode and (data.yolo_class_id is None or data.yolo_class_id in [-1, 0]):
+        if not final_detected_barcode and data.yolo_class_id == -1:
             result_status = '결품'
-        elif detected_product_id_internal != planned_product_id:
+        elif detected_product_id_internal is not None and detected_product_id_internal != planned_product_id:
             result_status = '오진열'
 
         # 5. shelf_status 업데이트 (현재 매대 현황)
