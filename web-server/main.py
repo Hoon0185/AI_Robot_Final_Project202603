@@ -694,6 +694,9 @@ async def add_detection(data: DetectionInput):
     try:
         cursor = conn.cursor(dictionary=True)
         
+        # 디버깅 로그 추가
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] DETECTION: tag={data.tag_barcode}, barcode={data.detected_barcode}, yolo={data.yolo_class_id}")
+        
         # 1. 진행 중인 최신 순찰 회차 조회
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
@@ -741,11 +744,16 @@ async def add_detection(data: DetectionInput):
                 detected_product_id_internal = prod['product_id']
 
         # 4. 판독 로직 (정상 / 결품 / 오진열)
-        result_status = '정상'
-        if not final_detected_barcode and data.yolo_class_id == -1:
+        if data.yolo_class_id == -1:
+            # 사용자의 요구에 따라 -1은 절대적인 결품 처리
+            result_status = '결품'
+        elif not final_detected_barcode:
+            # 바코드 인식이 안 된 경우도 결품으로 간주
             result_status = '결품'
         elif detected_product_id_internal is not None and detected_product_id_internal != planned_product_id:
             result_status = '오진열'
+        else:
+            result_status = '정상'
 
         # 5. shelf_status 업데이트 (현재 매대 현황)
         cursor.execute("SELECT status_id FROM shelf_status WHERE barcode_tag = %s", (data.tag_barcode,))
