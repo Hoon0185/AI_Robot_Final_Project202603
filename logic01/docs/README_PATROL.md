@@ -10,17 +10,16 @@
 cd ~/Documents/GitHub/AI_Robot_Final_Project202603/logic01
 colcon build --packages-select patrol_main protect_product_msgs protect_product
 source install/setup.bash
-ros2 launch patrol_main patrol.launch.py
+ros2 launch patrol_main total_patrol.launch.py
 ```
+
+> [!TIP]
+> 이제 **`total_patrol.launch.py`** 하나로 내비게이션, 장애물 회피, 그리고 [통합 AI 인식 시스템](./README_AI_VISION.md)이 한꺼번에 가동됩니다.
 
 ---
 
 - **방향(Yaw) 동기화**: 서버 DB의 `loc_yaw` 컬럼과 연동되어, 로봇이 각 매대 지점에 도착했을 때 정확한 방향을 바라보도록 동기화되었습니다.
-- **AI 인식 모드 동기화**: AI 인식 지점 도착 시 장애물 감지 기능을 일시 정지하여 로봇 구성물에 의한 오작동을 방지합니다.
-- **주행 안정성 (LOGIC_01 & 02 통합 최적화)**: 
-    - **정밀 속도 제어**: 장애물 감지 시 Nav2 속도 파라미터를 0.0으로 고정하여 즉시 정지하며, 장애물이 사라지면 자동으로 원래 속력으로 복구합니다.
-    - **강제 후진 제거**: 위치 추정(AMCL) 오차를 유발하던 강제 후진 로직을 제거하고, 대기 후 Nav2가 스스로 우회 경로를 탐색하도록 유도합니다.
-    - **지능형 재시도**: 주행 중단(`ABORTED`) 시 2초 후 자동으로 현재 목표를 재전송하여 주행 연속성을 보장합니다.
+- **AI 통합 비전 시스템 (Unified Vision)**: YOLOv8 상품 인식과 QR 탐지기가 프레임을 공유하며, 온디맨드 기동을 통해 자원을 최적화합니다. 상세 내용은 [AI 비전 가이드](./README_AI_VISION.md)를 참고하세요.
 - **DB 접속 표준화**: `InventoryDB` 패키지를 통한 중앙 집중형 서버 통신 관리.
 
 ---
@@ -29,6 +28,7 @@ ros2 launch patrol_main patrol.launch.py
 네트워크 효율성과 실시간성을 위해 하이브리드 동기화 방식을 채용했습니다.
 
 - **즉시 동기화 (Immediate Sync)**: 노드 실행과 동시에 서버 최신 설정(`avoidance_wait_time`, `ai_wait_timeout`)을 즉각 가져와 로봇에 반영합니다.
+- **온디맨드 연산 (Power Saving)**: 인식 대기 중일 때만 YOLO 및 QR 분석 엔진이 구동되어 평시 전력 소모를 최소화합니다.
 - **AI 인식 고도화 (8s Polling)**: 선반 도착 후 단발성 인식에 의존하지 않고, **최대 8초간** 최신 데이터를 폴링하여 가장 정확한 판독 결과를 기록합니다.
 - **실시간 갱신 (Event-driven)**: 웹 대시보드에서 설정을 바꾸면, 로봇이 즉시 **`RECONFIG`** 신호를 받아 서버 데이터를 새로 읽어들입니다.
 - **순찰 도중 (On-Demand)**: 순찰 시작 직전에 항상 최신 순찰 계획과 좌표(`TAG-A1-001` 등)를 DB에서 동기화하며, 동시에 로컬 `shelf_coords.yaml`을 최신 상태로 갱신하여 데이터 일관성을 유지합니다.

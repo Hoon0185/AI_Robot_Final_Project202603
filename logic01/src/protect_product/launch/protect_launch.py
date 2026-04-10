@@ -4,40 +4,26 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    # 패키지 이름 변수로 설정
     package_name = 'protect_product'
 
-    # 1. Detector 노드 설정 (YOLO 추론)
-    detector_node = Node(
+    # 1. RTSP 카메라 브릿지 실행 (영상 송출)
+    camera_node = Node(
         package=package_name,
-        executable='detector',
-        name='detector_node',
-        output='screen',
-        emulate_tty=True,
-        parameters=[{'use_sim_time': False}] # 실물=False, simulation(가상 시간)=True / 동기화 실패 및 TF(좌표)오류 대비
+        executable='rtsp_camera',
+        name='rtsp_camera_node',
+        output='screen'
     )
 
-    # 2. Verifier 노드 설정 (QR 인식 및 DB 대조)
-    verifier_node = Node(
+    # 2. 통합 AI 인식 및 검증 노드 (On-demand)
+    integrated_node = Node(
         package=package_name,
-        executable='verifier',
-        name='verifier_node',
+        executable='integrated_node',
+        name='integrated_pc_node',
         output='screen',
-        emulate_tty=True
+        parameters=[{'use_sim_time': False}]
     )
 
-    # 3. Viewer 노드 설정 (최종 GUI 출력)
-    viewer_node = Node(
-        package=package_name,
-        executable='viewer',
-        name='viewer_node',
-        output='screen',
-        emulate_tty=True
-    )
-
-    # 실행할 노드 리스트 반환
     return LaunchDescription([
-        detector_node,
-        verifier_node,
-        viewer_node
+        camera_node,
+        integrated_node
     ])

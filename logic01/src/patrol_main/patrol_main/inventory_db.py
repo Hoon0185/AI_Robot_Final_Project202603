@@ -62,7 +62,7 @@ class InventoryDB:
         except Exception:
             return default
 
-    def report_detection(self, tag_barcode, patrol_id, waypoint_id, x, y, detected_barcode=None, confidence=0.99, yolo_class_id=None):
+    def report_detection(self, tag_barcode, patrol_id, waypoint_id, x, y, detected_barcode=None, confidence=0.99, yolo_class_id=None, status="Unknown"):
         """서버로 인식 결과 전송 (DetectionInput 형식)"""
         payload = {
             "patrol_id": int(patrol_id),
@@ -73,6 +73,7 @@ class InventoryDB:
             "confidence": float(confidence),
             "odom_x": float(x),
             "odom_y": float(y),
+            "status": status,
             "timestamp": datetime.now().isoformat()
         }
         try:

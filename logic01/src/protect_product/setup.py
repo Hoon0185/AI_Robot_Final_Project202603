@@ -29,9 +29,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'detector_node = protect_product.detector:main',
+            'integrated_node = protect_product.camera:main',
+            'camera_node = protect_product.camera_node:main',
             'verifier_node = protect_product.verifier:main',
-            'viewer = protect_product.viewer:main',
         ],
     },
 )

@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool, String # [추가] 온디맨드 제어 및 목표 상품 수신용
 from protect_product_msgs.msg import DetectionArray, Detection
 from cv_bridge import CvBridge
 import cv2
@@ -47,11 +48,30 @@ class IntegratedPCNode(Node):
         self.bridge = CvBridge()
 
         # 3. 상태 및 퍼블리셔 설정
-        self.is_waiting_for_ai = True
+        self.is_waiting_for_ai = False  # [수정] 기본값은 연산 중단(False)
+        self.ai_mode_sub = self.create_subscription(
+            Bool, 
+            '/ai_mode', 
+            self.ai_mode_callback, 
+            10)
+            
         self.result_pub = self.create_publisher(DetectionArray, '/verified_objs', 10)
+        self.target_sub = self.create_subscription(String, '/target_product', self.target_callback, 10) # [추가] 목표 상품 수신
+        self.target_barcode = "UNKNOWN" # [추가] 목표 바코드 저장 변수
 
         # 4. 루프 타이머 (AI 연산은 부하가 크므로 10 FPS로 유지)
         self.timer = self.create_timer(1.0 / 10.0, self.process_all)
+
+    def target_callback(self, msg):
+        """로봇으로부터 현재 찾고 있는 목표 상품 바코드 수신"""
+        self.target_barcode = msg.data
+        self.get_logger().info(f"🎯 신규 목표 상품 설정됨: {self.target_barcode}")
+
+    def ai_mode_callback(self, msg):
+        """AI 인식 활성화/비활성화 제어"""
+        self.is_waiting_for_ai = msg.data
+        status_str = "활성화" if self.is_waiting_for_ai else "비활성화(대기)"
+        self.get_logger().info(f"AI 인식 모드 전환: {status_str}")
 
     def image_callback(self, msg):
         """이미지 수신 시 최신 프레임 업데이트"""
@@ -63,13 +83,16 @@ class IntegratedPCNode(Node):
             self.get_logger().error(f"이미지 수신 에러: {e}")
 
     def process_all(self):
-        if not self.is_waiting_for_ai or self.latest_frame is None:
+        if not self.is_waiting_for_ai:
+            return
+            
+        if self.latest_frame is None:
+            self.get_logger().warn("⚠️ [AI Watchdog] 카메라 영상이 수신되지 않고 있습니다. (Topic: /rtsp_image)")
             return
         
         frame = self.latest_frame.copy()
-        # 사용한 프레임은 비워서 중복 처리 방지 (옵션)
-        # self.latest_frame = None 
-
+        analyze_success = False
+        
         # --- [중요] 모든 인식/검증 로직이 동일한 frame을 공유함 ---
         if self.is_waiting_for_ai:
             # Step 1: QR 탐지기 실행 (frame 전달)
@@ -78,22 +101,23 @@ class IntegratedPCNode(Node):
             # Step 2: YOLO 탐지기 실행 (frame 전달)
             items = self.yolo_mod.predict(frame)
 
-            # Step 3: 검증기 실행 (두 결과값 비교)
-            result = self.verifier_mod.verify(qrs, items)
+            # Step 3: 검증기 실행 (로봇이 준 목표 바코드 정보 포함)
+            result = self.verifier_mod.verify(qrs, items, self.target_barcode)
 
             self.get_logger().info(f"🎯 [AI 탐지] 바코드: {len(qrs)}개 / 물체: {len(items)}개")
             for item in items:
                 self.get_logger().info(f"   ㄴ 탐지됨: {item.class_name} (신뢰도: {item.score:.2f})")
 
             if result:
+                analyze_success = True
                 msg = DetectionArray()
                 det = Detection()
 
-                # 요구하신 정보 매핑
+                # 요구하신 정보 매핑 (Detection.msg 필드명과 일치시켜 크래시 방지)
                 det.class_id = int(result.get('yolo_id', -1))       # 물체 클래스 번호
-                det.detected_barcode = result.get('barcode', 'NONE') # 인식된 바코드
-                det.confidence = float(result.get('confidence', 0.0)) # 신뢰도
-                det.status = result.get('status', 'Unknown')        # 정상/오배열 등
+                det.barcode = result.get('barcode', 'NONE')        # 인식된 바코드
+                det.score = float(result.get('confidence', 0.0))   # 신뢰도 (score 필드 사용)
+                det.status = result.get('status', 'Unknown')       # 판독 상태 (정상/오진열/결품)
 
                 # 결과가 나왔을 때 터미널에 출력
                 self.get_logger().info(f"===> [DETECTED] {result['item_name']} | Status: {result['status']}")
@@ -101,9 +125,18 @@ class IntegratedPCNode(Node):
                 msg.detections.append(det)
                 self.result_pub.publish(msg)
 
+            # [추가] 아무것도 탐지되지 않았을 때도 로봇에게 "찾는 중"임을 보고
+            if not analyze_success:
+                msg = DetectionArray()
+                det = Detection()
+                det.status = "SEARCHING" # 바코드/물체 모두 못 찾음
+                det.barcode = "NONE"
+                msg.detections.append(det)
+                self.result_pub.publish(msg)
+
     def draw_overlay(self, frame, result):
         """인식 결과에 따라 박스와 텍스트를 그리는 헬퍼 함수"""
-        color_map = {'정상': (0, 255, 0), '오배열': (0, 0, 255), '결품': (0, 165, 255)}
+        color_map = {'정상': (0, 255, 0), '오진열': (0, 0, 255), '결품': (0, 165, 255)}
         color = color_map.get(result['status'], (255, 255, 255))
 
         if any(result['bbox']):
