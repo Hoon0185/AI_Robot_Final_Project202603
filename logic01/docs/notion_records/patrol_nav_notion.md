@@ -19,27 +19,26 @@
 ## 🛠️ 기술적 세부사항
 
 💡 **핵심 로직:**
-1. **Action 기반 정밀 내비게이션**: Nav2 액션 서버의 실시간 피드백을 수신하여 `GoalStatus`를 엄격히 검증하며, 특정 지점 도착 시 2초간 정지 후 다음 위치로 이동.
-2. **ROS2 표준 YAML 구조 반영**: `/**: ros__parameters:` 중첩 구조를 적용하여 파라미터 서버와의 형식 불일치(`/shelf_1` vs `shelf_1`) 문제를 해결.
-3. **표준 파라미터 동기화**: 터틀봇3 제조사 순정 설정(`inflation_radius: 0.5`, `cost_scaling_factor: 5.0`)을 적용하여 가장 안정적인 주행 기반을 확보함.
-4. **위치 추정 정밀도 강화**: `transform_tolerance`를 0.5s로 강화하여 지도 정합성 및 AMCL 추종 성능을 높임.
+1. **Action 기반 정밀 내비게이션**: Nav2 액션 서버의 실시간 피드백을 수신하여 `GoalStatus`를 엄격히 검증하며, `ABORTED`(5) 또는 `CANCELED`(6) 수신 시 순찰을 중단하지 않고 3초간 대기 후 재전송하거나 상태를 보존함.
+2. **매대 전면 방향(Yaw) 동기화**: 서버 DB의 `loc_yaw` 데이터를 연동하여, 로봇이 도착 후 단순히 서 있는 것이 아니라 매대를 정확히 정면으로 바라보도록 로직 고도화.
+3. **위치 추정 정밀도 및 안정성**: `initialpose` 자동 발행(Auto Init) 타이머를 제거하여 실제 바닥 마찰 및 센서 튀는 현상으로 인한 오차 누적을 방지하고, AMCL `transform_tolerance`를 0.5s로 강화.
+4. **표트 표준 파라미터 적용**: 터틀봇3 제조사 순정 설정(`inflation_radius: 0.5`, `cost_scaling_factor: 5.0`)을 적용하여 좁은 길 통과 안정성 보장.
 
-### **1. Patrol Main Node (순차 방문 로직)**
+### **1. Patrol Main Node (상태 기반 주행 제어)**
 
 ```python
 def get_result_callback(self, future):
-    """내비게이션 결과 수신 및 상태별 시퀀스 제어"""
+    """내비게이션 결과 수신 및 주행 중단 상황 방어 로직 (v0.0.18+)"""
     status = future.result().status
     if status == GoalStatus.STATUS_SUCCEEDED:
-        self.get_logger().info(f'[{self.current_shelf_name}] 도착 완료. AI 활성화 트리거(/ai_mode) 발송.')
-        self.ai_mode_pub.publish(Bool(data=True)) # [추가] AI 노드 깨우기
-        self.proceed_to_next_shelf()
-    elif status == GoalStatus.STATUS_ABORTED or status == GoalStatus.STATUS_CANCELED:
-        # 장애물 우회 등으로 인한 중단 시, 순찰 종료 없이 대기 또는 재시도
-        self.get_logger().warn('주행이 중단되었으나 순찰 상태를 유지합니다.')
-    else:
-        self.is_patrolling = False
-        self.get_logger().error('회복 불가능한 주행 실패로 순찰을 중단합니다.')
+        # 정상 도착 시 AI 검증 시퀀스 시작
+        self.trigger_ai_detection(shelf_name)
+    elif status == GoalStatus.STATUS_ABORTED:
+        # 일시적 경로 문제 시 3초 후 재시도
+        self.retry_timer = self.create_timer(3.0, self._trigger_retry)
+    elif status == GoalStatus.STATUS_CANCELED:
+        # 취소 시 순찰 시퀀스 유지 (장애물 회피 등)
+        self.get_logger().warn('Navigation canceled. Maintaining patrol state.')
 ```
 
 ### **2. ROS2 표준 YAML 구조 (shelf_coords.yaml)**

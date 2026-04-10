@@ -25,16 +25,32 @@
 
 ### **1. 시간 동기화 및 Bringup 가이드**
 
+로봇과 PC의 시간이 어긋나면 TF 에러가 발생하여 지도가 그려지지 않거나 로봇 위치가 사라집니다.
+
+**A. chrony를 이용한 자동 동기화 (권장)**
+```bash
+ssh penguin@<ROBOT_IP>
+sudo systemctl start chrony
+sudo systemctl enable chrony
+# 동기화 상태 확인
+chronyc tracking
+```
+
+**B. PC 시간을 로봇에 강제 주입 (임시 방편)**
 ```bash
 # 1. 로봇(SSH)에서 자동 동기화 중지
 ssh penguin@<ROBOT_IP> "echo robot123 | sudo -S systemctl stop systemd-timesyncd"
 
 # 2. PC 시간을 로봇에 강제 주입 (PC 터미널에서 실행)
 ssh penguin@<ROBOT_IP> "echo robot123 | sudo -S date -s '@$(date +%s)'"
+```
 
-# 3. 로봇 기체 실행 (Bringup)
+**C. 로봇 기체 실행 (Bringup)**
+```bash
+# 로봇 본체 터미널에서 실행
 ros2 launch turtlebot3_bringup robot.launch.py
 ```
+
 
 ### **2. SLAM Toolbox 실행 및 맵 저장**
 

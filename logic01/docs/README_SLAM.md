@@ -101,7 +101,7 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 ### A. 로봇 위치가 안 나타날 때
 - **시간 동기화**: 2번 항목을 다시 수행하세요.
 - **노드 충돌**: `SLAM`과 `Navigation`이 동시에 켜져 있는지 확인하고 하나만 켜세요.
-- **초기 위치**: RViz에서 `2D Pose Estimate`를 다시 찍어주세요.
+- **초기 위치 (Initial Pose)**: **[중요]** 최신 버전에서는 "Auto Init(0,0,0)" 기능이 제거되었습니다. RViz의 `2D Pose Estimate`를 클릭하여 실제 로봇의 위치와 방향을 지도 상에 정확히 찍어주어야 내비게이션이 동작합니다.
 
 ### B. 맵 로딩 실패 (map_server)
 - `my_store_map_02.yaml` 파일 내부의 `image: ...` 경로가 실제 `.pgm` 파일명과 일치하는지 확인하세요.
@@ -109,3 +109,4 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py \
 ---
 
  더 자세한 순찰 제어 및 RFID 보정 방법은 각각 **README_PATROL.md**와 **README_RFID.md**를 참고하세요. (전체 관리 흐름은 **../../SJH_backup/SYSTEM_MANAGEMENT_GUIDE.md** 참고)
+
