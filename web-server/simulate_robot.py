@@ -5,6 +5,7 @@ import threading
 import sys
 import random
 import logging
+import os
 from datetime import datetime
 from typing import List, Optional
 
@@ -23,6 +24,77 @@ logger = logging.getLogger("Gilbot")
 LOCAL_URL = "http://localhost:8000/api"
 SERVER_URL = "http://16.184.56.119/api"
 
+# --- Argument Parsing & Environment Selection ---
+def parse_args():
+    target = "local"
+    no_sync = False
+    password = None
+
+    for i, arg in enumerate(sys.argv):
+        if arg.lower() == "local":
+            target = "local"
+        elif arg.lower() in ["server", "remote"]:
+            target = "remote"
+        elif arg == "--no-sync":
+            no_sync = True
+        elif arg == "--password" and i + 1 < len(sys.argv):
+            password = sys.argv[i+1]
+            
+    return target, no_sync, password
+
+TARGET, NO_SYNC, SUDO_PWD = parse_args()
+
+if TARGET == "local":
+    BASE_URL = LOCAL_URL
+elif TARGET == "remote":
+    BASE_URL = SERVER_URL
+else:
+    BASE_URL = LOCAL_URL
+
+def sync_time(mode):
+    """지정한 모드에 맞춰 Chrony 시간 동기화 스크립트 실행"""
+    if NO_SYNC:
+        print("[INFO] 시간 동기화(Chrony)를 건너뜁니다. (--no-sync)")
+        return
+
+    script_path = os.path.join(os.path.dirname(__file__), "..", "scripts", "chrony_client_setup.sh")
+    flag = "--local" if mode == "local" else "--remote"
+    
+    print(f"\n[SYNC] {mode} 모드 시간 동기화를 시도합니다...")
+    
+    try:
+        # sudo 암호가 있으면 -S 옵션으로 자동 입력 시도
+        if SUDO_PWD:
+            cmd = f"echo '{SUDO_PWD}' | sudo -S bash {script_path} {flag}"
+        else:
+            cmd = f"sudo bash {script_path} {flag}"
+            
+        # 쉘 명령 직접 실행 (상호작용 가능성 고려)
+        result = os.system(cmd)
+        if result == 0:
+            print(f"[SUCCESS] 시간 동기화 완료 ({mode})")
+        else:
+            print(f"[WARNING] 시간 동기화 실패 (종료 코드: {result})")
+    except Exception as e:
+        print(f"[ERROR] 시간 동기화 실행 중 오류 발생: {e}")
+
+# 시뮬레이터 시작 전 동기화 수행
+sync_time(TARGET)
+
+DETECT_URL = f"{BASE_URL}/detections/add"
+CONFIG_URL = f"{BASE_URL}/patrol/config"
+PLAN_URL = f"{BASE_URL}/patrol/plan"
+COMMAND_URL = f"{BASE_URL}/robot/command/latest"
+COMMAND_FINISH_URL = f"{BASE_URL}/robot/command"  # /{id}/complete
+START_PATROL_URL = f"{BASE_URL}/patrol/start"
+FINISH_PATROL_URL = f"{BASE_URL}/patrol/finish"
+COMPLETE_PATROL_URL = f"{BASE_URL}/patrol/complete"
+STOP_PATROL_URL = f"{BASE_URL}/patrol/stop"
+LIST_PRODUCTS_URL = f"{BASE_URL}/products"
+CLEAR_COMMAND_URL = f"{BASE_URL}/robot/command/clear_pending"
+POSE_URL = f"{BASE_URL}/robot/pose"
+ALERT_URL = f"{BASE_URL}/robot/alert"
+ALERT_CLEAR_URL = f"{BASE_URL}/robot/alert/clear"
 # Robot Status
 STATUS_IDLE = "IDLE"
 STATUS_PATROLLING = "PATROLLING"
@@ -189,13 +261,24 @@ class VirtualRobot:
         except:
             pass
 
-    def start_patrol(self, remote=False, resume=False):
+    def notify_alert(self, message, active=True):
+        try:
+            requests.post(ALERT_URL, json={"message": message, "active": active})
+        except:
+            pass
+
+    def clear_alert(self):
+        try:
+            requests.post(ALERT_CLEAR_URL)
+        except:
+            pass
+
+    def start_patrol(self, remote=False, resume=False, cmd_id=None):
         if self.status == STATUS_EMERGENCY_STOP and not resume:
             self.safe_print("⚠️ [거부] 비상 정환 상태입니다. 비상 해제를 먼저 수행하세요.")
             return
 
         if self.status == STATUS_PATROLLING:
-
             self.safe_print("⚠️ 이미 순찰 중입니다.")
             return
 
@@ -346,11 +429,10 @@ class VirtualRobot:
             if remote: self.print_menu()
             return
 
-        self.last_index = len(self.patrol_path) # 완료 표시
-        self.current_pos = (0.0, 0.0) # 복귀했으므로 0,0
-        self.return_to_base(remote=remote)
+        self.last_index = len(self.patrol_path) # 모든 웨이포인트 완료 표시
+        self.return_to_base(remote=remote, cmd_id=cmd_id)
 
-    def return_to_base(self, remote=False):
+    def return_to_base(self, remote=False, cmd_id=None):
         # 만약 비상 정지 상태에서 복귀 명령이 왔다면, 비상 해제 후 복귀 수행 (사용자 요청)
         if self.status == STATUS_EMERGENCY_STOP:
             self.safe_print("\n🔓 [비상 해제] 비상 정지 상태에서 기지 복귀 명령을 수신하여 비상을 해제합니다.")
@@ -381,17 +463,26 @@ class VirtualRobot:
         self.current_pos = (0.0, 0.0) # 최종 위치 보정
         self.last_index = len(self.patrol_path) # 유령 순찰 방지를 위해 인덱스 완료 처리
         
-        # 복귀 완료 신호 전송
-        if not remote:
-            try:
-                res = requests.post(self.FINISH_PATROL_URL)
-                if res.status_code == 200:
-                    self.safe_print("✅ 서버에 기지 복귀 완료 신호를 전송했습니다.")
-            except:
-                pass
+        # 기지 도착 알림 송신 (UI 표시용)
+        self.notify_alert("🏁 로봇이 기지에 도착했습니다.", active=True)
+        
+        # 복귀 완료 및 순찰 세션 최종 정리 신호 전송
+        try:
+            res = requests.post(COMPLETE_PATROL_URL)
+            if res.status_code == 200:
+                self.safe_print("✅ 서버에 기지 복귀 및 순찰 완료 신호를 전송했습니다.")
+        except:
+            pass
         
         # 원격 실행인 경우 메뉴 재출력
         if remote:
+            # 명령 완료 처리 알림 (물리적 동작 종료 후)
+            if cmd_id:
+                try:
+                    requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                    self.safe_print(f"✅ 원격 명령 완료 처리됨 (ID: {cmd_id})")
+                except:
+                    pass
             self.print_menu()
 
     def emergency_stop(self, remote=False):
@@ -425,20 +516,20 @@ class VirtualRobot:
                         self.safe_print(f"\n📡 [원격 신호 수신] {cmd_type} (ID: {cmd_id})")
                         
                         if cmd_type == "START_PATROL":
-                            threading.Thread(target=self.start_patrol, args=(True,)).start()
+                            threading.Thread(target=self.start_patrol, args=(True, False, cmd_id)).start()
                         elif cmd_type == "RETURN_TO_BASE":
-                            threading.Thread(target=self.return_to_base, args=(True,)).start()
+                            threading.Thread(target=self.return_to_base, args=(True, cmd_id)).start()
                         elif cmd_type == "EMERGENCY_STOP":
                             self.emergency_stop(remote=True)
+                            # 비상 정지는 즉시 완료 처리 (대기하지 않음)
+                            if cmd_id:
+                                try:
+                                    requests.post(f"{BASE_URL}/robot/command/{cmd_id}/complete")
+                                except: pass
                         elif cmd_type == "RESUME_PATROL":
-                            threading.Thread(target=self.start_patrol, args=(True, True)).start()
+                            threading.Thread(target=self.start_patrol, args=(True, True, cmd_id)).start()
                         
-                        # 명령 완료 처리 알림
-                        if cmd_id:
-                            try:
-                                requests.post(f"{self.base_url}/robot/command/{cmd_id}/complete")
-                            except:
-                                pass
+                        # [삭제됨] 즉시 완료 처리 로직을 각 액션 끝으로 이동함
                     
                     # [추가] 대기 중(IDLE)이거나 명령 확인 시마다 현재 좌표와 하트비트 전송 (상시 위치 업데이트)
                     self.send_pose(self.current_pos[0], self.current_pos[1])

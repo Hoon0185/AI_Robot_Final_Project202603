@@ -1,7 +1,10 @@
 import os
 import cv2
 import time
+import subprocess
+import numpy as np
 from google import genai
+import edge_tts, asyncio
 import mysql.connector
 from dotenv import load_dotenv
 
@@ -10,11 +13,7 @@ load_dotenv()
 
 # Gemini API Configuration
 api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    print("Warning: GEMINI_API_KEY not found in environment.")
-    client = None
-else:
-    client = genai.Client(api_key=api_key)
+client = genai.Client(api_key=api_key) if api_key else None
 
 # Database Connection Config
 DB_CONFIG = {
@@ -24,137 +23,188 @@ DB_CONFIG = {
     'database': os.getenv('LOCAL_DB_NAME', 'gilbot')
 }
 
-def capture_image(filename="capture.jpg"):
-    """Shows a live camera preview and captures an image when the spacebar is pressed."""
-    print("Initializing camera preview...")
-    print("Commands: [Space]: Capture, [q] or [Esc]: Quit")
-    
-    cap = None
-    for index in [0, 1, 2]:
-        temp_cap = cv2.VideoCapture(index)
-        if temp_cap.isOpened():
-            ret, _ = temp_cap.read()
-            if ret:
-                cap = temp_cap
-                print(f"Connected to camera index: {index}")
-                break
-            temp_cap.release()
+# Nextion Resolution
+DISPLAY_WIDTH = 800
+DISPLAY_HEIGHT = 480
 
-    if cap is None:
-        print("Error: Could not open any camera device.")
-        return None
-    
-    window_name = "Camera Preview - Press Space to Capture"
-    captured_file = None
-
+def speak_result(text):
+    if not text: return
+    print(f"길봇: \"{text}\"")
+    temp_mp3 = "response_what.mp3"
+    temp_wav = "response_what.wav"
+    VOICE = "ko-KR-SunHiNeural"
     try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Error: Failed to grab frame.")
-                break
+        async def _generate():
+            communicate = edge_tts.Communicate(text, VOICE)
+            await communicate.save(temp_mp3)
+        asyncio.run(_generate())
+        subprocess.run(["ffmpeg", "-y", "-i", temp_mp3, "-ar", "44100", temp_wav], 
+                       check=True, capture_output=True)
+        if subprocess.run(["which", "paplay"], capture_output=True).returncode == 0:
+            subprocess.run(["paplay", temp_wav], check=True)
+        else:
+            subprocess.run(["aplay", temp_wav], check=True)
+    except Exception as e:
+        print(f"Audio Error: {e}")
 
-            # Show the frame
-            cv2.imshow(window_name, frame)
-            
-            key = cv2.waitKey(1) & 0xFF
-            
-            # [Space] key to capture
-            if key == ord(' '):
-                cv2.imwrite(filename, frame)
-                print(f"Image captured and saved to {filename}")
-                captured_file = filename
-                break
-            
-            # [q] or [Esc] key to quit
-            elif key == ord('q') or key == 27:
-                print("Capture cancelled by user.")
-                break
-                
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-        # Briefly wait for windows to close properly
-        cv2.waitKey(1)
-
-    return captured_file
-
-def identify_product_from_image(image_path):
-    """Uploads image to Gemini and returns the recognized product name."""
-    if not client:
-        return "None"
-
-    print("Processing image with Gemini (v2.5 Flash)...")
-
-    # Load the image
-    with open(image_path, "rb") as f:
-        image_data = f.read()
-
-    # Prompt Gemini to extract the product name
-    prompt = "이 사진 속에 정면으로 보이는 상품이 무엇인지 한국어로 상품명만 딱 한 단어로 말해줘. 만약 상품명을 찾을 수 없다면 'None'이라고 답변해줘."
-
-    # Use the multimodal capabilities of gemini-2.5-flash
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
-            prompt,
-            genai.types.Part.from_bytes(data=image_data, mime_type="image/jpeg")
-        ]
-    )
-
-    product_name = response.text.strip()
-    print(f"Recognized Product: {product_name}")
-    return product_name
-
-def get_product_info(product_name):
-    """Searches the database for detailed product information."""
-    if not product_name or product_name.lower() == "none":
-        return "상품을 인식하지 못했습니다."
-
+def get_all_products():
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
-
-        query = """
-        SELECT pm.product_name, pm.category, pm.current_inventory_qty, w.waypoint_name
-        FROM product_master pm
-        LEFT JOIN waypoint_product_plan wpp ON pm.product_id = wpp.product_id
-        LEFT JOIN waypoint w ON wpp.waypoint_id = w.waypoint_id
-        WHERE pm.product_name LIKE %s;
-        """
-        search_term = f"%{product_name}%"
-        cursor.execute(query, (search_term,))
-        result = cursor.fetchone()
-
-        if result:
-            info = f"인식된 상품: '{result['product_name']}'\n"
-            info += f"- 카테고리: {result['category']}\n"
-            info += f"- 현재 재고: {result['current_inventory_qty']}개\n"
-            info += f"- 위치: {result['waypoint_name'] if result['waypoint_name'] else '정보 없음'}"
-            return info
-        else:
-            return f"'{product_name}' 제품을 인식했으나, 데이터베이스에서 상응하는 정보를 찾을 수 없습니다."
-
-    except mysql.connector.Error as err:
-        return f"데이터베이스 오류: {err}"
+        cursor.execute("SELECT product_name, category FROM product_master;")
+        return cursor.fetchall()
+    except: return []
     finally:
         if 'conn' in locals() and conn.is_connected():
-            cursor.close()
-            conn.close()
+            cursor.close(); conn.close()
+
+import re
+
+def identify_product_from_image(image_data):
+    if not client: return "None", "API Key Error"
+    prompt = """
+    이미지에서 가장 잘 보이는 상품을 분석하여 다음 형식으로 정보를 추출하세요.
+    - [PRODUCT_NAME]: 상품의 고유 명칭 (예: '포스틱', '참붕어빵').
+    - [BOT_RESPONSE]: 고객을 위한 정중한 안내 멘트.
+    내용을 찾을 수 없다면 [PRODUCT_NAME]: None 이라고 답변하세요.
+    """
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt, genai.types.Part.from_bytes(data=image_data, mime_type="image/jpeg")]
+        )
+        res_text = response.text.strip()
+        print(f"DEBUG: Gemini raw response:\n{res_text}")
+        
+        # Robust extraction using regex
+        p_name = "None"; b_resp = "확인 불가"
+        name_match = re.search(r"\[PRODUCT_NAME\]\s*:\s*(.*)", res_text, re.IGNORECASE)
+        resp_match = re.search(r"\[BOT_RESPONSE\]\s*:\s*(.*)", res_text, re.IGNORECASE)
+        
+        if name_match: p_name = name_match.group(1).replace('*', '').replace('_', '').strip()
+        if resp_match: b_resp = resp_match.group(1).strip()
+        
+        return p_name, b_resp
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return "None", str(e)
+
+def resolve_fuzzy_product(detected_name, products):
+    if not client or not products or detected_name == "None": return detected_name, 0
+    inventory_str = ", ".join([p['product_name'] for p in products])
+    prompt = f"인식: '{detected_name}'. 실제 목록: [{inventory_str}]. 가장 비슷한 이름 하나만 적고 확신도(%)를 적어. 형식: [MATCH]:이름, [CONFIDENCE]:숫자"
+    try:
+        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+        res_text = response.text.strip()
+        m_name = detected_name; conf = 0
+        for line in res_text.split(','):
+            if "[MATCH]:" in line: m_name = line.split(":", 1)[1].strip()
+            if "[CONFIDENCE]:" in line:
+                try: conf = int("".join(filter(str.isdigit, line)))
+                except: conf = 0
+        return m_name, conf
+    except: return detected_name, 0
+
+def search_product_db(product_name):
+    if not product_name or product_name.lower() == "none": return None
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        # Bringing back the full JOIN query to get location
+        query = """
+            SELECT pm.*, w.waypoint_name 
+            FROM product_master pm 
+            LEFT JOIN waypoint_product_plan wpp ON pm.product_id = wpp.product_id 
+            LEFT JOIN waypoint w ON wpp.waypoint_id = w.waypoint_id 
+            WHERE pm.product_name LIKE %s OR pm.product_name LIKE %s
+            LIMIT 1;
+        """
+        cursor.execute(query, (f"%{product_name}%", f"{product_name[:2]}%"))
+        return cursor.fetchone()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return None
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close(); conn.close()
+
+def draw_text_overlay(frame, text):
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (DISPLAY_WIDTH, 60), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+    cv2.putText(frame, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+
+def get_camera():
+    RTSP_URL = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/stream1")
+    # Probing sequence: RTSP -> USB Index 0, 1, 2...
+    for source in [RTSP_URL, 0, 1, 2, 3]:
+        print(f"🔍 Probing Camera Source: {source}...")
+        cap = cv2.VideoCapture(source)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret: 
+                print(f"✅ Camera Found: {source}")
+                return cap
+            cap.release()
+    return None
 
 def main():
-    try:
-        img_file = "capture.jpg"
-        if capture_image(img_file):
-            product_name = identify_product_from_image(img_file)
+    print("\n" + "★"*40 + "\nGILBOT VISION (DEBUG MODE)\n" + "★"*40)
+    cap = get_camera()
+    if not cap:
+        print("❌ Cam Error: 모든 소스를 시도했지만 카메라를 찾을 수 없습니다."); return
+    
+    window_name = "Gilbot"
+    img_file = "capture.jpg"
 
-            info = get_product_info(product_name)
-            print(f"\n--- [인식 결과] ---\n{info}\n-------------------")
-
-            # Keep the image for review? No, delete it if it's temporary.
-            # os.remove(img_file)
-    except Exception as e:
-        print(f"오류 발생: {e}")
+    while True:
+        print("\n[Wait] Enter to start (q: quit)")
+        if input(">> ").lower() == 'q': break
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret: break
+            frame = cv2.flip(frame, -1)
+            frame = cv2.resize(frame, (800, 480))
+            cv2.imshow(window_name, frame)
+            
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord(' '):
+                cv2.imwrite(img_file, frame)
+                draw_text_overlay(frame, "Analyzing...")
+                cv2.imshow(window_name, frame)
+                cv2.waitKey(500)
+                
+                with open(img_file, "rb") as f: data = f.read()
+                raw_key, _ = identify_product_from_image(data)
+                print(f"🔍 [Debug] Image Analysis: {raw_key}")
+                
+                # Fuzzy Search
+                all_prods = get_all_products()
+                suggested, conf = resolve_fuzzy_product(raw_key, all_prods)
+                print(f"🔍 [Debug] Fuzzy Match: {suggested} (Conf: {conf}%)")
+                
+                # DB Search with Fallback
+                db_res = search_product_db(suggested if conf >= 80 else raw_key)
+                
+                if db_res:
+                    loc = db_res['waypoint_name'] or "미진열"
+                    aisle = loc.split('-')[1] if '-' in loc else loc
+                    msg = f"고객님! {db_res['product_name']}. {aisle} 매대에 있습니다."
+                else:
+                    msg = "죄송합니다. 상품 정보를 확인할 수 없습니다."
+                
+                draw_text_overlay(frame, msg)
+                cv2.imshow(window_name, frame)
+                speak_result(msg)
+                
+                print("[Wait] Space to hide")
+                while (cv2.waitKey(1) & 0xFF) != ord(' '):
+                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1: break
+                cv2.destroyAllWindows()
+                break
+            elif key in [ord('q'), 27]: cv2.destroyAllWindows(); cap.release(); return
+    cap.release(); cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()

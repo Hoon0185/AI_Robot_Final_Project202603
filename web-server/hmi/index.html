@@ -56,7 +56,17 @@
                 <span id="alert-text">PATH FINDING...</span>
             </div>
 
-            <!-- Control Buttons -->
+            <!-- Video Feed Section -->
+            <div id="video-container" class="video-container">
+                <img id="video-feed" src="/video_feed" alt="LIVE FEED">
+                <div id="video-loader" class="video-loader">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>CONNECTING MIRROR...</span>
+                </div>
+                <div class="video-label">LIVE CAMERA</div>
+            </div>
+
+            <!-- All Control Buttons (Navigation + AI) -->
             <div class="controls">
                 <button id="btn-start" class="btn btn-primary">
                     <i class="fas fa-play"></i> START
@@ -67,12 +77,19 @@
                 <button id="btn-return" class="btn btn-warning">
                     <i class="fas fa-home"></i> RETURN
                 </button>
+                <button id="btn-where" class="btn btn-ai-small btn-primary">
+                    <i class="fas fa-microphone"></i> 음성
+                </button>
+                <button id="btn-what" class="btn btn-ai-small btn-success">
+                    <i class="fas fa-video"></i> 영상
+                </button>
             </div>
         </main>
 
         <!-- Footer -->
         <footer>
             <div class="connection-info">API: <span>CONNECTED</span></div>
+            <div id="ai-response" class="ai-response">READY</div>
         </footer>
     </div>
     <script src="app.js"></script>

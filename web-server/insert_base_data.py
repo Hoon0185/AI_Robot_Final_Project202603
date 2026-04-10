@@ -10,7 +10,7 @@ def insert_base_data():
     try:
         # DB 연결 정보 (환경 변수 우선, 없으면 기본값)
         db_config = {
-            'host': os.getenv('DB_HOST', '127.0.0.1'),
+            'host': os.getenv('DB_HOST', '16.184.56.119'),
             'port': int(os.getenv('DB_PORT', 3306)),
             'user': os.getenv('DB_USER', 'gilbot'),
             'password': os.getenv('DB_PASSWORD', 'robot123'),

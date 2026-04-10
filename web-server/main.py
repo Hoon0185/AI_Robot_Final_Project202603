@@ -1,6 +1,7 @@
 import os
+import time
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, APIRouter
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -9,6 +10,9 @@ from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
 import json
+import cv2
+import subprocess
+from fastapi.responses import StreamingResponse
 
 # 환경 변수 로드 (.env 파일이 있으면 읽어옴)
 load_dotenv()
@@ -19,6 +23,10 @@ app = FastAPI(
     version="0.3.0",
     root_path="/api"
 )
+
+# HMI용 알림 및 라우터 정의
+router = APIRouter()
+current_robot_alert = {"message": None, "active": False, "timestamp": None}
 
 # CORS 설정: 프론트엔드(React 등)의 접속을 허용합니다.
 app.add_middleware(
@@ -96,24 +104,17 @@ class WaypointUpdate(BaseModel):
 
 # 데이터베이스 연결 함수
 def get_db_connection():
-    db_mode = os.getenv("DB_MODE", "local").lower()
+    # 이제 항상 원격(remote) DB를 사용합니다.
+    db_mode = os.getenv("DB_MODE", "remote").lower()
     
-    if db_mode == "remote":
-        config = {
-            "host": os.getenv("REMOTE_DB_HOST", "16.184.56.119"),
-            "port": int(os.getenv("REMOTE_DB_PORT", 3306)),
-            "user": os.getenv("REMOTE_DB_USER", "gilbot"),
-            "password": os.getenv("REMOTE_DB_PASSWORD", "robot123"),
-            "database": os.getenv("REMOTE_DB_NAME", "gilbot")
-        }
-    else:  # default to local
-        config = {
-            "host": os.getenv("LOCAL_DB_HOST", "localhost"),
-            "port": int(os.getenv("LOCAL_DB_PORT", 3306)),
-            "user": os.getenv("LOCAL_DB_USER", "gilbot"),
-            "password": os.getenv("LOCAL_DB_PASSWORD", "robot123"),
-            "database": os.getenv("LOCAL_DB_NAME", "gilbot")
-        }
+    # 원격 DB 설정 (기본값)
+    config = {
+        "host": os.getenv("REMOTE_DB_HOST", "16.184.56.119"),
+        "port": int(os.getenv("REMOTE_DB_PORT", 3306)),
+        "user": os.getenv("REMOTE_DB_USER", "gilbot"),
+        "password": os.getenv("REMOTE_DB_PASSWORD", "robot123"),
+        "database": os.getenv("REMOTE_DB_NAME", "gilbot")
+    }
         
     try:
         connection = mysql.connector.connect(
@@ -253,7 +254,7 @@ async def startup_event():
 
 @app.get("/")
 async def root():
-    db_mode = os.getenv("DB_MODE", "local").lower()
+    db_mode = os.getenv("DB_MODE", "remote").lower()
     return {
         "message": "Welcome to Gilbot API Server",
         "docs": "/docs",
@@ -313,13 +314,14 @@ async def get_status():
             
             # 1. 최신 '모드 정의' 명령 확인 (ID 기준 정렬로 클럭 드리프트 문제 방지)
             cursor.execute("""
-                SELECT command_type, command_id FROM robot_command 
+                SELECT command_type, command_id, status FROM robot_command 
                 WHERE command_type IN ('EMERGENCY_STOP', 'RESUME_PATROL', 'RETURN_TO_BASE', 'START_PATROL')
                 ORDER BY command_id DESC LIMIT 1
             """)
             mode_cmd_row = cursor.fetchone()
             mode_cmd = str(mode_cmd_row['command_type']).upper().strip() if mode_cmd_row else "NONE"
             mode_cmd_id = mode_cmd_row['command_id'] if mode_cmd_row else 0
+            mode_cmd_status = str(mode_cmd_row['status']).upper().strip() if mode_cmd_row else "NONE"
             
             # --- 하트비트 기반 온라인/오프라인 판정 및 최신 좌표 추출 ---
             cursor.execute("SELECT last_heartbeat, last_x, last_y FROM robot_status WHERE id = 1")
@@ -345,15 +347,18 @@ async def get_status():
             # 3. 비상 여부 판별 (최우선: 명령이 EMERGENCY거나 로그가 중단인 경우)
             if "EMERGENCY" in mode_cmd or p_status == "중단":
                 res_status = "비상정지"
-                # 비상정지 시에도 진행 중이었다면 마지막 좌표를 유지 (hb_row에서 가져온 값), 아니면 (기지 복귀 완료 시 등) 0,0
-                if p_status == "완료":
+                # 비상정지 시에도 진행 중이었다면 마지막 좌표를 유지, 아니면 (기지 복귀 완료 시 등) 0,0
+                if p_status != "완료" and last_patrol:
+                    res_x = round(last_patrol.get('last_odom_x', 0.0), 2)
+                    res_y = round(last_patrol.get('last_odom_y', 0.0), 2)
+                elif p_status == "완료":
                     res_x, res_y = 0.0, 0.0
-            elif "진행" in p_status or "START" in mode_cmd:
+            elif "RETURN" in mode_cmd and mode_cmd_status != "COMPLETED":
+                res_status = "복귀중"
+                # 복귀 중일 때도 실시간 하트비트 좌표 사용 (res_x, res_y는 상단 hb_row에서 이미 가져옴)
+            elif "진행" in p_status or ("START" in mode_cmd and mode_cmd_status != "COMPLETED"):
                 res_status = "순찰중"
-                # 순찰 중일 때는 실시간 하트비트 좌표(res_x, res_y)를 그대로 사용 (덮어쓰지 않음)
-            elif "RETURN" in mode_cmd and p_status != "완료":
-                res_status = "순찰중"
-                # 복귀 중일 때도 실시간 하트비트 좌표 사용
+                # 순찰 중일 때는 실시간 하트비트 좌표를 그대로 사용
             else:
                 res_status = "휴식중"
                 # 휴식 중일 때는 로봇이 기지에 있다고 가정 (또는 하트비트 좌표 유지)
@@ -366,7 +371,7 @@ async def get_status():
             res_cmd = str(actual_latest['command_type']).strip() if actual_latest else "None"
 
             # 디버깅용 로그 출력
-            db_mode = os.getenv("DB_MODE", "local").lower()
+            db_mode = os.getenv("DB_MODE", "remote").lower()
             print(f"[{datetime.now().strftime('%H:%M:%S')}] STATUS CHECK: mode_cmd={mode_cmd}(ID:{mode_cmd_id}), patrol_status={p_status}, db_mode={db_mode}")
 
         except Exception as e:
@@ -376,7 +381,7 @@ async def get_status():
             conn.close()
 
     # 실제 접속된 DB 호스트 확인 (환경 변수 또는 기본값)
-    db_mode = os.getenv("DB_MODE", "local").lower()
+    db_mode = os.getenv("DB_MODE", "remote").lower()
     actual_db_host = os.getenv(f"{db_mode.upper()}_DB_HOST", "localhost")
 
     return {
@@ -474,6 +479,11 @@ async def start_patrol():
         # 0. 기존 인식 로그 초기화 (새 순찰 시작 시 클리어 요청 반영)
         cursor.execute("DELETE FROM detection_log")
 
+        # [추가] 기존 로봇 알림(도착 완료 등) 초기화
+        current_robot_alert["message"] = None
+        current_robot_alert["active"] = False
+        current_robot_alert["timestamp"] = None
+
         # 1. 새로운 순찰 로그 생성
         cursor.execute("INSERT INTO patrol_log (start_time, status) VALUES (NOW(), '진행중')")
 
@@ -510,10 +520,9 @@ async def finish_patrol():
         
         if patrol:
             patrol_id = patrol['patrol_id']
-            cursor.execute(
-                "UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE patrol_id = %s",
-                (patrol_id,)
-            )
+            # [수정] 복귀 명령 즉시 '완료' 처리를 하지 않음
+            # 로봇이 복귀 완료 신호를 보내거나, 기지에 도착했을 때 완료 처리하도록 유도 가능
+            # 현재는 상태만 '진행중'으로 유지하여 HMI가 '복귀중'임을 알 수 있게 함
         
         # 로봇 명령 큐에 복귀 추가 (비상 정지 상태였을 경우에도 해제 효과를 가짐)
         cursor.execute("INSERT INTO robot_command (command_type, status) VALUES ('RETURN_TO_BASE', 'PENDING')")
@@ -522,6 +531,38 @@ async def finish_patrol():
         return {"message": "Return to base command sent", "patrol_id": patrol['patrol_id'] if patrol else None}
     finally:
         conn.close()
+
+@router.post("/patrol/complete")
+async def complete_patrol():
+    """로봇이 기지에 도착했을 때 호출하여 순찰을 최종 완료 처리"""
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. 진행 중이거나 중단된 순찰 로그를 '완료'로 변경
+        #    (기지 근처 0,0 좌표 기록 포함 가능)
+        cursor.execute("UPDATE patrol_log SET status = '완료', end_time = NOW() WHERE status IN ('진행중', '중단')")
+        log_count = cursor.rowcount
+        
+        # 2. 관련 명령들을 모두 완료 처리 (잔여물 정리)
+        cursor.execute("UPDATE robot_command SET status = 'COMPLETED' WHERE status IN ('PENDING', 'PROCESSING')")
+        cmd_count = cursor.rowcount
+        
+        conn.commit()
+        return {
+            "status": "success", 
+            "message": "Patrol session completed and status cleared",
+            "logs_updated": log_count,
+            "commands_cleared": cmd_count
+        }
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
 
 
 @app.post("/patrol/stop")
@@ -785,6 +826,9 @@ async def add_detection(data: DetectionInput):
     try:
         cursor = conn.cursor(dictionary=True)
         
+        # 디버깅 로그 추가
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] DETECTION: tag={data.tag_barcode}, barcode={data.detected_barcode}, yolo={data.yolo_class_id}")
+        
         # 1. 진행 중인 최신 순찰 회차 조회
         cursor.execute("SELECT patrol_id FROM patrol_log WHERE status = '진행중' ORDER BY start_time DESC LIMIT 1")
         patrol = cursor.fetchone()
@@ -817,7 +861,7 @@ async def add_detection(data: DetectionInput):
         final_detected_barcode = data.detected_barcode
         detected_product_id_internal = None # 판독용 내부 변수
         
-        if not final_detected_barcode and data.yolo_class_id is not None and data.yolo_class_id not in [-1, 0]:
+        if not final_detected_barcode and data.yolo_class_id is not None and data.yolo_class_id != -1:
             # YOLO 클래스 아이디로 상품 바코드 조회
             cursor.execute("SELECT barcode, product_id FROM product_master WHERE yolo_class_id = %s", (data.yolo_class_id,))
             prod = cursor.fetchone()
@@ -832,11 +876,16 @@ async def add_detection(data: DetectionInput):
                 detected_product_id_internal = prod['product_id']
 
         # 4. 판독 로직 (정상 / 결품 / 오진열)
-        result_status = '정상'
-        if not final_detected_barcode and (data.yolo_class_id is None or data.yolo_class_id in [-1, 0]):
+        if data.yolo_class_id == -1:
+            # 사용자의 요구에 따라 -1은 절대적인 결품 처리
             result_status = '결품'
-        elif detected_product_id_internal != planned_product_id:
+        elif not final_detected_barcode:
+            # 바코드 인식이 안 된 경우도 결품으로 간주
+            result_status = '결품'
+        elif detected_product_id_internal is not None and detected_product_id_internal != planned_product_id:
             result_status = '오진열'
+        else:
+            result_status = '정상'
 
         # 5. shelf_status 업데이트 (현재 매대 현황)
         cursor.execute("SELECT status_id FROM shelf_status WHERE barcode_tag = %s", (data.tag_barcode,))
@@ -1248,6 +1297,75 @@ async def unified_register(data: UnifiedRegisterInput):
     finally:
         conn.close()
 
+# --- Robot Alert 엔드포인트 (HMI 실시간 알림용) ---
+@router.get("/robot/alert")
+async def get_robot_alert():
+    return current_robot_alert
+
+@router.post("/robot/alert")
+async def post_robot_alert(data: dict):
+    # data 예시: {"message": "우회로 탐색 중...", "active": true}
+    current_robot_alert["message"] = data.get("message")
+    current_robot_alert["active"] = data.get("active", False)
+    current_robot_alert["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return {"status": "success", "alert": current_robot_alert}
+
+@router.post("/robot/alert/clear")
+async def clear_robot_alert():
+    current_robot_alert["message"] = None
+    current_robot_alert["active"] = False
+    current_robot_alert["timestamp"] = None
+    return {"status": "success"}
+
+# --- HMI Video Feed (MJPEG) ---
+RTSP_URL = os.getenv("RTSP_URL", "rtsp://robot1:robot123@192.168.1.18:554/stream1")
+
+def gen_frames():
+    # RTSP 스트림에서 프레임을 읽어와 MJPEG 형식으로 변환하여 전송
+    cap = cv2.VideoCapture(RTSP_URL)
+    while True:
+        success, frame = cap.read()
+        if not success:
+            # 실패 시 재연결 시도
+            cap.release()
+            time.sleep(1)
+            cap = cv2.VideoCapture(RTSP_URL)
+            continue
+        
+        # 프레임 크기 조정 (부하 감소 및 HMI 최적화)
+        frame = cv2.resize(frame, (640, 480))
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+@app.get("/video_feed")
+async def video_feed():
+    return StreamingResponse(gen_frames(), 
+                            media_type='multipart/x-mixed-replace; boundary=frame')
+
+# --- HMI Chat Trigger Endpoints ---
+@router.post("/hmi/where")
+async def hmi_where():
+    try:
+        # 서브프로세스로 실행하여 독립적인 오디오/API 처리 보장
+        script_path = os.path.join(os.path.dirname(__file__), "../experiments/chat/hmi_where.py")
+        result = subprocess.run(["python3", script_path], capture_output=True, text=True, check=True)
+        return {"status": "success", "response": result.stdout.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/hmi/what")
+async def hmi_what():
+    try:
+        script_path = os.path.join(os.path.dirname(__file__), "../experiments/chat/hmi_what.py")
+        result = subprocess.run(["python3", script_path], capture_output=True, text=True, check=True)
+        return {"status": "success", "response": result.stdout.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# API 라우터 최종 등록
+app.include_router(router)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
