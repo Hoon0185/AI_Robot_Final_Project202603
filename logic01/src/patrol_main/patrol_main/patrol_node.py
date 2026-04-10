@@ -72,6 +72,7 @@ class PatrolNode(Node):
         self.ai_wait_start_time = None
         self.ai_wait_timeout = 8.0 # 기본 대기 시간 (서버 설정 로드 전)
         self.is_paused = False # 일시정지 상태 플래그
+        self.current_manual_shelf = None # [추가] 수동 스캔 중인 선반 이름 저장
 
         # 9. 실시간 배터리 상태 모니터링 (서버 보고)
         self.current_battery = 85.0
@@ -259,6 +260,23 @@ class PatrolNode(Node):
         elif cmd == 'RESET_POSE':
             self.get_logger().info('Moving back to Initial Position (No Jump)...')
             self.go_to_origin()
+        elif cmd.startswith('MANUAL_SCAN'):
+            # 수동 스캔 명령 처리 (예: MANUAL_SCAN 또는 MANUAL_SCAN:TAG-A1-001)
+            parts = cmd.split(':')
+            target_shelf = None
+            
+            if len(parts) > 1:
+                target_shelf = parts[1]
+                if target_shelf not in self.shelves:
+                    self.get_logger().error(f"지정된 선반 {target_shelf}를 찾을 수 없습니다.")
+                    return
+            else:
+                target_shelf = self.find_nearest_shelf()
+                
+            if target_shelf:
+                self.get_logger().info(f"[MANUAL SCAN] '{target_shelf}' 위치에서 수동 인식을 시작합니다.")
+                self.current_manual_shelf = target_shelf
+                self.trigger_ai_detection(target_shelf)
 
     def cancel_nav(self):
         """현재 진행 중인 Nav2 액션 목표를 실제로 취소합니다."""
@@ -333,6 +351,41 @@ class PatrolNode(Node):
         self._get_result_future.add_done_callback(self.get_result_callback)
         self.get_logger().info('Goal accepted by Nav2 server.')
 
+    def find_nearest_shelf(self):
+        """현재 위치에서 가장 가까운 선반(웨이포인트)을 찾습니다."""
+        if not self.shelves: return None
+        
+        min_dist = float('inf')
+        nearest_shelf = None
+        
+        for name, coords in self.shelves.items():
+            dist = math.sqrt((self.current_x - float(coords.get('x', 0)))**2 + 
+                             (self.current_y - float(coords.get('y', 0)))**2)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_shelf = name
+        
+        return nearest_shelf
+
+    def trigger_ai_detection(self, shelf_name):
+        """특정 선반 명칭을 기준으로 AI 인식을 트리거합니다."""
+        target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
+        
+        # AI 인식 대기 모드 진입
+        self.is_waiting_for_ai = True
+        self.latest_ai_data = None 
+        self.ai_mode_pub.publish(Bool(data=True)) 
+        self.target_product_pub.publish(String(data=target_barcode)) 
+        self.ai_wait_start_time = self.get_clock().now()
+
+        # 이전에 설정된 타이머 제거
+        if hasattr(self, '_delay_timer') and self._delay_timer:
+            self.destroy_timer(self._delay_timer)
+            self._delay_timer = None
+
+        # AI 인식을 폴링하는 타이머 가동
+        self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
+
     def get_result_callback(self, future):
         # 액션 종료 시 핸들 초기화
         self._goal_handle = None
@@ -375,21 +428,7 @@ class PatrolNode(Node):
 
             # 2. 실제 AI 인식 모드
             self.get_logger().info(f'Arrival at {shelf_name}. Scanned Tag: {target_barcode}. Waiting for AI verification...')
-
-            # AI 인식 대기 모드 진입
-            self.is_waiting_for_ai = True
-            self.latest_ai_data = None # 이전 데이터 초기화
-            self.ai_mode_pub.publish(Bool(data=True)) # 통합 AI 노드 활성화 신호 전송
-            self.target_product_pub.publish(String(data=target_barcode)) # 목표 바코드 정보 전송
-            self.ai_wait_start_time = self.get_clock().now()
-
-            # 이전에 설정된 타이머가 있다면 제거
-            if hasattr(self, '_delay_timer') and self._delay_timer:
-                self.destroy_timer(self._delay_timer)
-                self._delay_timer = None
-
-            # AI 인식을 최대 8초까지 기다리는 폴링 타이머 가동
-            self._delay_timer = self.create_timer(0.5, self.check_ai_result_and_proceed)
+            self.trigger_ai_detection(shelf_name)
         elif status == GoalStatus.STATUS_ABORTED:
             # 목표 재전송(Preemption)이나 일시적인 경로 문제인 경우 즉시 보내지 않고 3초 쿨다운 적용
             if not self._is_handling_retry:
@@ -511,7 +550,16 @@ class PatrolNode(Node):
         """결과가 왔는지 확인하고 DB에 기록"""
         if not self.is_waiting_for_ai: return
 
-        shelf_name = self.shelf_list[self.current_shelf_idx]
+        # 수동 스캔이면 manual_shelf 사용, 아니면 순찰용 shelf 사용
+        if self.current_manual_shelf:
+            shelf_name = self.current_manual_shelf
+        elif self.is_patrolling and self.current_shelf_idx < len(self.shelf_list):
+            shelf_name = self.shelf_list[self.current_shelf_idx]
+        else:
+            self.get_logger().error("데이터 처리 중 선반 정보를 특정할 수 없습니다.")
+            self.is_waiting_for_ai = False
+            return
+
         target_barcode = self.shelves[shelf_name].get('tag_barcode', 'UNKNOWN')
 
         elapsed = (self.get_clock().now() - self.ai_wait_start_time).nanoseconds / 1e9
@@ -568,10 +616,14 @@ class PatrolNode(Node):
             except Exception as e:
                 self.get_logger().error(f"⚠️ DB 리포트 지연/실패 (주행 강제 지속): {e}")
             finally:
-                # [핵심] 어떠한 상황에서도(에러 발생 포함) 다음 단계로 진행을 보장
+                # [핵심] 수동 스캔인 경우 다음 지점으로 이동하지 않음
+                is_manual = self.current_manual_shelf is not None
                 self.is_waiting_for_ai = False
                 self.latest_ai_data = None
-                self.proceed_to_next_shelf()
+                self.current_manual_shelf = None # 리셋
+                
+                if not is_manual:
+                    self.proceed_to_next_shelf()
 
     def proceed_to_next_shelf(self):
         """대기 타이머 종료 후 다음 목적지로 이동하거나 순찰을 종료함"""

@@ -69,7 +69,7 @@ function App() {
   const fetchGilbotData = async () => {
     try {
       setLoading(true);
-      const statusRes = await fetch('/status', { cache: 'no-store' });
+      const statusRes = await fetch('/api/status', { cache: 'no-store' });
       if (statusRes.ok) {
         const statusData = await statusRes.json();
         // console.log("Fetched Robot Status:", statusData.robot_status);
@@ -83,14 +83,14 @@ function App() {
       }
 
       // 1. 순찰 기록 (Patrol Log)
-      const patrolRes = await fetch('/patrol/list');
+      const patrolRes = await fetch('/api/patrol/list');
       if (patrolRes.ok) {
         const patrolData = await patrolRes.json();
         if (Array.isArray(patrolData)) setPatrolList(patrolData);
       }
 
       // 2. 알람 내역 (Alerts)
-      const alertRes = await fetch('/alerts');
+      const alertRes = await fetch('/api/alerts');
       if (alertRes.ok) {
         const alertData = await alertRes.json();
         if (Array.isArray(alertData)) {
@@ -110,14 +110,14 @@ function App() {
       }
 
       // 3. 인식 로그 (Detection log)
-      const detectionRes = await fetch('/detections');
+      const detectionRes = await fetch('/api/detections');
       if (detectionRes.ok) {
         const detectionData = await detectionRes.json();
         if (Array.isArray(detectionData)) setDetections(detectionData);
       }
       
       // 4. 현재 매대 현황 (Shelf Status)
-      const inventoryRes = await fetch('/inventory');
+      const inventoryRes = await fetch('/api/inventory');
       if (inventoryRes.ok) {
         const inventoryData = await inventoryRes.json();
         if (Array.isArray(inventoryData)) setShelfStatus(inventoryData);
@@ -132,24 +132,24 @@ function App() {
 
   const fetchStaticData = async () => {
     try {
-      const configRes = await fetch('/patrol/config');
+      const configRes = await fetch('/api/patrol/config');
       if (configRes.ok) {
         const configData = await configRes.json();
         setPatrolConfig(configData);
         setPatrolConfigDraft(configData);
         setIsEditingConfig(false);
       }
-      const productRes = await fetch('/products');
+      const productRes = await fetch('/api/products');
       if (productRes.ok) {
         const productData = await productRes.json();
         if (Array.isArray(productData)) setProducts(productData);
       }
-      const planRes = await fetch('/patrol/plan');
+      const planRes = await fetch('/api/patrol/plan');
       if (planRes.ok) {
         const planData = await planRes.json();
         if (Array.isArray(planData)) setPatrolPlan(planData);
       }
-      const waypointRes = await fetch('/waypoints');
+      const waypointRes = await fetch('/api/waypoints');
       if (waypointRes.ok) {
         const waypointData = await waypointRes.json();
         if (Array.isArray(waypointData)) setWaypoints(waypointData);
@@ -190,7 +190,7 @@ function App() {
     }
     setLoading(true);
     try {
-      const res = await fetch('/admin/unified-register', {
+      const res = await fetch('/api/admin/unified-register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(unifiedForm)
@@ -223,7 +223,7 @@ function App() {
     if (!window.confirm("정말 이 기록을 삭제하시겠습니까? 관련 탐지 로그와 알림 내역도 함께 삭제됩니다.")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/patrol/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/patrol/${id}`, { method: 'DELETE' });
       if (res.ok) {
         alert("✅ 순찰 기록이 삭제되었습니다.");
         fetchGilbotData();
@@ -238,10 +238,10 @@ function App() {
   const handleResolveAlert = async (alertId) => {
     try {
       setLoading(true);
-      const res = await fetch(`/alerts/${alertId}/resolve`, { method: 'POST' });
+      const res = await fetch(`/api/alerts/${alertId}/resolve`, { method: 'POST' });
       if (res.ok) {
         // 알림 목록 새로고침
-        const alertRes = await fetch('/alerts');
+        const alertRes = await fetch('/api/alerts');
         if (alertRes.ok) {
           const alertData = await alertRes.json();
           setAlerts(alertData);
@@ -262,7 +262,7 @@ function App() {
     if (!window.confirm("이 재고 부족 알림을 해결 상태로 변경하시겠습니까?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/products/${productId}/resolve_alert`, { method: 'PUT' });
+      const res = await fetch(`/api/products/${productId}/resolve_alert`, { method: 'PUT' });
       if (res.ok) {
         alert("✅ 재고 부족 알림이 해결 처리되었습니다.");
         fetchStaticData();
@@ -278,7 +278,7 @@ function App() {
     if (!window.confirm("정말 이 순찰 계획을 삭제하시겠습니까?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/patrol/plan/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/patrol/plan/${id}`, { method: 'DELETE' });
       if (res.ok) {
         alert("순찰 계획이 삭제되었습니다.");
         fetchStaticData();
@@ -296,7 +296,7 @@ function App() {
     if (!window.confirm("정말 이 웨이포인트를 삭제하시겠습니까? 관련 진열 계획, 인식 로그, 알림 내역이 모두 함께 삭제됩니다.")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/waypoints/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/waypoints/${id}`, { method: 'DELETE' });
       if (res.ok) {
         alert("✅ 웨이포인트와 관련 데이터가 모두 삭제되었습니다.");
         fetchStaticData();
@@ -314,7 +314,7 @@ function App() {
   const handleUpdateWaypoint = async (wp) => {
     try {
       setLoading(true);
-      const res = await fetch(`/waypoints/${wp.waypoint_id}`, {
+      const res = await fetch(`/api/waypoints/${wp.waypoint_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -339,7 +339,7 @@ function App() {
     if (!window.confirm("정말 이 웨이포인트의 모든 등록 상품 연결을 해제하시겠습니까?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/waypoints/${id}/clear_plans`, { method: 'DELETE' });
+      const res = await fetch(`/api/waypoints/${id}/clear_plans`, { method: 'DELETE' });
       if (res.ok) {
         alert("✅ 웨이포인트의 상품 연결이 모두 해제되었습니다.");
         fetchStaticData();
@@ -357,7 +357,7 @@ function App() {
   const handleUpdateConfig = async (e) => {
     if (e) e.preventDefault();
     try {
-      const res = await fetch('/patrol/config', {
+      const res = await fetch('/api/patrol/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patrolConfigDraft)
@@ -377,7 +377,7 @@ function App() {
 
     try {
       setLoading(true);
-      const res = await fetch('/patrol/start', { method: 'POST' });
+      const res = await fetch('/api/patrol/start', { method: 'POST' });
       if (res.ok) {
         setDetections([]); // 새 순찰 시작 시 기존 로그 즉시 초기화 (CRT 클리어 효과)
         setNotificationMsg({
@@ -402,7 +402,7 @@ function App() {
     if (status.robot_status === '비상정지') {
       alert("이미 기지이기 때문에 기지입니다.");
       try {
-        const res = await fetch('/patrol/finish', { method: 'POST' });
+        const res = await fetch('/api/patrol/finish', { method: 'POST' });
         if (res.ok) {
           setStatus(prev => ({ ...prev, robot_status: '휴식중' }));
           fetchGilbotData();
@@ -431,7 +431,7 @@ function App() {
 
     try {
       setTimeout(async () => {
-        const res = await fetch('/patrol/finish', { method: 'POST' });
+        const res = await fetch('/api/patrol/finish', { method: 'POST' });
         if (res.ok) {
           // 낙관적 업데이트: 즉시 UI 변경
           setStatus(prev => ({ ...prev, robot_status: '휴식중' }));
@@ -444,7 +444,7 @@ function App() {
 
   const handleEmergencyStop = async () => {
     try {
-      const res = await fetch('/patrol/stop', { method: 'POST' });
+      const res = await fetch('/api/patrol/stop', { method: 'POST' });
       if (res.ok) {
         // 낙관적 업데이트: 즉시 UI 변경 (백엔드 반영 전이라도)
         setStatus(prev => ({ ...prev, robot_status: '비상정지' }));
@@ -456,7 +456,7 @@ function App() {
 
   const handleResumePatrol = async () => {
     try {
-      const res = await fetch('/patrol/resume', { method: 'POST' });
+      const res = await fetch('/api/patrol/resume', { method: 'POST' });
       if (res.ok) {
         // 낙관적 업데이트: 순찰중으로 복구 (또는 적절한 상태)
         setStatus(prev => ({ ...prev, robot_status: '순찰중' }));
@@ -476,7 +476,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch('/patrol/plan/add', {
+      const res = await fetch('/api/patrol/plan/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPlan)
@@ -1005,7 +1005,7 @@ function App() {
                                     });
                                     try {
                                       setLoading(true);
-                                      const res = await fetch('/patrol/plan/order', {
+                                      const res = await fetch('/api/patrol/plan/order', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(orders)
@@ -1028,7 +1028,7 @@ function App() {
                                     });
                                     try {
                                       setLoading(true);
-                                      const res = await fetch('/patrol/plan/order', {
+                                      const res = await fetch('/api/patrol/plan/order', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(orders)

@@ -29,9 +29,8 @@ class Verifier:
         # 1. 데이터가 아예 없으면 '결품'으로 즉각 판단 (사용자 요청 반영)
         if not qrs and not items:
             return {
-                'item_name': "인식 불가 (결품)",
-                'status': '결품',
-                'barcode': "NONE",
+                'item_name': "None",
+                'barcode': "-1",
                 'bbox': [0, 0, 0, 0],
                 'confidence': 0.0,
                 'yolo_id': -1
@@ -70,9 +69,8 @@ class Verifier:
             finally:
                 cursor.close()
 
-        # 결과 변수 초기화 (기본값: 결품)
-        status = '결품'
-        item_name = "미인식 (결품)"
+        # 결과 변수 초기화
+        item_name = "None"
         bbox = [0, 0, 0, 0]
         confidence = 0.0
         detected_yolo_id = -1
@@ -104,33 +102,22 @@ class Verifier:
 
                 # 정합성 판단 (DB의 yolo_class_id를 절대 진리로 따름)
                 if int(current_yolo_id) == int(db_yolo_id):
-                    status = '정상'
-                    item_name = db_product_name if best_qr else f"[상품판독 성공] {db_product_name}"
+                    item_name = db_product_name
                 else:
-                    # 정보가 다르면 무조건 '오진열'
-                    status = '오진열'
-                    print(f"⚠️ [ID 불일치] DB ID: {db_yolo_id} | 인식 ID: {current_yolo_id} ({db_product_name})")
-                    item_name = f"상품 불일치 (기대: {db_product_name})"
+                    item_name = db_product_name
             else:
-                # 기대 상품 위치에 상품이 없으면 '결품'
-                status = '결품'
-                item_name = f"{db_product_name} (결품)"
+                item_name = db_product_name
         elif not best_qr and matched_item:
-            # 바코드는 없고 엉뚱한(?) 상품만 있는 경우 -> 오진열로 통일
-            status = '오진열'
-            item_name = f"미등록 상품 (ID: {matched_item['id']})"
+            item_name = f"Unknown (ID: {matched_item['id']})"
             bbox = matched_item['bbox']
             detected_yolo_id = matched_item['id']
             confidence = matched_item['score']
         else:
-            # 최종적으로 탐지된 것이 아무것도 없을 때
-            status = '결품'
-            item_name = "인식 불가 (결품)"
+            item_name = "None"
 
         return {
             'item_name': item_name,
-            'status': status,
-            'barcode': detected_barcode,
+            'barcode': detected_barcode if detected_barcode != "QR_NOT_FOUND" else "-1",
             'bbox': bbox,
             'confidence': float(confidence),
             'yolo_id': int(detected_yolo_id)

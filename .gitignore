@@ -182,9 +182,9 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore
+#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer,
+#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #  you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 
@@ -206,17 +206,13 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# ROS 2 stuff
+# ROS 2 Build & Log artifacts
 install/
 log/
-build/
-.colcon/
-*.swp
-*.swo
-*~
-.vscode/
+logic01/install/
+logic01/log/
+logic01/build/
 
-
-# Project Specific
+# RViz configurations
+*.rviz
 logic01/*.rviz
-DOCS_logic2/

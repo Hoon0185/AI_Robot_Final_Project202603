@@ -34,7 +34,6 @@ CREATE TABLE waypoint (
     waypoint_name VARCHAR(50)              COMMENT '위치 별칭 (예: Snack-A)',
     loc_x        FLOAT NOT NULL DEFAULT 0.0 COMMENT '지도 상 X 좌표 (m)',
     loc_y        FLOAT NOT NULL DEFAULT 0.0 COMMENT '지도 상 Y 좌표 (m)',
-    loc_yaw      FLOAT NOT NULL DEFAULT 0.0 COMMENT '지도 상 방향 (radians)',
     visit_order  INT DEFAULT 0,
     created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB CHARACTER SET utf8mb4;
