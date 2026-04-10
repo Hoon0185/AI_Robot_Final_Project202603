@@ -51,7 +51,7 @@ class IntegratedPCNode(Node):
         self.is_waiting_for_ai = False  # [수정] 기본값은 연산 중단(False)
         self.ai_mode_sub = self.create_subscription(
             Bool, 
-            '/ai_mode', 
+            '/ai_mode_active', 
             self.ai_mode_callback, 
             10)
             

@@ -17,7 +17,6 @@ from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 class ObstacleNode(Node):
   def __init__(self):
     super().__init__('obstacle_node')
-
     self.db = InventoryDB(base_url="http://16.184.56.119:8000")
     # self.db = InventoryDB(base_url="http://16.")
 
@@ -45,7 +44,7 @@ class ObstacleNode(Node):
     self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
     self.plan_sub = self.create_subscription(Path, '/plan', self.plan_callback, 10) # 경로 수신
     self.teleop_sub = self.create_subscription(Twist, '/cmd_vel_teleop', self.teleop_callback, 10) # 수동
-    self.ai_mode_sub = self.create_subscription(Bool, '/ai_mode', self.ai_mode_callback, 10) # AI 인식 대기 모드 활성화 여부 구독
+    self.ai_mode_sub = self.create_subscription(Bool, '/ai_mode_active', self.ai_mode_callback, 10) # AI 인식 대기 모드 활성화 여부 구독
 
     # ---- 명령어 발행 ----
     self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel_obstacle', 10)

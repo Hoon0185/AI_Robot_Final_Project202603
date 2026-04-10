@@ -64,7 +64,7 @@ class PatrolNode(Node):
             DetectionArray, '/verified_objs', self.ai_callback, 10)
         self.latest_ai_barcodes = [] # 최근 인식된 바코드들 저장
         self.latest_ai_class_ids = [] # 최근 인식된 YOLO ID들 저장
-        self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode', 10) # AI 모드 제어 발행자 추가
+        self.ai_mode_pub = self.create_publisher(Bool, '/ai_mode_active', 10) # AI 모드 제어 발행자 추가
         self.target_product_pub = self.create_publisher(String, '/target_product', 10) # [추가] 목표 상품 바코드 전송
         # 8. 위치 초기화 발행 (AMCL 보정용)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
