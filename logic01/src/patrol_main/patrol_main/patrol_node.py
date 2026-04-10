@@ -480,8 +480,9 @@ class PatrolNode(Node):
         if self.is_waiting_for_ai and len(msg.detections) > 0:
             res = msg.detections[0]
             # [수정] Detection.msg의 최신 필드명(barcode, score, status) 반영
+            cid = getattr(res, 'class_id', -1)
             self.latest_ai_data = {
-                "class_id": getattr(res, 'class_id', -1),
+                "class_id": cid if cid is not None else -1,
                 "detected_barcode": getattr(res, 'barcode', 'NONE'),
                 "confidence": getattr(res, 'score', 0.0), # score 필드 사용
                 "status": getattr(res, 'status', 'Unknown')
@@ -523,7 +524,7 @@ class PatrolNode(Node):
 
         # [수정] 단순히 데이터가 있는지가 아니라, '정상' 결과를 얻었거나 시간이 다 됐을 때만 종료
         has_success = ai_data.get('status') == '정상'
-        
+
         if has_success or elapsed >= self.ai_wait_timeout:
             self.is_waiting_for_ai = False
             self.ai_mode_pub.publish(Bool(data=False)) # PC 연산 종료 요청
@@ -533,12 +534,12 @@ class PatrolNode(Node):
 
             # 데이터가 없을 경우(타임아웃) '결품'으로 최종 보고 (사용자 요청 반영)
             data = getattr(self, 'latest_ai_data', None)
-            
+
             if not data or data.get('status') == "SEARCHING":
                 data = {
-                    "class_id": -1, 
-                    "detected_barcode": "TIMEOUT", 
-                    "confidence": 0.0, 
+                    "class_id": -1,
+                    "detected_barcode": "TIMEOUT",
+                    "confidence": 0.0,
                     "status": "결품 (인식 정보 없음)"
                 }
             # else: data가 있으면 (오진열, 결품 등) 그 데이터를 그대로 보관함
@@ -548,8 +549,7 @@ class PatrolNode(Node):
                 "tag_barcode": target_barcode,         # 원래 있어야 할 바코드
                 "detected_barcode": data["detected_barcode"], # 실제로 인식된 바코드
                 "yolo_class_id": data["class_id"],     # 물체 클래스 번호
-                "confidence": data["confidence"],      # 신뢰도
-                "status": data.get("status", "Unknown") # 판독 상태
+                "confidence": data["confidence"]       # 신뢰도
             }
 
             # [강력 조치] DB 리포팅 시도 (이제 status 데이터가 포함됩니다)
@@ -563,12 +563,11 @@ class PatrolNode(Node):
                         x=self.current_x,
                         y=self.current_y,
                         detected_barcode=self.last_detection["detected_barcode"],
-                        yolo_class_id=self.last_detection.get("yolo_class_id", -1),
-                        confidence=self.last_detection["confidence"],
-                        status=self.last_detection["status"]
+                        yolo_class_id=self.last_detection.get("yolo_class_id") if self.last_detection.get("yolo_class_id") is not None else -1,
+                        confidence=self.last_detection["confidence"]
                     )
                     self.reported_tags.add(target_barcode)
-                    self.get_logger().info(f"✅ DB 리포트 성공: {target_barcode} ({self.last_detection['status']})")
+                    self.get_logger().info(f"✅ DB 리포트 성공: {target_barcode}")
             except Exception as e:
                 self.get_logger().error(f"⚠️ DB 리포트 지연/실패 (주행 강제 지속): {e}")
             finally:
