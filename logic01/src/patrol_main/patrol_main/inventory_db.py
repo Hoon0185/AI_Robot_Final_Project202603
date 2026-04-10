@@ -163,11 +163,44 @@ class InventoryDB:
 
     def finish_patrol_session(self):
         """진행 중인 순찰 세션을 완료 상태로 변경합니다."""
+        # 1. API 방식 시도
         try:
             res = requests.post(f"{self.base_url}/patrol/finish", timeout=2.0)
-            return res.status_code == 200
+            if res.status_code == 200:
+                print("✅ [API] 순찰 세션 종료 보고 성공")
+                return True
         except Exception:
-            return False
+            pass
+
+        # 2. DB 직접 업데이트 방식 (폴백)
+        db_config = {
+            "host": "16.184.56.119",
+            "port": 3306,
+            "user": "gilbot",
+            "password": "robot123",
+            "database": "gilbot"
+        }
+        conn = None
+        try:
+            conn = mysql.connector.connect(**db_config)
+            if conn.is_connected():
+                cursor = conn.cursor()
+                query = """
+                    UPDATE patrol_log
+                    SET status = '완료', end_time = %s
+                    WHERE status = '진행중' OR status = '중단'
+                    ORDER BY patrol_id DESC LIMIT 1
+                """
+                cursor.execute(query, (datetime.now(),))
+                conn.commit()
+                print("✅ [DB] 순찰 세션 강제 종료 처리 성공")
+                return True
+        except Exception as e:
+            print(f"❌ [DB] 순찰 종료 처리 실패: {e}")
+        finally:
+            if conn and conn.is_connected():
+                conn.close()
+        return False
 
     def get_waypoints(self):
         """서버에서 모든 웨이포인트 목록을 가져옵니다. (단순 목록)"""
@@ -229,15 +262,15 @@ class InventoryDB:
             pass
 
         # 2. DB 직접 업데이트 방식 (사용자 요청: 서버 코드 고정 대응)
-        return self.report_robot_pose_direct(x, y)
+        return self.report_robot_pose_direct(x, y, status)
 
-    def report_robot_pose_direct(self, x, y):
-        """DB에 직접 접속하여 실시간 좌표 업데이트 (patrol_log)"""
+    def report_robot_pose_direct(self, x, y, status="IDLE"):
+        """DB에 직접 접속하여 실시간 좌표 및 상태 업데이트 (patrol_log)"""
         db_config = {
             "host": "16.184.56.119",
             "port": 3306,
             "user": "gilbot",
-            "password": "robot123", # 기본 비밀번호 시도
+            "password": "robot123",
             "database": "gilbot"
         }
         conn = None
@@ -245,18 +278,16 @@ class InventoryDB:
             conn = mysql.connector.connect(**db_config)
             if conn.is_connected():
                 cursor = conn.cursor()
-                # '진행중'이거나 가장 최근인 순찰 로그의 좌표 업데이트
+                # '진행중'이거나 가장 최근인 순찰 로그의 좌표 및 상태 업데이트
                 query = """
                     UPDATE patrol_log
-                    SET last_odom_x = %s, last_odom_y = %s
+                    SET last_odom_x = %s, last_odom_y = %s, status = %s
                     WHERE status = '진행중' OR status = '중단'
-                    ORDER BY patrol_id DESC LIMIT 1
                 """
-                cursor.execute(query, (float(x), float(y)))
+                cursor.execute(query, (float(x), float(y), str(status)))
                 conn.commit()
                 return True
-        except Exception as e:
-            # print(f"[DB Error] {e}")
+        except Exception:
             pass
         finally:
             if conn and conn.is_connected():

@@ -41,7 +41,7 @@ class ProductDetector:
     def predict(self, frame):
         if self.model is None:
             return []
-        results = self.model(frame, conf=0.6, iou=0.3, verbose=False)
+        results = self.model(frame, conf=0.4, iou=0.3, verbose=False)
         items = []
 
         if results and len(results[0].boxes) > 0:
