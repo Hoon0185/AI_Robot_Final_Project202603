@@ -31,7 +31,15 @@ class QRDetector:
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        objs = decode(thresh) or decode(gray)
+        # 여러 기법을 병합하여 인식률 향상
+        objs = decode(gray)  # 1. 일반 그레이스케일 시도 (가장 안정적)
+        if not objs:
+            objs = decode(thresh) # 2. 안 되면 이진화 데이터 시도
+        if not objs:
+            # 3. 대비 강화 후 시도
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            contrast = clahe.apply(gray)
+            objs = decode(contrast)
         results = []
 
         for obj in objs:

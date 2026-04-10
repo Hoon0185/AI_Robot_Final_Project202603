@@ -91,6 +91,9 @@ class IntegratedPCNode(Node):
             return
         
         frame = self.latest_frame.copy()
+        h, w, c = frame.shape
+        self.get_logger().info(f"🔍 [AI Debug] Frame Received: {w}x{h} (Channels: {c})")
+        
         analyze_success = False
         
         # --- [중요] 모든 인식/검증 로직이 동일한 frame을 공유함 ---
