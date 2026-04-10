@@ -1,19 +1,20 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <Sequence name="NavigateWithReplanning">
-
-      <RateController hz="1.0">
-        <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+    <PipelineSequence name="NavigateWithReplanning">
+      <RateController hz="2.0">
+        <RecoveryNode number_of_retries="3" name="ComputePathToPose">
           <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
           <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
         </RecoveryNode>
       </RateController>
 
       <RecoveryNode number_of_retries="1" name="FollowPathAndHold">
-        <FollowPath path="{path}" controller_id="FollowPath"/>
+        <PipelineSequence name="HandleObstacleAwarePathFollowing">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+        </PipelineSequence>
         <ClearEntireCostmap name="ClearLocalCostmap-Fallback" service_name="local_costmap/clear_entirely_local_costmap"/>
       </RecoveryNode>
 
-    </Sequence>
+    </PipelineSequence>
   </BehaviorTree>
 </root>
